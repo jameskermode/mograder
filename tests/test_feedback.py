@@ -64,6 +64,7 @@ def test_export_feedback_html_failure(tmp_path):
         return result
 
     import pytest
+
     with patch("mograder.feedback.subprocess.run", side_effect=mock_run):
         with pytest.raises(RuntimeError, match="Failed to export"):
             export_feedback_html(nb, out_dir)

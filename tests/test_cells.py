@@ -43,7 +43,7 @@ def test_inject_before_if_name():
     # if __name__ should still be present and come after the injected cells
     assert 'if __name__ == "__main__"' in text
     marker_pos = text.index(VERIFICATION_MARKER)
-    name_pos = text.index('if __name__')
+    name_pos = text.index("if __name__")
     assert marker_pos < name_pos
 
 
@@ -89,7 +89,9 @@ def test_parse_gta_feedback_graded():
     # Simulate GTA editing: replace _mark = None with _mark = 65
     text = "".join(injected)
     text = text.replace("_mark = None", "_mark = 65")
-    text = text.replace('_feedback = ""', '_feedback = "Good analysis of the DP approach"')
+    text = text.replace(
+        '_feedback = ""', '_feedback = "Good analysis of the DP approach"'
+    )
     modified = text.splitlines(keepends=True)
     mark, feedback = parse_gta_feedback(modified)
     assert mark == 65

@@ -60,7 +60,9 @@ def test_generate_failure_exits_nonzero(mock_pf, tmp_path):
 @patch("mograder.runner.run_batch")
 def test_verify_runs_and_injects(mock_batch, mock_inject, tmp_path):
     nb = tmp_path / "student.py"
-    nb.write_text("import marimo\napp = marimo.App()\n\nif __name__ == '__main__':\n    app.run()\n")
+    nb.write_text(
+        "import marimo\napp = marimo.App()\n\nif __name__ == '__main__':\n    app.run()\n"
+    )
 
     mock_batch.return_value = [
         NotebookResult(
@@ -85,9 +87,7 @@ def test_feedback_collects_and_exports(mock_grades, mock_export, tmp_path):
     nb = tmp_path / "graded.py"
     nb.write_text("# graded notebook")
 
-    mock_grades.return_value = [
-        {"student": "graded", "mark": 72, "feedback": "Good"}
-    ]
+    mock_grades.return_value = [{"student": "graded", "mark": 72, "feedback": "Good"}]
     mock_export.return_value = tmp_path / "feedback" / "graded.html"
 
     runner = CliRunner()
@@ -109,8 +109,16 @@ def test_feedback_writes_grades_csv(mock_grades, mock_export, mock_csv, tmp_path
 
     runner = CliRunner()
     csv_path = tmp_path / "grades.csv"
-    result = runner.invoke(cli, [
-        "feedback", str(nb), "-o", str(tmp_path / "fb"), "--grades-csv", str(csv_path)
-    ])
+    result = runner.invoke(
+        cli,
+        [
+            "feedback",
+            str(nb),
+            "-o",
+            str(tmp_path / "fb"),
+            "--grades-csv",
+            str(csv_path),
+        ],
+    )
     assert result.exit_code == 0
     mock_csv.assert_called_once()

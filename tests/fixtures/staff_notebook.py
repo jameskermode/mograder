@@ -33,17 +33,20 @@ def _(mo):
 def _():
     ### BEGIN SOLUTION
     x = 42
-    y = x ** 2
+    y = x**2
     ### END SOLUTION
     return (x, y)
 
 
 @app.cell
 def _(check, x, y):
-    check("Q1: Computation", [
-        (x == 42, "x should be 42"),
-        (y == 1764, "y should be x^2"),
-    ])
+    check(
+        "Q1: Computation",
+        [
+            (x == 42, "x should be 42"),
+            (y == 1764, "y should be x^2"),
+        ],
+    )
     return
 
 
@@ -52,15 +55,19 @@ def _():
     ### BEGIN SOLUTION
     def greet(name):
         return f"Hello, {name}!"
+
     ### END SOLUTION
     return (greet,)
 
 
 @app.cell
 def _(check, greet):
-    check("Q2: Greeting", [
-        (greet("World") == "Hello, World!", "greet should return greeting"),
-    ])
+    check(
+        "Q2: Greeting",
+        [
+            (greet("World") == "Hello, World!", "greet should return greeting"),
+        ],
+    )
     return
 
 

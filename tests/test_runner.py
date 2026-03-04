@@ -20,6 +20,7 @@ SAMPLE_HTML = SAMPLE_HTML_PATH.read_text()
 
 def _mock_subprocess_success(tmp_path):
     """Create a mock subprocess.run that writes sample HTML."""
+
     def mock_run(cmd, **kwargs):
         # Write HTML to the -o path
         out_path = Path(cmd[cmd.index("-o") + 1])
@@ -28,6 +29,7 @@ def _mock_subprocess_success(tmp_path):
         result.returncode = 0
         result.stderr = ""
         return result
+
     return mock_run
 
 
@@ -35,7 +37,9 @@ def test_run_notebook_success(tmp_path):
     nb = tmp_path / "student.py"
     nb.write_text("# notebook")
 
-    with patch("mograder.runner.subprocess.run", side_effect=_mock_subprocess_success(tmp_path)):
+    with patch(
+        "mograder.runner.subprocess.run", side_effect=_mock_subprocess_success(tmp_path)
+    ):
         result = run_notebook(nb, timeout=60)
 
     assert result.export_ok is True
@@ -67,7 +71,10 @@ def test_run_notebook_timeout(tmp_path):
     nb = tmp_path / "slow.py"
     nb.write_text("# slow")
 
-    with patch("mograder.runner.subprocess.run", side_effect=subprocess.TimeoutExpired("cmd", 5)):
+    with patch(
+        "mograder.runner.subprocess.run",
+        side_effect=subprocess.TimeoutExpired("cmd", 5),
+    ):
         result = run_notebook(nb, timeout=5)
 
     assert result.export_ok is False
@@ -80,7 +87,9 @@ def test_run_notebook_saves_html(tmp_path):
     html_dir = tmp_path / "html"
     html_dir.mkdir()
 
-    with patch("mograder.runner.subprocess.run", side_effect=_mock_subprocess_success(tmp_path)):
+    with patch(
+        "mograder.runner.subprocess.run", side_effect=_mock_subprocess_success(tmp_path)
+    ):
         result = run_notebook(nb, timeout=60, html_dir=html_dir)
 
     assert result.html_path is not None
@@ -94,7 +103,9 @@ def test_run_batch(tmp_path):
         nb.write_text("# notebook")
         nbs.append(nb)
 
-    with patch("mograder.runner.subprocess.run", side_effect=_mock_subprocess_success(tmp_path)):
+    with patch(
+        "mograder.runner.subprocess.run", side_effect=_mock_subprocess_success(tmp_path)
+    ):
         results = run_batch(nbs, jobs=2, timeout=60)
 
     assert len(results) == 2

@@ -176,9 +176,7 @@ cli.add_command(feedback_cmd, "feedback")
 
 
 @cli.command()
-@click.argument(
-    "worksheet", type=click.Path(exists=True, path_type=Path)
-)
+@click.argument("worksheet", type=click.Path(exists=True, path_type=Path))
 @click.option(
     "--grades-csv",
     required=True,

@@ -81,9 +81,7 @@ def merge_grades(
     return moodle_rows, result
 
 
-def write_moodle_csv(
-    rows: list[dict], fieldnames: list[str], path: Path
-) -> None:
+def write_moodle_csv(rows: list[dict], fieldnames: list[str], path: Path) -> None:
     """Write updated Moodle CSV (UTF-8, no BOM)."""
     path.parent.mkdir(parents=True, exist_ok=True)
     with open(path, "w", newline="", encoding="utf-8") as f:
@@ -118,9 +116,7 @@ def build_feedback_zip(
             stem = html_file.stem
             if stem in lookup:
                 full_name, pid = lookup[stem]
-                arc_path = (
-                    f"{full_name}_{pid}_assignsubmission_file_/{html_file.name}"
-                )
+                arc_path = f"{full_name}_{pid}_assignsubmission_file_/{html_file.name}"
                 zf.write(html_file, arcname=arc_path)
                 count += 1
     return count

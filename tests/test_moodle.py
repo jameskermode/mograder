@@ -375,4 +375,7 @@ def test_moodle_cli_bad_match_column(tmp_path):
         ],
     )
     assert result.exit_code != 0
-    assert "not found" in result.output.lower() or "not found" in (result.output + str(result.exception)).lower()
+    assert (
+        "not found" in result.output.lower()
+        or "not found" in (result.output + str(result.exception)).lower()
+    )
