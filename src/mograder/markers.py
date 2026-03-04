@@ -250,7 +250,9 @@ def transform_marks_cell(lines: list[str]) -> list[str]:
         return lines
 
     # Add mograder_check_state to parameters
-    output[cell_def_idx] = output[cell_def_idx].replace("):", ", mograder_check_state):")
+    output[cell_def_idx] = output[cell_def_idx].replace(
+        "):", ", mograder_check_state):"
+    )
 
     # Find the "# --- display" line
     display_idx = None
