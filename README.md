@@ -32,7 +32,7 @@ uv venv && uv pip install -e ".[dev]"
 
 ### Generate student notebooks
 
-Strip solution blocks and hidden tests from staff notebooks:
+Strip solution blocks from staff notebooks:
 
 ```bash
 mograder generate staff_notebook.py -o release/
@@ -40,17 +40,15 @@ mograder generate staff_notebook.py --dry-run    # preview only
 mograder generate staff_notebook.py --validate   # check markers only
 ```
 
-Staff notebooks use markers to delimit solutions and hidden tests:
+Staff notebooks use markers to delimit solutions:
 
 ```python
 ### BEGIN SOLUTION
 x = 42
 ### END SOLUTION
-
-### BEGIN HIDDEN TESTS
-assert x == 42
-### END HIDDEN TESTS
 ```
+
+Solution blocks are replaced with `# YOUR CODE HERE` / `pass` in the student version. The visible `check()` callouts provide formative feedback — no hidden tests are needed since coding exercises are not summatively assessed.
 
 ### Verify submissions
 

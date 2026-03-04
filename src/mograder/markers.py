@@ -5,20 +5,16 @@ from pathlib import Path
 
 SOLUTION_BEGIN = "### BEGIN SOLUTION"
 SOLUTION_END = "### END SOLUTION"
-HIDDEN_BEGIN = "### BEGIN HIDDEN TESTS"
-HIDDEN_END = "### END HIDDEN TESTS"
 
 
 def validate_markers(lines: list[str], filepath: str) -> list[str]:
-    """Check that all solution/hidden-test markers are properly paired.
+    """Check that all solution markers are properly paired.
 
     Returns a list of error messages (empty if valid).
     """
     errors = []
     in_solution = False
-    in_hidden = False
     sol_start_line = 0
-    hidden_start_line = 0
 
     for i, line in enumerate(lines, 1):
         stripped = line.strip()
@@ -39,41 +35,21 @@ def validate_markers(lines: list[str], filepath: str) -> list[str]:
                 )
             in_solution = False
 
-        elif stripped == HIDDEN_BEGIN:
-            if in_hidden:
-                errors.append(
-                    f"{filepath}:{i}: nested {HIDDEN_BEGIN} "
-                    f"(previous opened at line {hidden_start_line})"
-                )
-            in_hidden = True
-            hidden_start_line = i
-
-        elif stripped == HIDDEN_END:
-            if not in_hidden:
-                errors.append(
-                    f"{filepath}:{i}: {HIDDEN_END} without matching {HIDDEN_BEGIN}"
-                )
-            in_hidden = False
-
     if in_solution:
         errors.append(f"{filepath}:{sol_start_line}: unclosed {SOLUTION_BEGIN}")
-    if in_hidden:
-        errors.append(f"{filepath}:{hidden_start_line}: unclosed {HIDDEN_BEGIN}")
 
     return errors
 
 
 def strip_solutions(lines: list[str]) -> list[str]:
-    """Remove solution blocks and hidden tests from source lines.
+    """Remove solution blocks from source lines.
 
-    - Lines between BEGIN SOLUTION / END SOLUTION are replaced with
-      ``# YOUR CODE HERE`` and ``pass`` at the correct indentation.
-    - Lines between BEGIN HIDDEN TESTS / END HIDDEN TESTS are removed
-      entirely (including the markers).
+    Lines between BEGIN SOLUTION / END SOLUTION are replaced with
+    ``# YOUR CODE HERE`` and ``pass`` at the correct indentation.
+    The ``pass`` ensures empty function bodies remain syntactically valid.
     """
     output = []
     in_solution = False
-    in_hidden = False
     solution_indent = ""
 
     for line in lines:
@@ -90,30 +66,15 @@ def strip_solutions(lines: list[str]) -> list[str]:
             output.append(f"{solution_indent}pass\n")
             continue
 
-        if stripped == HIDDEN_BEGIN:
-            in_hidden = True
-            continue
-
-        if stripped == HIDDEN_END:
-            in_hidden = False
-            continue
-
-        if not in_solution and not in_hidden:
+        if not in_solution:
             output.append(line)
 
     return output
 
 
-def count_markers(lines: list[str]) -> dict[str, int]:
-    """Count solution and hidden-test blocks."""
-    counts = {"solution": 0, "hidden": 0}
-    for line in lines:
-        stripped = line.strip()
-        if stripped == SOLUTION_BEGIN:
-            counts["solution"] += 1
-        elif stripped == HIDDEN_BEGIN:
-            counts["hidden"] += 1
-    return counts
+def count_markers(lines: list[str]) -> int:
+    """Count solution blocks."""
+    return sum(1 for line in lines if line.strip() == SOLUTION_BEGIN)
 
 
 def process_file(
@@ -131,17 +92,13 @@ def process_file(
             print(f"ERROR: {err}", file=sys.stderr)
         return False
 
-    counts = count_markers(lines)
-    if counts["solution"] == 0 and counts["hidden"] == 0:
-        print(f"SKIP: {source} (no solution or hidden-test markers found)")
+    n_solutions = count_markers(lines)
+    if n_solutions == 0:
+        print(f"SKIP: {source} (no solution markers found)")
         return True
 
     if validate_only:
-        print(
-            f"VALID: {source} "
-            f"({counts['solution']} solution blocks, "
-            f"{counts['hidden']} hidden-test blocks)"
-        )
+        print(f"VALID: {source} ({n_solutions} solution blocks)")
         return True
 
     student_lines = strip_solutions(lines)
@@ -150,8 +107,7 @@ def process_file(
         n_removed = len(lines) - len(student_lines)
         print(
             f"DRY-RUN: {source} → "
-            f"{counts['solution']} solution blocks stripped, "
-            f"{counts['hidden']} hidden-test blocks stripped, "
+            f"{n_solutions} solution blocks stripped, "
             f"{n_removed} lines removed"
         )
         return True
@@ -161,8 +117,5 @@ def process_file(
     output_dir.mkdir(parents=True, exist_ok=True)
     dest = output_dir / source.name
     dest.write_text("".join(student_lines))
-    print(
-        f"OK: {source} → {dest} "
-        f"({counts['solution']} solutions, {counts['hidden']} hidden tests stripped)"
-    )
+    print(f"OK: {source} → {dest} ({n_solutions} solution blocks stripped)")
     return True

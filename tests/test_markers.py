@@ -1,10 +1,4 @@
-from pathlib import Path
-
-import pytest
-
 from mograder.markers import (
-    HIDDEN_BEGIN,
-    HIDDEN_END,
     SOLUTION_BEGIN,
     SOLUTION_END,
     count_markers,
@@ -16,14 +10,12 @@ from mograder.markers import (
 
 # --- validate_markers ---
 
+
 def test_validate_valid_markers():
     lines = [
         f"    {SOLUTION_BEGIN}\n",
         "    x = 1\n",
         f"    {SOLUTION_END}\n",
-        f"    {HIDDEN_BEGIN}\n",
-        "    assert x == 1\n",
-        f"    {HIDDEN_END}\n",
     ]
     assert validate_markers(lines, "test.py") == []
 
@@ -53,14 +45,8 @@ def test_validate_unclosed_solution():
     assert "unclosed" in errors[0]
 
 
-def test_validate_unclosed_hidden():
-    lines = [f"    {HIDDEN_BEGIN}\n", "    assert True\n"]
-    errors = validate_markers(lines, "test.py")
-    assert len(errors) == 1
-    assert "unclosed" in errors[0]
-
-
 # --- strip_solutions ---
+
 
 def test_strip_solutions_replaces_with_placeholder():
     lines = [
@@ -89,22 +75,6 @@ def test_strip_solutions_preserves_indentation():
     assert "        pass\n" in result
 
 
-def test_strip_hidden_tests_removed_entirely():
-    lines = [
-        "    code_before\n",
-        f"    {HIDDEN_BEGIN}\n",
-        "    assert secret\n",
-        f"    {HIDDEN_END}\n",
-        "    code_after\n",
-    ]
-    result = strip_solutions(lines)
-    assert "    code_before\n" in result
-    assert "    code_after\n" in result
-    assert "assert secret" not in "".join(result)
-    # No placeholder for hidden tests
-    assert "YOUR CODE HERE" not in "".join(result)
-
-
 def test_strip_nonmarker_code_unchanged():
     lines = ["x = 1\n", "y = 2\n", "print(x + y)\n"]
     assert strip_solutions(lines) == lines
@@ -112,21 +82,19 @@ def test_strip_nonmarker_code_unchanged():
 
 # --- count_markers ---
 
+
 def test_count_markers():
     lines = [
         f"    {SOLUTION_BEGIN}\n",
         f"    {SOLUTION_END}\n",
         f"    {SOLUTION_BEGIN}\n",
         f"    {SOLUTION_END}\n",
-        f"    {HIDDEN_BEGIN}\n",
-        f"    {HIDDEN_END}\n",
     ]
-    counts = count_markers(lines)
-    assert counts["solution"] == 2
-    assert counts["hidden"] == 1
+    assert count_markers(lines) == 2
 
 
 # --- process_file ---
+
 
 def test_process_file_writes_output(tmp_path, fixtures_dir):
     source = fixtures_dir / "staff_notebook.py"
@@ -137,7 +105,6 @@ def test_process_file_writes_output(tmp_path, fixtures_dir):
     content = dest.read_text()
     assert "# YOUR CODE HERE" in content
     assert SOLUTION_BEGIN not in content
-    assert HIDDEN_BEGIN not in content
 
 
 def test_process_file_dry_run(tmp_path, fixtures_dir, capsys):

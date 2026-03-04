@@ -44,10 +44,6 @@ def _(check, x, y):
         (x == 42, "x should be 42"),
         (y == 1764, "y should be x^2"),
     ])
-    ### BEGIN HIDDEN TESTS
-    assert x == 42
-    assert y == 1764
-    ### END HIDDEN TESTS
     return
 
 
