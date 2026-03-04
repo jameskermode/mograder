@@ -42,9 +42,7 @@ def parse_marks_metadata(source_lines: list[str]) -> dict[str, int | float] | No
         var_lookup[name] = int(val) if "." not in val else float(val)
 
     # Parse marks=N or marks=var from check() call sites (auto questions)
-    for m in re.finditer(
-        r'check\(\s*"([^"]+)".*?marks\s*=\s*(\w+)', text, re.DOTALL
-    ):
+    for m in re.finditer(r'check\(\s*"([^"]+)".*?marks\s*=\s*(\w+)', text, re.DOTALL):
         label, value_str = m.group(1), m.group(2)
         key = label.split(":")[0].strip()
         if key in marks:
