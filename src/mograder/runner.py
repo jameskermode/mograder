@@ -10,7 +10,7 @@ import zipfile
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from pathlib import Path
 
-from mograder.models import CheckResult, NotebookResult
+from mograder.models import NotebookResult
 from mograder.parser import count_cell_errors, parse_check_results
 
 

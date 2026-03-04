@@ -6,7 +6,6 @@ from pathlib import Path
 import click
 
 from mograder import cells, feedback, markers, runner
-from mograder.models import CheckResult
 
 
 @click.group()
