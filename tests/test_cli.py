@@ -58,7 +58,7 @@ def test_generate_failure_exits_nonzero(mock_pf, tmp_path):
 
 @patch("mograder.cells.inject_grading_cells")
 @patch("mograder.runner.run_batch")
-def test_verify_runs_and_injects(mock_batch, mock_inject, tmp_path):
+def test_autograde_runs_and_injects(mock_batch, mock_inject, tmp_path):
     nb = tmp_path / "student.py"
     nb.write_text(
         "import marimo\napp = marimo.App()\n\nif __name__ == '__main__':\n    app.run()\n"
@@ -75,7 +75,7 @@ def test_verify_runs_and_injects(mock_batch, mock_inject, tmp_path):
 
     out_dir = tmp_path / "grading"
     runner = CliRunner()
-    result = runner.invoke(cli, ["verify", str(nb), "-o", str(out_dir)])
+    result = runner.invoke(cli, ["autograde", str(nb), "-o", str(out_dir)])
     assert result.exit_code == 0
     mock_batch.assert_called_once()
     mock_inject.assert_called_once()

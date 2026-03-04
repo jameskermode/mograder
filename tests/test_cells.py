@@ -146,19 +146,15 @@ def test_parse_marks_metadata_from_dict():
     assert result == {"Analysis": 75}
 
 
-def test_parse_marks_metadata_from_check_calls():
-    """Marks at check() call sites are extracted (literal and variable)."""
+def test_parse_marks_metadata_all_in_dict():
+    """All marks must be listed in the _marks dict."""
     lines = [
         f"    {MARKS_MARKER}\n",
-        '    _marks = {"Analysis": 60}\n',
+        '    _marks = {"Q1": 10, "Q2": 15, "Analysis": 60}\n',
         "    return\n",
-        "\n",
-        "    _q1_marks = 10\n",
-        '    check("Q1: Array creation", [...], marks=_q1_marks)\n',
-        '    check("Q2: Finite diff", [...], marks=15)\n',
     ]
     result = parse_marks_metadata(lines)
-    assert result == {"Analysis": 60, "Q1": 10, "Q2": 15}
+    assert result == {"Q1": 10, "Q2": 15, "Analysis": 60}
 
 
 def test_parse_marks_metadata_no_marker():

@@ -2,6 +2,7 @@
 # requires-python = ">=3.11"
 # dependencies = [
 #     "marimo",
+#     "mograder @ git+https://github.com/jameskermode/mograder.git",
 # ]
 # ///
 
@@ -11,44 +12,12 @@ __generated_with = "0.20.0"
 app = marimo.App()
 
 
-@app.cell
+@app.cell(hide_code=True)
 def _():
     import marimo as mo
+    from mograder.runtime import check
 
-    return (mo,)
-
-
-@app.cell(hide_code=True)
-def _(mo):
-    def check(label, checks, marks=None):
-        """Run a list of (condition, message) checks and display coloured feedback.
-
-        Args:
-            label: Name of the test (e.g. "Q2: Model evaluation")
-            checks: List of (bool_expr, fail_message) tuples
-            marks: Optional marks available for this question
-        """
-        failures = [msg for ok, msg in checks if not ok]
-        if marks is not None:
-            earned = marks if checks and not failures else 0
-            badge = f'<span style="float:right"><code>[{earned}/{marks} marks]</code></span>'
-        else:
-            badge = ""
-        if not checks:
-            return mo.callout(
-                mo.md(f"{badge}**{label}** — waiting for your code"), kind="warn"
-            )
-        if failures:
-            items = "\n".join(f"- {f}" for f in failures)
-            return mo.callout(
-                mo.md(f"{badge}**{label}** — some checks failed:\n\n{items}"),
-                kind="danger",
-            )
-        return mo.callout(
-            mo.md(f"{badge}**{label}** — all checks passed"), kind="success"
-        )
-
-    return (check,)
+    return check, mo
 
 
 @app.cell(hide_code=True)
@@ -93,9 +62,15 @@ def _(check, is_palindrome):
     check(
         "Q1: Palindrome checker",
         [
-            (is_palindrome("racecar") is True, 'is_palindrome("racecar") should be True'),
+            (
+                is_palindrome("racecar") is True,
+                'is_palindrome("racecar") should be True',
+            ),
             (is_palindrome("hello") is False, 'is_palindrome("hello") should be False'),
-            (is_palindrome("A man a plan a canal Panama") is True, "Should be case-insensitive and ignore spaces"),
+            (
+                is_palindrome("A man a plan a canal Panama") is True,
+                "Should be case-insensitive and ignore spaces",
+            ),
             (is_palindrome("") is True, "Empty string is a palindrome"),
         ],
     )
@@ -132,9 +107,16 @@ def _(check, word_count):
     check(
         "Q2: Word counter",
         [
-            (word_count("the cat sat on the mat") == {"the": 2, "cat": 1, "sat": 1, "on": 1, "mat": 1}, "Basic word counting"),
+            (
+                word_count("the cat sat on the mat")
+                == {"the": 2, "cat": 1, "sat": 1, "on": 1, "mat": 1},
+                "Basic word counting",
+            ),
             (word_count("") == {}, "Empty string should return empty dict"),
-            (word_count("Hello hello HELLO") == {"hello": 3}, "Should be case-insensitive"),
+            (
+                word_count("Hello hello HELLO") == {"hello": 3},
+                "Should be case-insensitive",
+            ),
         ],
     )
     return

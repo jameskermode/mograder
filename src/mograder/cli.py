@@ -1,4 +1,4 @@
-"""Click CLI for mograder: generate, verify, feedback."""
+"""Click CLI for mograder: generate, autograde, feedback."""
 
 import sys
 from pathlib import Path
@@ -69,7 +69,7 @@ def generate(files, output_dir, dry_run, validate):
     default="grading",
     help="Output directory for grading copies (default: grading/)",
 )
-def verify(files, staff, csv_path, jobs, timeout, output_dir):
+def autograde(files, staff, csv_path, jobs, timeout, output_dir):
     """Run notebooks and inject grading cells for GTA review."""
     notebooks = [f for f in files if f.suffix == ".py"]
     if not notebooks:
@@ -101,7 +101,7 @@ def verify(files, staff, csv_path, jobs, timeout, output_dir):
             click.echo(f"  Marks metadata: {marks_info} (total: {total})")
 
     # Run student submissions
-    click.echo(f"Verifying {len(notebooks)} submission(s) with {jobs} workers...")
+    click.echo(f"Autograding {len(notebooks)} submission(s) with {jobs} workers...")
     results = runner.run_batch(notebooks, jobs=jobs, timeout=timeout)
 
     # Discover labels from results if no staff notebook

@@ -3,6 +3,7 @@
 # dependencies = [
 #     "marimo",
 #     "numpy",
+#     "mograder @ git+https://github.com/jameskermode/mograder.git",
 # ]
 # ///
 
@@ -12,44 +13,16 @@ __generated_with = "0.20.0"
 app = marimo.App()
 
 
-@app.cell
+@app.cell(hide_code=True)
 def _():
     import marimo as mo
+    from mograder.runtime import Grader
 
-    return (mo,)
-
-
-@app.cell(hide_code=True)
-def _(mo):
-    def check(label, checks, marks=None):
-        """Run a list of (condition, message) checks and display coloured feedback.
-
-        Args:
-            label: Name of the test (e.g. "Q2: Model evaluation")
-            checks: List of (bool_expr, fail_message) tuples
-            marks: Optional marks available for this question
-        """
-        failures = [msg for ok, msg in checks if not ok]
-        if marks is not None:
-            earned = marks if checks and not failures else 0
-            badge = f'<span style="float:right"><code>[{earned}/{marks} marks]</code></span>'
-        else:
-            badge = ""
-        if not checks:
-            return mo.callout(
-                mo.md(f"{badge}**{label}** — waiting for your code"), kind="warn"
-            )
-        if failures:
-            items = "\n".join(f"- {f}" for f in failures)
-            return mo.callout(
-                mo.md(f"{badge}**{label}** — some checks failed:\n\n{items}"),
-                kind="danger",
-            )
-        return mo.callout(
-            mo.md(f"{badge}**{label}** — all checks passed"), kind="success"
-        )
-
-    return (check,)
+    # === MOGRADER: MARKS ===
+    _marks = {"Q1": 10, "Q2": 15, "Q3": 15, "Analysis": 60}
+    grader = Grader(mo, _marks)
+    check = grader.check
+    return check, grader, mo
 
 
 @app.cell(hide_code=True)
@@ -71,7 +44,8 @@ def _(mo):
       - Red = some checks failed (read the messages for guidance)
       - Amber = waiting for your code
       - Green = all checks passed
-    - The **Written Analysis** section at the bottom is the only summatively assessed part
+    - All questions carry marks — your score updates automatically
+    - The **Written Analysis** section is graded by a GTA
     """)
     return
 
@@ -100,8 +74,7 @@ def _(np):
 
 @app.cell(hide_code=True)
 def _(check, mo, np, x, y):
-    _q1_marks = 10
-    mo.stop(x is None, check("Q1: Array creation", [], marks=_q1_marks))
+    mo.stop(x is None, check("Q1: Array creation", []))
     check(
         "Q1: Array creation",
         [
@@ -113,7 +86,6 @@ def _(check, mo, np, x, y):
             (y.shape == (50,), f"y should have shape (50,), got {y.shape}"),
             (abs(y[0]) < 1e-10, "y[0] should be sin(0) = 0"),
         ],
-        marks=_q1_marks,
     )
     return
 
@@ -147,11 +119,10 @@ def _(np):
 
 @app.cell(hide_code=True)
 def _(check, finite_diff, mo, np, x, y):
-    _q2_marks = 15
-    mo.stop(x is None, check("Q2: Finite differences", [], marks=_q2_marks))
+    mo.stop(x is None, check("Q2: Finite differences", []))
     _dydx = finite_diff(x, y)
     _exact = np.cos(x)
-    mo.stop(_dydx is None, check("Q2: Finite differences", [], marks=_q2_marks))
+    mo.stop(_dydx is None, check("Q2: Finite differences", []))
     check(
         "Q2: Finite differences",
         [
@@ -165,7 +136,6 @@ def _(check, finite_diff, mo, np, x, y):
                 f"Max error {np.max(np.abs(_dydx - _exact)):.4f} should be < 0.05",
             ),
         ],
-        marks=_q2_marks,
     )
     return
 
@@ -194,8 +164,7 @@ def _(np, x, y):
 
 @app.cell(hide_code=True)
 def _(check, integral, mo):
-    _q3_marks = 15
-    mo.stop(integral is None, check("Q3: Trapezoidal rule", [], marks=_q3_marks))
+    mo.stop(integral is None, check("Q3: Trapezoidal rule", []))
     check(
         "Q3: Trapezoidal rule",
         [
@@ -205,7 +174,6 @@ def _(check, integral, mo):
                 f"Integral of sin over [0, 2*pi] should be ~0, got {integral:.6f}",
             ),
         ],
-        marks=_q3_marks,
     )
     return
 
@@ -215,12 +183,9 @@ def _(mo):
     mo.md(r"""
     ---
 
-    ## Written Analysis (Summative)
+    ## Written Analysis
 
-    This is the only part of the assignment that is formally assessed. A GTA will
-    read your response and assign a single holistic mark.
-
-    Discuss your results from the exercises above. Your response should address:
+    This section is graded by a GTA. Your response should address:
 
     - How does the accuracy of the finite difference method depend on the grid spacing?
     - Why are central differences more accurate than forward/backward differences?
@@ -253,17 +218,9 @@ def _(mo):
 
 
 @app.cell(hide_code=True)
-def _(mo):
-    # === MOGRADER: MARKS ===
-    # Auto-checked question marks are defined at each check() call site.
-    # Only manual questions (graded by GTA) need to be listed here.
-    _marks = {
-        "Analysis": 60,
-    }
-    # --- display (do not edit below) ---
-    _total = sum(_marks.values())
-    mo.callout(mo.md(f"**Total marks available: {_total}**"), kind="neutral")
-    return (_marks,)
+def _(grader):
+    grader.scores()
+    return
 
 
 if __name__ == "__main__":

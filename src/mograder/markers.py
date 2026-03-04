@@ -4,8 +4,6 @@ import re
 import sys
 from pathlib import Path
 
-from mograder.cells import MARKS_MARKER
-
 SOLUTION_BEGIN = "### BEGIN SOLUTION"
 SOLUTION_END = "### END SOLUTION"
 
@@ -80,234 +78,50 @@ def count_markers(lines: list[str]) -> int:
     return sum(1 for line in lines if line.strip() == SOLUTION_BEGIN)
 
 
-def has_marks_cell(lines: list[str]) -> bool:
-    """Check if the source contains a marks cell."""
-    return any(MARKS_MARKER in line for line in lines)
+def convert_markdown_cells(lines: list[str]) -> list[str]:
+    """Convert stripped markdown answer cells to editable mo.md() blocks.
 
+    After ``strip_solutions()``, markdown answer cells look like::
 
-def inject_state_cell(lines: list[str]) -> list[str]:
-    """Insert a ``mo.state({})`` cell before the check function cell.
+        _response = "placeholder text"
+        # YOUR CODE HERE
+        pass
+        mo.md(_response)
 
-    Finds the cell containing ``def check(label`` and inserts a new cell
-    that creates ``mograder_check_state, mograder_set_check = mo.state({})``.
+    This function converts them to::
 
-    Returns lines unchanged if no check function cell found.
+        mo.md(r\"\"\"
+        placeholder text
+        \"\"\")
+
+    so that students see a clean editable markdown cell instead of ugly
+    placeholder code.
     """
-    # Find the @app.cell decorator for the check function cell
-    check_cell_idx = None
-    for i, line in enumerate(lines):
-        if re.search(r"def check\(label", line):
-            # Walk back to find the @app.cell decorator
-            for j in range(i - 1, -1, -1):
-                if lines[j].strip().startswith("@app.cell"):
-                    check_cell_idx = j
-                    break
-            break
-
-    if check_cell_idx is None:
-        return lines
-
-    state_cell = [
-        "\n",
-        "@app.cell(hide_code=True)\n",
-        "def _(mo):\n",
-        "    mograder_check_state, mograder_set_check = mo.state({})\n",
-        "    return mograder_check_state, mograder_set_check\n",
-        "\n",
-        "\n",
-    ]
-    return lines[:check_cell_idx] + state_cell + lines[check_cell_idx:]
-
-
-def augment_check_function(lines: list[str]) -> list[str]:
-    """Add result tracking to the ``check()`` function.
-
-    Finds the cell containing ``def check(label`` and:
-    1. Adds ``mograder_set_check`` to the cell's ``def _(...)`` parameter list
-    2. Inserts tracking lines at the start of the function body
-
-    Returns lines unchanged if no check function cell found.
-    """
-    # Find the def check(label line
-    check_def_idx = None
-    for i, line in enumerate(lines):
-        if re.search(r"def check\(label", line):
-            check_def_idx = i
-            break
-
-    if check_def_idx is None:
-        return lines
-
-    output = list(lines)
-
-    # Find the cell's def _(…) line above check_def_idx
-    for j in range(check_def_idx - 1, -1, -1):
-        if re.match(r"^def _\(", output[j]):
-            # Add mograder_set_check to parameters
-            output[j] = output[j].replace("):", ", mograder_set_check):")
-            break
-
-    # Find the function body start (line after def check(...):)
-    # We need to find the end of the def check signature
-    body_idx = check_def_idx + 1
-    # Skip any continuation lines of the def signature
-    while (
-        body_idx < len(output)
-        and not output[body_idx].startswith("    ")
-        and not output[body_idx].strip()
-    ):
-        body_idx += 1
-
-    # Find the first line of the function body (indented deeper than def check)
-    # The def check is at 4 spaces indent, body is at 8 spaces
-    for k in range(check_def_idx + 1, len(output)):
-        stripped = output[k].strip()
-        if (
-            stripped
-            and not stripped.startswith('"""')
-            and not stripped.startswith("'''")
-        ):
-            # This might be the docstring start, skip it
-            if stripped.startswith('"""') or stripped.startswith("'''"):
-                # Find end of docstring
-                continue
-            body_idx = k
-            break
-
-    # Actually, let's find the first real statement in the function body
-    # Skip the def line, then skip docstring if present
-    k = check_def_idx + 1
-    in_docstring = False
-    while k < len(output):
-        stripped = output[k].strip()
-        if not in_docstring and (
-            stripped.startswith('"""') or stripped.startswith("'''")
-        ):
-            quote = stripped[:3]
-            if stripped.count(quote) >= 2:
-                # Single-line docstring
-                k += 1
-                continue
-            in_docstring = True
-            k += 1
-            continue
-        if in_docstring:
-            if '"""' in stripped or "'''" in stripped:
-                in_docstring = False
-            k += 1
-            continue
-        if stripped:
-            body_idx = k
-            break
-        k += 1
-
-    # Get the indentation of the body
-    indent = output[body_idx][: len(output[body_idx]) - len(output[body_idx].lstrip())]
-
-    tracking_lines = [
-        f'{indent}_key = label.split(":")[0].strip()\n',
-        f"{indent}_passed = bool(checks) and all(ok for ok, _ in checks)\n",
-        f"{indent}mograder_set_check(lambda prev: {{**prev, _key: _passed}})\n",
-    ]
-
-    output = output[:body_idx] + tracking_lines + output[body_idx:]
-
-    # Update the return statement to include mograder_set_check isn't needed since
-    # mograder_set_check is a parameter, not a local. But we need to ensure
-    # the return includes check. Check current return.
-    return output
-
-
-def transform_marks_cell(lines: list[str]) -> list[str]:
-    """Transform the marks cell for student view with reactive score display.
-
-    Detects the marks cell by MARKS_MARKER, adds ``mograder_check_state`` to the
-    cell's parameter list, and replaces the display section with a reactive
-    score table.
-
-    Returns lines unchanged if no marks cell found.
-    """
-    # Find the MARKS_MARKER line
-    marker_idx = None
-    for i, line in enumerate(lines):
-        if MARKS_MARKER in line:
-            marker_idx = i
-            break
-
-    if marker_idx is None:
-        return lines
-
-    output = list(lines)
-
-    # Find the cell's def _(…) line above marker_idx
-    cell_def_idx = None
-    for j in range(marker_idx - 1, -1, -1):
-        if re.match(r"^def _\(", output[j]):
-            cell_def_idx = j
-            break
-
-    if cell_def_idx is None:
-        return lines
-
-    # Add mograder_check_state to parameters
-    output[cell_def_idx] = output[cell_def_idx].replace(
-        "):", ", mograder_check_state):"
-    )
-
-    # Find the "# --- display" line
-    display_idx = None
-    for i in range(marker_idx, len(output)):
-        if "# --- display" in output[i]:
-            display_idx = i
-            break
-
-    if display_idx is None:
-        return output
-
-    # Find the end of this cell (next @app.cell or if __name__ or end of file)
-    # Also look for the return statement
-    cell_end_idx = len(output)
-    for i in range(display_idx + 1, len(output)):
-        stripped = output[i].strip()
-        if stripped.startswith("@app.cell") or stripped.startswith("if __name__"):
-            cell_end_idx = i
-            break
-        # Check for blank line followed by non-indented content (cell boundary)
-        if stripped == "" and i + 1 < len(output):
-            next_stripped = output[i + 1].strip()
-            if next_stripped.startswith("@app.cell") or next_stripped.startswith(
-                "if __name__"
+    output = []
+    i = 0
+    while i < len(lines):
+        # Try to match the 4-line pattern
+        if i + 3 < len(lines):
+            line0 = lines[i]
+            line1 = lines[i + 1]
+            line2 = lines[i + 2]
+            line3 = lines[i + 3]
+            m = re.match(r'^(\s*)_response\s*=\s*["\'](.+?)["\']\s*$', line0)
+            if (
+                m
+                and line1.strip() == "# YOUR CODE HERE"
+                and line2.strip() == "pass"
+                and line3.strip() == "mo.md(_response)"
             ):
-                cell_end_idx = i
-                break
-
-    # Find the return line within the cell
-    return_idx = cell_end_idx
-    for i in range(display_idx + 1, cell_end_idx):
-        if output[i].strip().startswith("return"):
-            return_idx = i
-            break
-
-    # Replace from display line to return line (inclusive) with reactive display
-    reactive_display = [
-        "    # --- display (do not edit below) ---\n",
-        "    _results = mograder_check_state()\n",
-        "    _auto = sum(v for k, v in _marks.items() if _results.get(k))\n",
-        "    _total = sum(_marks.values())\n",
-        '    _rows = ""\n',
-        "    for _q, _pts in _marks.items():\n",
-        "        _got = _pts if _results.get(_q) else 0\n",
-        '        _icon = "PASS" if _results.get(_q) else ("FAIL" if _q in _results else "\u2014")\n',
-        '        _rows += f"| {_q} | {_icon} | {_got}/{_pts} |\\n"\n',
-        '    _rows += f"| **Total** | | **{_auto}/{_total}** |\\n"\n',
-        "    mo.callout(mo.md(\n",
-        '        f"## Your Score\\n\\n"\n',
-        '        f"| Question | Status | Marks |\\n|----------|--------|-------|\\n{_rows}"),\n',
-        '        kind="success" if _auto == _total else "neutral")\n',
-        "    return (_marks,)\n",
-    ]
-
-    output = output[:display_idx] + reactive_display + output[return_idx + 1 :]
+                indent = m.group(1)
+                placeholder = m.group(2)
+                output.append(f'{indent}mo.md(r"""\n')
+                output.append(f"{indent}{placeholder}\n")
+                output.append(f'{indent}""")\n')
+                i += 4
+                continue
+        output.append(lines[i])
+        i += 1
     return output
 
 
@@ -336,11 +150,7 @@ def process_file(
         return True
 
     student_lines = strip_solutions(lines)
-
-    if has_marks_cell(student_lines):
-        student_lines = inject_state_cell(student_lines)
-        student_lines = augment_check_function(student_lines)
-        student_lines = transform_marks_cell(student_lines)
+    student_lines = convert_markdown_cells(student_lines)
 
     if dry_run:
         n_removed = len(lines) - len(student_lines)
