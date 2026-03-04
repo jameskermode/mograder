@@ -134,16 +134,31 @@ def _make_marks_cell_lines():
         "@app.cell(hide_code=True)\n",
         "def _(mo):\n",
         f"    {MARKS_MARKER}\n",
-        '    _marks = {"Q1": 10, "Q2": 15, "Analysis": 75}\n',
+        '    _marks = {"Analysis": 75}\n',
         "    # --- display ---\n",
         "    return\n",
     ]
 
 
-def test_parse_marks_metadata_valid():
+def test_parse_marks_metadata_from_dict():
     lines = _make_marks_cell_lines()
     result = parse_marks_metadata(lines)
-    assert result == {"Q1": 10, "Q2": 15, "Analysis": 75}
+    assert result == {"Analysis": 75}
+
+
+def test_parse_marks_metadata_from_check_calls():
+    """Marks at check() call sites are extracted (literal and variable)."""
+    lines = [
+        f"    {MARKS_MARKER}\n",
+        '    _marks = {"Analysis": 60}\n',
+        "    return\n",
+        "\n",
+        "    _q1_marks = 10\n",
+        '    check("Q1: Array creation", [...], marks=_q1_marks)\n',
+        '    check("Q2: Finite diff", [...], marks=15)\n',
+    ]
+    result = parse_marks_metadata(lines)
+    assert result == {"Analysis": 60, "Q1": 10, "Q2": 15}
 
 
 def test_parse_marks_metadata_no_marker():

@@ -11,27 +11,52 @@ MARKS_MARKER = "# === MOGRADER: MARKS ==="
 
 
 def parse_marks_metadata(source_lines: list[str]) -> dict[str, int | float] | None:
-    """Extract ``_marks`` dict from a marks cell.
+    """Extract marks metadata from a notebook.
 
-    Scans for MARKS_MARKER, then extracts ``_marks = {...}`` via
-    ``ast.literal_eval``. Returns None if no marks cell found or
-    if the dict cannot be parsed.
+    Combines two sources:
+    1. ``_marks = {...}`` from the MARKS_MARKER cell (manual questions)
+    2. ``marks=N`` arguments in ``check("Qx: ...", [...], marks=N)`` calls
+
+    Returns None if no MARKS_MARKER cell found.
     """
     text = "".join(source_lines)
     if MARKS_MARKER not in text:
         return None
 
+    # Parse _marks dict from the marks cell (manual questions)
     marker_idx = text.index(MARKS_MARKER)
     section = text[marker_idx:]
 
-    match = re.search(r"_marks\s*=\s*(\{[^}]+\})", section)
-    if not match:
-        return None
+    marks: dict[str, int | float] = {}
+    dict_match = re.search(r"_marks\s*=\s*(\{[^}]+\})", section)
+    if dict_match:
+        try:
+            marks.update(ast.literal_eval(dict_match.group(1)))
+        except (ValueError, SyntaxError):
+            pass
 
-    try:
-        return ast.literal_eval(match.group(1))
-    except (ValueError, SyntaxError):
-        return None
+    # Build lookup of local variable assignments (e.g. _q1_marks = 10)
+    var_lookup: dict[str, int | float] = {}
+    for vm in re.finditer(r"(\w+)\s*=\s*(\d+(?:\.\d+)?)\s*\n", text):
+        name, val = vm.group(1), vm.group(2)
+        var_lookup[name] = int(val) if "." not in val else float(val)
+
+    # Parse marks=N or marks=var from check() call sites (auto questions)
+    for m in re.finditer(
+        r'check\(\s*"([^"]+)".*?marks\s*=\s*(\w+)', text, re.DOTALL
+    ):
+        label, value_str = m.group(1), m.group(2)
+        key = label.split(":")[0].strip()
+        if key in marks:
+            continue  # already in _marks dict
+        # Try literal number first, then variable lookup
+        try:
+            marks[key] = int(value_str) if "." not in value_str else float(value_str)
+        except ValueError:
+            if value_str in var_lookup:
+                marks[key] = var_lookup[value_str]
+
+    return marks if marks else None
 
 
 def parse_auto_marks(source_lines: list[str]) -> int | None:

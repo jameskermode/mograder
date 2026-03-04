@@ -20,26 +20,32 @@ def _():
 
 @app.cell(hide_code=True)
 def _(mo):
-    def check(label, checks):
+    def check(label, checks, marks=None):
         """Run a list of (condition, message) checks and display coloured feedback.
 
         Args:
             label: Name of the test (e.g. "Q2: Model evaluation")
             checks: List of (bool_expr, fail_message) tuples
+            marks: Optional marks available for this question
         """
         failures = [msg for ok, msg in checks if not ok]
+        if marks is not None:
+            earned = marks if checks and not failures else 0
+            badge = f'<span style="float:right"><code>[{earned}/{marks} marks]</code></span>'
+        else:
+            badge = ""
         if not checks:
             return mo.callout(
-                mo.md(f"**{label}** — waiting for your code"), kind="warn"
+                mo.md(f"{badge}**{label}** — waiting for your code"), kind="warn"
             )
         if failures:
             items = "\n".join(f"- {f}" for f in failures)
             return mo.callout(
-                mo.md(f"**{label}** — some checks failed:\n\n{items}"),
+                mo.md(f"{badge}**{label}** — some checks failed:\n\n{items}"),
                 kind="danger",
             )
         return mo.callout(
-            mo.md(f"**{label}** — all checks passed"), kind="success"
+            mo.md(f"{badge}**{label}** — all checks passed"), kind="success"
         )
 
     return (check,)

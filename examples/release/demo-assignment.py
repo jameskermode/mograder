@@ -28,29 +28,35 @@ def _(mo):
 
 @app.cell(hide_code=True)
 def _(mo, mograder_set_check):
-    def check(label, checks):
+    def check(label, checks, marks=None):
         """Run a list of (condition, message) checks and display coloured feedback.
 
         Args:
             label: Name of the test (e.g. "Q2: Model evaluation")
             checks: List of (bool_expr, fail_message) tuples
+            marks: Optional marks available for this question
         """
         _key = label.split(":")[0].strip()
         _passed = bool(checks) and all(ok for ok, _ in checks)
         mograder_set_check(lambda prev: {**prev, _key: _passed})
         failures = [msg for ok, msg in checks if not ok]
+        if marks is not None:
+            earned = marks if checks and not failures else 0
+            badge = f'<span style="float:right"><code>[{earned}/{marks} marks]</code></span>'
+        else:
+            badge = ""
         if not checks:
             return mo.callout(
-                mo.md(f"**{label}** — waiting for your code"), kind="warn"
+                mo.md(f"{badge}**{label}** — waiting for your code"), kind="warn"
             )
         if failures:
             items = "\n".join(f"- {f}" for f in failures)
             return mo.callout(
-                mo.md(f"**{label}** — some checks failed:\n\n{items}"),
+                mo.md(f"{badge}**{label}** — some checks failed:\n\n{items}"),
                 kind="danger",
             )
         return mo.callout(
-            mo.md(f"**{label}** — all checks passed"), kind="success"
+            mo.md(f"{badge}**{label}** — all checks passed"), kind="success"
         )
 
     return (check,)
@@ -102,7 +108,8 @@ def _(np):
 
 @app.cell(hide_code=True)
 def _(check, mo, np, x, y):
-    mo.stop(x is None, check("Q1: Array creation", []))
+    _q1_marks = 10
+    mo.stop(x is None, check("Q1: Array creation", [], marks=_q1_marks))
     check(
         "Q1: Array creation",
         [
@@ -114,6 +121,7 @@ def _(check, mo, np, x, y):
             (y.shape == (50,), f"y should have shape (50,), got {y.shape}"),
             (abs(y[0]) < 1e-10, "y[0] should be sin(0) = 0"),
         ],
+        marks=_q1_marks,
     )
     return
 
@@ -142,10 +150,11 @@ def _(np):
 
 @app.cell(hide_code=True)
 def _(check, finite_diff, mo, np, x, y):
-    mo.stop(x is None, check("Q2: Finite differences", []))
+    _q2_marks = 15
+    mo.stop(x is None, check("Q2: Finite differences", [], marks=_q2_marks))
     _dydx = finite_diff(x, y)
     _exact = np.cos(x)
-    mo.stop(_dydx is None, check("Q2: Finite differences", []))
+    mo.stop(_dydx is None, check("Q2: Finite differences", [], marks=_q2_marks))
     check(
         "Q2: Finite differences",
         [
@@ -159,6 +168,7 @@ def _(check, finite_diff, mo, np, x, y):
                 f"Max error {np.max(np.abs(_dydx - _exact)):.4f} should be < 0.05",
             ),
         ],
+        marks=_q2_marks,
     )
     return
 
@@ -186,7 +196,8 @@ def _(np, x, y):
 
 @app.cell(hide_code=True)
 def _(check, integral, mo):
-    mo.stop(integral is None, check("Q3: Trapezoidal rule", []))
+    _q3_marks = 15
+    mo.stop(integral is None, check("Q3: Trapezoidal rule", [], marks=_q3_marks))
     check(
         "Q3: Trapezoidal rule",
         [
@@ -196,6 +207,7 @@ def _(check, integral, mo):
                 f"Integral of sin over [0, 2*pi] should be ~0, got {integral:.6f}",
             ),
         ],
+        marks=_q3_marks,
     )
     return
 
@@ -231,10 +243,9 @@ def _(mo):
 @app.cell(hide_code=True)
 def _(mo, mograder_check_state):
     # === MOGRADER: MARKS ===
+    # Auto-checked question marks are defined at each check() call site.
+    # Only manual questions (graded by GTA) need to be listed here.
     _marks = {
-        "Q1": 10,
-        "Q2": 15,
-        "Q3": 15,
         "Analysis": 60,
     }
     # --- display (do not edit below) ---
