@@ -28,10 +28,14 @@ def run_notebook(
     try:
         proc = subprocess.run(
             [
-                sys.executable, "-m", "marimo",
-                "export", "html",
+                sys.executable,
+                "-m",
+                "marimo",
+                "export",
+                "html",
                 str(notebook_path),
-                "-o", str(tmp_path),
+                "-o",
+                str(tmp_path),
             ],
             capture_output=True,
             text=True,
@@ -78,17 +82,16 @@ def run_batch(
 
     with ProcessPoolExecutor(max_workers=jobs) as executor:
         futures = {
-            executor.submit(run_notebook, nb, timeout, html_dir): nb
-            for nb in notebooks
+            executor.submit(run_notebook, nb, timeout, html_dir): nb for nb in notebooks
         }
         for future in as_completed(futures):
             nb_path = futures[future]
             try:
                 results.append(future.result())
             except Exception as e:
-                results.append(NotebookResult(
-                    path=nb_path, export_ok=False, export_error=str(e)
-                ))
+                results.append(
+                    NotebookResult(path=nb_path, export_ok=False, export_error=str(e))
+                )
 
     results.sort(key=lambda r: r.path.stem)
     return results
@@ -119,8 +122,13 @@ def format_status(status: str) -> str:
 
 def format_status_plain(status: str) -> str:
     """Format status without ANSI codes."""
-    return {"success": "PASS", "danger": "FAIL", "warn": "WAIT",
-            "error": "ERR", "missing": "---"}.get(status, status)
+    return {
+        "success": "PASS",
+        "danger": "FAIL",
+        "warn": "WAIT",
+        "error": "ERR",
+        "missing": "---",
+    }.get(status, status)
 
 
 def print_summary(results: list[NotebookResult], all_labels: list[str]):

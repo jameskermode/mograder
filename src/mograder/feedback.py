@@ -22,10 +22,14 @@ def export_feedback_html(
 
     proc = subprocess.run(
         [
-            sys.executable, "-m", "marimo",
-            "export", "html",
+            sys.executable,
+            "-m",
+            "marimo",
+            "export",
+            "html",
             str(notebook_path),
-            "-o", str(dest),
+            "-o",
+            str(dest),
         ],
         capture_output=True,
         text=True,
@@ -33,9 +37,7 @@ def export_feedback_html(
     )
 
     if proc.returncode != 0 and not dest.exists():
-        raise RuntimeError(
-            f"Failed to export {notebook_path}: {proc.stderr[:500]}"
-        )
+        raise RuntimeError(f"Failed to export {notebook_path}: {proc.stderr[:500]}")
 
     return dest
 
@@ -49,11 +51,13 @@ def collect_grades(graded_notebooks: list[Path]) -> list[dict]:
     for nb in graded_notebooks:
         lines = nb.read_text().splitlines(keepends=True)
         mark, feedback = parse_gta_feedback(lines)
-        grades.append({
-            "student": nb.stem,
-            "mark": mark,
-            "feedback": feedback,
-        })
+        grades.append(
+            {
+                "student": nb.stem,
+                "mark": mark,
+                "feedback": feedback,
+            }
+        )
     return grades
 
 

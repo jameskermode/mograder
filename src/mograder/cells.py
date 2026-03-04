@@ -27,7 +27,7 @@ def _build_verification_cell(checks: list[CheckResult], cell_errors: int) -> str
             status_map.append(f'("{c.label}", "WAIT")')
     checks_list = ",\n        ".join(status_map)
 
-    return f'''\
+    return f"""\
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -46,12 +46,12 @@ def _(mo):
         kind="success" if all(s == "PASS" for _, s in _mograder_checks) else "danger")
     return
 
-'''
+"""
 
 
 def _build_feedback_cell() -> str:
     """Build the GTA feedback cell source."""
-    return f'''\
+    return f"""\
 @app.cell
 def _(mo):
     {FEEDBACK_MARKER}
@@ -66,7 +66,7 @@ def _(mo):
         mo.callout(mo.md("**Awaiting GTA feedback** — edit `_mark` and `_feedback` above"), kind="warn")
     return
 
-'''
+"""
 
 
 def has_grading_cells(source_lines: list[str]) -> bool:
