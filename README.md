@@ -4,6 +4,10 @@ Semi-automated grading for [Marimo](https://marimo.io) notebooks.
 
 mograder is the Marimo equivalent of [nbgrader](https://nbgrader.readthedocs.io/) with a simplified philosophy: coding exercises are **formative only** (automated pass/fail checks, no marks), while a single written analysis section is summatively graded with a holistic PGT-scale mark.
 
+## Try it
+
+[![Open in marimo](https://marimo.io/shield.svg)](https://molab.marimo.io/github/jameskermode/mograder/blob/main/examples/release/demo-assignment.py)
+
 ## Workflow
 
 ```

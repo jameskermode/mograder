@@ -48,3 +48,8 @@ jobs:
 
       - name: Ruff format check
         run: uv run ruff format --check src/
+
+      - name: Check generated example is fresh
+        run: |
+          uv run mograder generate examples/demo-assignment.py -o examples/release
+          git diff --exit-code examples/release/
