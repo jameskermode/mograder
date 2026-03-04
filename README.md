@@ -22,6 +22,9 @@ mograder is the Marimo equivalent of [nbgrader](https://nbgrader.readthedocs.io/
 5. mograder feedback   ──→  grading/*.py  →  feedback/*.html
    - Exports graded notebooks to standalone HTML
    - Aggregates marks into CSV
+6. mograder moodle     ──→  grades.csv + worksheet.csv  →  export/
+   - Merges grades into Moodle offline grading worksheets
+   - Optionally bundles HTML feedback into a Moodle-compatible ZIP
 ```
 
 ## Installation
@@ -71,6 +74,15 @@ Export graded notebooks to HTML and aggregate marks:
 ```bash
 mograder feedback grading/*.py -o feedback/
 mograder feedback grading/*.py --grades-csv grades.csv
+```
+
+### Upload to Moodle
+
+Merge grades into a Moodle offline grading worksheet and bundle feedback:
+
+```bash
+mograder moodle worksheet.csv --grades-csv grades.csv -o export/
+mograder moodle worksheet.csv --grades-csv grades.csv --feedback-dir feedback/ -o export/
 ```
 
 ## Development
