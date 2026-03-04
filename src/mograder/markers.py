@@ -89,7 +89,7 @@ def inject_state_cell(lines: list[str]) -> list[str]:
     """Insert a ``mo.state({})`` cell before the check function cell.
 
     Finds the cell containing ``def check(label`` and inserts a new cell
-    that creates ``_check_state, _set_check = mo.state({})``.
+    that creates ``mograder_check_state, mograder_set_check = mo.state({})``.
 
     Returns lines unchanged if no check function cell found.
     """
@@ -111,8 +111,8 @@ def inject_state_cell(lines: list[str]) -> list[str]:
         "\n",
         "@app.cell(hide_code=True)\n",
         "def _(mo):\n",
-        "    _check_state, _set_check = mo.state({})\n",
-        "    return _check_state, _set_check\n",
+        "    mograder_check_state, mograder_set_check = mo.state({})\n",
+        "    return mograder_check_state, mograder_set_check\n",
         "\n",
         "\n",
     ]
@@ -123,7 +123,7 @@ def augment_check_function(lines: list[str]) -> list[str]:
     """Add result tracking to the ``check()`` function.
 
     Finds the cell containing ``def check(label`` and:
-    1. Adds ``_set_check`` to the cell's ``def _(...)`` parameter list
+    1. Adds ``mograder_set_check`` to the cell's ``def _(...)`` parameter list
     2. Inserts tracking lines at the start of the function body
 
     Returns lines unchanged if no check function cell found.
@@ -143,8 +143,8 @@ def augment_check_function(lines: list[str]) -> list[str]:
     # Find the cell's def _(…) line above check_def_idx
     for j in range(check_def_idx - 1, -1, -1):
         if re.match(r"^def _\(", output[j]):
-            # Add _set_check to parameters
-            output[j] = output[j].replace("):", ", _set_check):")
+            # Add mograder_set_check to parameters
+            output[j] = output[j].replace("):", ", mograder_set_check):")
             break
 
     # Find the function body start (line after def check(...):)
@@ -207,13 +207,13 @@ def augment_check_function(lines: list[str]) -> list[str]:
     tracking_lines = [
         f'{indent}_key = label.split(":")[0].strip()\n',
         f"{indent}_passed = bool(checks) and all(ok for ok, _ in checks)\n",
-        f"{indent}_set_check(lambda prev: {{**prev, _key: _passed}})\n",
+        f"{indent}mograder_set_check(lambda prev: {{**prev, _key: _passed}})\n",
     ]
 
     output = output[:body_idx] + tracking_lines + output[body_idx:]
 
-    # Update the return statement to include _set_check isn't needed since
-    # _set_check is a parameter, not a local. But we need to ensure
+    # Update the return statement to include mograder_set_check isn't needed since
+    # mograder_set_check is a parameter, not a local. But we need to ensure
     # the return includes check. Check current return.
     return output
 
@@ -221,7 +221,7 @@ def augment_check_function(lines: list[str]) -> list[str]:
 def transform_marks_cell(lines: list[str]) -> list[str]:
     """Transform the marks cell for student view with reactive score display.
 
-    Detects the marks cell by MARKS_MARKER, adds ``_check_state`` to the
+    Detects the marks cell by MARKS_MARKER, adds ``mograder_check_state`` to the
     cell's parameter list, and replaces the display section with a reactive
     score table.
 
@@ -249,8 +249,8 @@ def transform_marks_cell(lines: list[str]) -> list[str]:
     if cell_def_idx is None:
         return lines
 
-    # Add _check_state to parameters
-    output[cell_def_idx] = output[cell_def_idx].replace("):", ", _check_state):")
+    # Add mograder_check_state to parameters
+    output[cell_def_idx] = output[cell_def_idx].replace("):", ", mograder_check_state):")
 
     # Find the "# --- display" line
     display_idx = None
@@ -289,7 +289,7 @@ def transform_marks_cell(lines: list[str]) -> list[str]:
     # Replace from display line to return line (inclusive) with reactive display
     reactive_display = [
         "    # --- display (do not edit below) ---\n",
-        "    _results = _check_state()\n",
+        "    _results = mograder_check_state()\n",
         "    _auto = sum(v for k, v in _marks.items() if _results.get(k))\n",
         "    _total = sum(_marks.values())\n",
         '    _rows = ""\n',

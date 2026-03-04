@@ -22,12 +22,12 @@ def _():
 
 @app.cell(hide_code=True)
 def _(mo):
-    _check_state, _set_check = mo.state({})
-    return _check_state, _set_check
+    mograder_check_state, mograder_set_check = mo.state({})
+    return mograder_check_state, mograder_set_check
 
 
 @app.cell(hide_code=True)
-def _(mo, _set_check):
+def _(mo, mograder_set_check):
     def check(label, checks):
         """Run a list of (condition, message) checks and display coloured feedback.
 
@@ -37,7 +37,7 @@ def _(mo, _set_check):
         """
         _key = label.split(":")[0].strip()
         _passed = bool(checks) and all(ok for ok, _ in checks)
-        _set_check(lambda prev: {**prev, _key: _passed})
+        mograder_set_check(lambda prev: {**prev, _key: _passed})
         failures = [msg for ok, msg in checks if not ok]
         if not checks:
             return mo.callout(
@@ -229,7 +229,7 @@ def _(mo):
 
 
 @app.cell(hide_code=True)
-def _(mo, _check_state):
+def _(mo, mograder_check_state):
     # === MOGRADER: MARKS ===
     _marks = {
         "Q1": 10,
@@ -238,7 +238,7 @@ def _(mo, _check_state):
         "Analysis": 60,
     }
     # --- display (do not edit below) ---
-    _results = _check_state()
+    _results = mograder_check_state()
     _auto = sum(v for k, v in _marks.items() if _results.get(k))
     _total = sum(_marks.values())
     _rows = ""

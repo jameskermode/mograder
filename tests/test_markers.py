@@ -200,9 +200,9 @@ def test_inject_state_cell():
     lines = _make_notebook_with_marks()
     result = inject_state_cell(lines)
     text = "".join(result)
-    assert "_check_state, _set_check = mo.state({})" in text
+    assert "mograder_check_state, mograder_set_check = mo.state({})" in text
     # State cell should appear before the check function cell
-    state_pos = text.index("_check_state, _set_check")
+    state_pos = text.index("mograder_check_state, mograder_set_check")
     check_pos = text.index("def check(label")
     assert state_pos < check_pos
 
@@ -216,12 +216,12 @@ def test_augment_check_function():
     lines = _make_notebook_with_marks()
     result = augment_check_function(lines)
     text = "".join(result)
-    # Should have _set_check in parameters
-    assert "_set_check" in text
+    # Should have mograder_set_check in parameters
+    assert "mograder_set_check" in text
     # Should have tracking lines
     assert '_key = label.split(":")[0].strip()' in text
     assert "_passed = bool(checks) and all(ok for ok, _ in checks)" in text
-    assert "_set_check(lambda prev: {**prev, _key: _passed})" in text
+    assert "mograder_set_check(lambda prev: {**prev, _key: _passed})" in text
 
 
 def test_augment_check_function_no_check():
@@ -233,10 +233,10 @@ def test_transform_marks_cell():
     lines = _make_notebook_with_marks()
     result = transform_marks_cell(lines)
     text = "".join(result)
-    # Should have _check_state in params
-    assert "_check_state" in text
+    # Should have mograder_check_state in params
+    assert "mograder_check_state" in text
     # Should have reactive display
-    assert "_results = _check_state()" in text
+    assert "_results = mograder_check_state()" in text
     assert "_auto = sum(v for k, v in _marks.items() if _results.get(k))" in text
     assert "Your Score" in text
 
@@ -305,5 +305,5 @@ def test_process_file_with_marks(tmp_path):
     assert "# YOUR CODE HERE" in content
     assert "x = 42" not in content
     # Marks transforms applied
-    assert "_check_state, _set_check = mo.state({})" in content
-    assert "_results = _check_state()" in content
+    assert "mograder_check_state, mograder_set_check = mo.state({})" in content
+    assert "_results = mograder_check_state()" in content
