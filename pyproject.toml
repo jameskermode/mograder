@@ -1,0 +1,32 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "mograder"
+version = "0.1.0"
+description = "Semi-automated grading for Marimo notebooks"
+requires-python = ">=3.11"
+dependencies = [
+    "click>=8.0",
+    "marimo>=0.19",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest",
+    "pytest-cov",
+    "ruff",
+]
+
+[project.scripts]
+mograder = "mograder.cli:cli"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/mograder"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+src = ["src"]

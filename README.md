@@ -1,0 +1,89 @@
+# mograder
+
+Semi-automated grading for [Marimo](https://marimo.io) notebooks.
+
+mograder is the Marimo equivalent of [nbgrader](https://nbgrader.readthedocs.io/) with a simplified philosophy: coding exercises are **formative only** (automated pass/fail checks, no marks), while a single written analysis section is summatively graded with a holistic PGT-scale mark.
+
+## Workflow
+
+```
+1. mograder generate   ──→  staff.py  →  student.py  (strip solutions)
+2. Students complete and submit .py files
+3. mograder verify     ──→  submissions/*.py  →  grading/*.py
+   - Runs each notebook via `marimo export html`
+   - Parses check results from HTML
+   - Injects verification summary + GTA feedback cells
+4. GTAs grade          ──→  marimo edit grading/student.py
+   - GTA sets _mark and writes _feedback, then saves
+5. mograder feedback   ──→  grading/*.py  →  feedback/*.html
+   - Exports graded notebooks to standalone HTML
+   - Aggregates marks into CSV
+```
+
+## Installation
+
+```bash
+pip install mograder
+```
+
+Or for development:
+
+```bash
+git clone https://github.com/jameskermode/mograder.git
+cd mograder
+uv venv && uv pip install -e ".[dev]"
+```
+
+## Usage
+
+### Generate student notebooks
+
+Strip solution blocks and hidden tests from staff notebooks:
+
+```bash
+mograder generate staff_notebook.py -o release/
+mograder generate staff_notebook.py --dry-run    # preview only
+mograder generate staff_notebook.py --validate   # check markers only
+```
+
+Staff notebooks use markers to delimit solutions and hidden tests:
+
+```python
+### BEGIN SOLUTION
+x = 42
+### END SOLUTION
+
+### BEGIN HIDDEN TESTS
+assert x == 42
+### END HIDDEN TESTS
+```
+
+### Verify submissions
+
+Run student notebooks and prepare grading copies with injected feedback cells:
+
+```bash
+mograder verify submissions/*.py -o grading/
+mograder verify submissions/*.py --staff staff.py --csv results.csv
+mograder verify submissions/*.py -j 8 --timeout 600
+```
+
+### Export feedback
+
+Export graded notebooks to HTML and aggregate marks:
+
+```bash
+mograder feedback grading/*.py -o feedback/
+mograder feedback grading/*.py --grades-csv grades.csv
+```
+
+## Development
+
+```bash
+uv run pytest              # run tests
+uv run ruff check src/     # lint
+```
+
+## License
+
+MIT

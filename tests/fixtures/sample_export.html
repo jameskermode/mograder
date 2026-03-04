@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html>
+<head><title>Test Export</title></head>
+<body>
+<!-- Simulated marimo export HTML with callout elements -->
+<marimo-callout-output data-kind='\u0026quot;success\u0026quot;'>
+Q1: Data visualisation\u0026lt;/strong\u0026gt; \u2014 all checks passed
+</marimo-callout-output>
+
+<marimo-callout-output data-kind='\u0026quot;danger\u0026quot;'>
+Q2: Model evaluation\u0026lt;/strong\u0026gt; \u2014 some checks failed
+</marimo-callout-output>
+
+<marimo-callout-output data-kind='\u0026quot;warn\u0026quot;'>
+Q3: Loss function\u0026lt;/strong\u0026gt; \u2014 waiting for your code
+</marimo-callout-output>
+
+<!-- Duplicate of Q1 (should be deduplicated) -->
+<marimo-callout-output data-kind='\u0026quot;success\u0026quot;'>
+Q1: Data visualisation\u0026lt;/strong\u0026gt; \u2014 all checks passed
+</marimo-callout-output>
+
+<!-- Cell error -->
+<div class="error">MarimoExceptionRaisedError: something went wrong</div>
+<div class="error">MarimoExceptionRaisedError: another error</div>
+</body>
+</html>
