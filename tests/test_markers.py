@@ -322,7 +322,16 @@ def test_generated_marks_notebook_runs_in_marimo(tmp_path):
     student = out_dir / "staff.py"
     html_out = tmp_path / "output.html"
     proc = subprocess.run(
-        [sys.executable, "-m", "marimo", "export", "html", str(student), "-o", str(html_out)],
+        [
+            sys.executable,
+            "-m",
+            "marimo",
+            "export",
+            "html",
+            str(student),
+            "-o",
+            str(html_out),
+        ],
         capture_output=True,
         text=True,
         timeout=60,
