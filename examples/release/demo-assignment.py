@@ -19,8 +19,15 @@ def _():
     return (mo,)
 
 
+
 @app.cell(hide_code=True)
 def _(mo):
+    _check_state, _set_check = mo.state({})
+    return _check_state, _set_check
+
+
+@app.cell(hide_code=True)
+def _(mo, _set_check):
     def check(label, checks):
         """Run a list of (condition, message) checks and display coloured feedback.
 
@@ -28,6 +35,9 @@ def _(mo):
             label: Name of the test (e.g. "Q2: Model evaluation")
             checks: List of (bool_expr, fail_message) tuples
         """
+        _key = label.split(":")[0].strip()
+        _passed = bool(checks) and all(ok for ok, _ in checks)
+        _set_check(lambda prev: {**prev, _key: _passed})
         failures = [msg for ok, msg in checks if not ok]
         if not checks:
             return mo.callout(
@@ -216,6 +226,32 @@ def _(mo):
     pass
     mo.md(_response)
     return
+
+
+@app.cell(hide_code=True)
+def _(mo, _check_state):
+    # === MOGRADER: MARKS ===
+    _marks = {
+        "Q1": 10,
+        "Q2": 15,
+        "Q3": 15,
+        "Analysis": 60,
+    }
+    # --- display (do not edit below) ---
+    _results = _check_state()
+    _auto = sum(v for k, v in _marks.items() if _results.get(k))
+    _total = sum(_marks.values())
+    _rows = ""
+    for _q, _pts in _marks.items():
+        _got = _pts if _results.get(_q) else 0
+        _icon = "PASS" if _results.get(_q) else ("FAIL" if _q in _results else "—")
+        _rows += f"| {_q} | {_icon} | {_got}/{_pts} |\n"
+    _rows += f"| **Total** | | **{_auto}/{_total}** |\n"
+    mo.callout(mo.md(
+        f"## Your Score\n\n"
+        f"| Question | Status | Marks |\n|----------|--------|-------|\n{_rows}"),
+        kind="success" if _auto == _total else "neutral")
+    return (_marks,)
 
 
 if __name__ == "__main__":
