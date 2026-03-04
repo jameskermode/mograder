@@ -23,12 +23,6 @@ mograder is the Marimo equivalent of [nbgrader](https://nbgrader.readthedocs.io/
 ## Installation
 
 ```bash
-pip install mograder
-```
-
-Or for development:
-
-```bash
 git clone https://github.com/jameskermode/mograder.git
 cd mograder
 uv venv && uv pip install -e ".[dev]"
