@@ -5,7 +5,7 @@ from pathlib import Path
 
 import click
 
-from mograder import cells, feedback, markers, runner
+from mograder import cells, feedback, markers, moodle, runner
 
 
 @click.group()
@@ -173,3 +173,78 @@ def feedback_cmd(files, output_dir, grades_csv, timeout, jobs):
 
 # Register the feedback command with its proper name
 cli.add_command(feedback_cmd, "feedback")
+
+
+@cli.command()
+@click.argument(
+    "worksheet", type=click.Path(exists=True, path_type=Path)
+)
+@click.option(
+    "--grades-csv",
+    required=True,
+    type=click.Path(exists=True, path_type=Path),
+    help="mograder grades CSV",
+)
+@click.option(
+    "--feedback-dir",
+    type=click.Path(exists=True, path_type=Path),
+    default=None,
+    help="Directory with {student}.html files; creates feedback ZIP",
+)
+@click.option(
+    "-o",
+    "--output-dir",
+    type=click.Path(path_type=Path),
+    default="export",
+    help="Output directory (default: export/)",
+)
+@click.option(
+    "--match-column",
+    default="Username",
+    help="Moodle CSV column to match student against (default: Username)",
+)
+def moodle_cmd(worksheet, grades_csv, feedback_dir, output_dir, match_column):
+    """Merge grades into a Moodle offline grading worksheet."""
+    # Read inputs
+    fieldnames, moodle_rows = moodle.read_moodle_worksheet(worksheet)
+
+    # Validate match column
+    if match_column not in fieldnames:
+        click.echo(
+            f"ERROR: match column '{match_column}' not found in worksheet "
+            f"(available: {', '.join(fieldnames)})",
+            err=True,
+        )
+        sys.exit(1)
+
+    grades = moodle.read_grades_csv(grades_csv)
+
+    # Merge
+    updated_rows, result = moodle.merge_grades(moodle_rows, grades, match_column)
+
+    # Report
+    click.echo(f"Matched: {result.matched}, Skipped: {result.skipped}")
+    for warning in result.warnings:
+        click.echo(f"  {warning}")
+
+    # Write updated CSV
+    output_dir.mkdir(parents=True, exist_ok=True)
+    out_csv = output_dir / worksheet.name
+    moodle.write_moodle_csv(updated_rows, fieldnames, out_csv)
+    click.echo(f"Wrote: {out_csv}")
+
+    # Build feedback ZIP if requested
+    if feedback_dir:
+        zip_path = output_dir / f"feedback_{worksheet.stem}.zip"
+        count = moodle.build_feedback_zip(
+            updated_rows, feedback_dir, zip_path, match_column
+        )
+        click.echo(f"Feedback ZIP: {zip_path} ({count} files)")
+
+    # Statistics
+    if result.marks:
+        click.echo("")
+        click.echo(moodle.compute_statistics(result.marks))
+
+
+cli.add_command(moodle_cmd, "moodle")
