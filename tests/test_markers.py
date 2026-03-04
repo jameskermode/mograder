@@ -1,3 +1,6 @@
+import subprocess
+import sys
+
 from mograder.cells import MARKS_MARKER
 from mograder.markers import (
     SOLUTION_BEGIN,
@@ -307,3 +310,23 @@ def test_process_file_with_marks(tmp_path):
     # Marks transforms applied
     assert "mograder_check_state, mograder_set_check = mo.state({})" in content
     assert "_results = mograder_check_state()" in content
+
+
+def test_generated_marks_notebook_runs_in_marimo(tmp_path):
+    """Integration: generated student notebook with marks must run without cell errors."""
+    source = tmp_path / "staff.py"
+    source.write_text("".join(_make_notebook_with_marks()))
+    out_dir = tmp_path / "release"
+    assert process_file(source, out_dir) is True
+
+    student = out_dir / "staff.py"
+    html_out = tmp_path / "output.html"
+    proc = subprocess.run(
+        [sys.executable, "-m", "marimo", "export", "html", str(student), "-o", str(html_out)],
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+    assert "MarimoExceptionRaisedError" not in proc.stderr, (
+        f"Student notebook has cell errors:\n{proc.stderr}"
+    )
