@@ -131,12 +131,18 @@ def format_status_plain(status: str) -> str:
     }.get(status, status)
 
 
-def print_summary(results: list[NotebookResult], all_labels: list[str]):
+def print_summary(
+    results: list[NotebookResult],
+    all_labels: list[str],
+    marks: dict[str, int | float] | None = None,
+):
     """Print a formatted summary table to stdout."""
     stem_width = max(len(r.path.stem) for r in results) if results else 20
     stem_width = max(stem_width, 10)
     header = f"{'Notebook':<{stem_width}}  "
     header += "  ".join(f"{label[:6]:>6}" for label in all_labels)
+    if marks is not None:
+        header += "  Marks"
     header += "  Errors"
     print(header)
     print("-" * len(header))
@@ -154,21 +160,37 @@ def print_summary(results: list[NotebookResult], all_labels: list[str]):
             q_key = label.split(":")[0].strip()
             status = check_map.get(q_key, "missing")
             line += f"{format_status(status):>17}  "
+        if marks is not None:
+            auto_mark = sum(
+                marks[k] for k in marks if k in check_map and check_map[k] == "success"
+            )
+            total = sum(marks.values())
+            line += f"  {auto_mark}/{total}"
         line += f"  {result.cell_errors}"
         print(line)
 
 
-def write_csv(results: list[NotebookResult], all_labels: list[str], path: Path):
+def write_csv(
+    results: list[NotebookResult],
+    all_labels: list[str],
+    path: Path,
+    marks: dict[str, int | float] | None = None,
+):
     """Write results to a CSV file."""
     with open(path, "w", newline="") as f:
         writer = csv.writer(f)
         q_headers = [label.split(":")[0].strip() for label in all_labels]
-        writer.writerow(["notebook"] + q_headers + ["cell_errors", "export_error"])
+        header = ["notebook"] + q_headers + ["cell_errors", "export_error"]
+        if marks is not None:
+            header.append("auto_mark")
+        writer.writerow(header)
 
         for result in results:
             if not result.export_ok:
                 row = [result.path.stem] + ["EXPORT_FAILED"] * len(all_labels)
                 row += [0, result.export_error]
+                if marks is not None:
+                    row.append("")
             else:
                 check_map = {
                     c.label.split(":")[0].strip(): format_status_plain(c.status)
@@ -177,6 +199,13 @@ def write_csv(results: list[NotebookResult], all_labels: list[str], path: Path):
                 row = [result.path.stem]
                 row += [check_map.get(q, "---") for q in q_headers]
                 row += [result.cell_errors, result.export_error]
+                if marks is not None:
+                    auto_mark = sum(
+                        marks[k]
+                        for k in marks
+                        if k in check_map and check_map[k] == "PASS"
+                    )
+                    row.append(auto_mark)
             writer.writerow(row)
 
     print(f"\nCSV written to {path}")

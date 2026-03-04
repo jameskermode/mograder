@@ -78,6 +78,7 @@ def verify(files, staff, csv_path, jobs, timeout, output_dir):
 
     # Optionally run staff solution first
     all_labels: list[str] = []
+    marks: dict[str, int | float] | None = None
     if staff:
         click.echo(f"Running staff solution: {staff}")
         staff_result = runner.run_notebook(staff, timeout=timeout)
@@ -91,6 +92,14 @@ def verify(files, staff, csv_path, jobs, timeout, output_dir):
         else:
             click.echo("  → WARNING: no check results found in staff notebook")
 
+        # Parse per-question marks metadata
+        staff_lines = staff.read_text().splitlines(keepends=True)
+        marks = cells.parse_marks_metadata(staff_lines)
+        if marks:
+            marks_info = " ".join(f"{k}={v}" for k, v in marks.items())
+            total = sum(marks.values())
+            click.echo(f"  Marks metadata: {marks_info} (total: {total})")
+
     # Run student submissions
     click.echo(f"Verifying {len(notebooks)} submission(s) with {jobs} workers...")
     results = runner.run_batch(notebooks, jobs=jobs, timeout=timeout)
@@ -100,7 +109,7 @@ def verify(files, staff, csv_path, jobs, timeout, output_dir):
         all_labels = runner.discover_labels(results)
 
     # Print summary
-    runner.print_summary(results, all_labels)
+    runner.print_summary(results, all_labels, marks)
 
     # Inject grading cells and write to output dir
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -109,7 +118,7 @@ def verify(files, staff, csv_path, jobs, timeout, output_dir):
             continue
         source_lines = result.path.read_text().splitlines(keepends=True)
         modified = cells.inject_grading_cells(
-            source_lines, result.checks, result.cell_errors
+            source_lines, result.checks, result.cell_errors, marks
         )
         dest = output_dir / result.path.name
         dest.write_text("".join(modified))
@@ -117,7 +126,7 @@ def verify(files, staff, csv_path, jobs, timeout, output_dir):
 
     # Write CSV if requested
     if csv_path:
-        runner.write_csv(results, all_labels, csv_path)
+        runner.write_csv(results, all_labels, csv_path, marks)
 
 
 @cli.command()

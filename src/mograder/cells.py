@@ -1,21 +1,85 @@
 """Inject and parse grading cells in marimo notebooks."""
 
+import ast
 import re
 
 from mograder.models import CheckResult
 
 VERIFICATION_MARKER = "# === MOGRADER: VERIFICATION SUMMARY ==="
 FEEDBACK_MARKER = "# === MOGRADER: GTA FEEDBACK ==="
+MARKS_MARKER = "# === MOGRADER: MARKS ==="
 
 
-def _build_verification_cell(checks: list[CheckResult], cell_errors: int) -> str:
+def parse_marks_metadata(source_lines: list[str]) -> dict[str, int | float] | None:
+    """Extract ``_marks`` dict from a marks cell.
+
+    Scans for MARKS_MARKER, then extracts ``_marks = {...}`` via
+    ``ast.literal_eval``. Returns None if no marks cell found or
+    if the dict cannot be parsed.
+    """
+    text = "".join(source_lines)
+    if MARKS_MARKER not in text:
+        return None
+
+    marker_idx = text.index(MARKS_MARKER)
+    section = text[marker_idx:]
+
+    match = re.search(r"_marks\s*=\s*(\{[^}]+\})", section)
+    if not match:
+        return None
+
+    try:
+        return ast.literal_eval(match.group(1))
+    except (ValueError, SyntaxError):
+        return None
+
+
+def parse_auto_marks(source_lines: list[str]) -> int | None:
+    """Extract auto-scored marks from a verification cell with marks data.
+
+    Looks for ``_mograder_marks`` and ``_mograder_checks`` in the verification
+    cell and computes sum of marks for PASS checks.
+
+    Returns None if no marks data found in the verification cell.
+    """
+    text = "".join(source_lines)
+    if VERIFICATION_MARKER not in text or "_mograder_marks" not in text:
+        return None
+
+    marker_idx = text.index(VERIFICATION_MARKER)
+    section = text[marker_idx:]
+
+    # Extract _mograder_marks dict
+    marks_match = re.search(r"_mograder_marks\s*=\s*(\{[^}]+\})", section)
+    if not marks_match:
+        return None
+    try:
+        marks_dict = ast.literal_eval(marks_match.group(1))
+    except (ValueError, SyntaxError):
+        return None
+
+    # Extract _mograder_checks list
+    checks_match = re.search(r"_mograder_checks\s*=\s*\[(.*?)\]", section, re.DOTALL)
+    if not checks_match:
+        return None
+
+    # Parse check tuples to find PASS results
+    auto_mark = 0
+    for m in re.finditer(r'\("([^"]+)",\s*"([^"]+)"\)', checks_match.group(1)):
+        label, status = m.group(1), m.group(2)
+        key = label.split(":")[0].strip()
+        if status == "PASS" and key in marks_dict:
+            auto_mark += marks_dict[key]
+
+    return auto_mark
+
+
+def _build_verification_cell(
+    checks: list[CheckResult],
+    cell_errors: int,
+    marks: dict[str, int | float] | None = None,
+) -> str:
     """Build the verification summary cell source."""
-    checks_list = ",\n        ".join(
-        f'("{c.label}", "{c.status.upper()}")'
-        if c.status in ("success", "danger")
-        else f'("{c.label}", "WAIT")'
-        for c in checks
-    )
     # Map statuses: success -> PASS, danger -> FAIL, anything else -> WAIT
     status_map = []
     for c in checks:
@@ -27,7 +91,8 @@ def _build_verification_cell(checks: list[CheckResult], cell_errors: int) -> str
             status_map.append(f'("{c.label}", "WAIT")')
     checks_list = ",\n        ".join(status_map)
 
-    return f"""\
+    if marks is None:
+        return f"""\
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -48,10 +113,59 @@ def _(mo):
 
 """
 
+    # Build marks-aware version
+    marks_repr = repr(marks)
 
-def _build_feedback_cell() -> str:
-    """Build the GTA feedback cell source."""
+    # Compute check keys for matching
+    check_keys = {c.label.split(":")[0].strip() for c in checks}
+    # Manual questions are those in marks but not in checks
+    manual_keys = [k for k in marks if k not in check_keys]
+
+    # Build manual rows string
+    manual_rows = ""
+    for k in manual_keys:
+        manual_rows += f'    _table += "| {k} | — | ?/{marks[k]} |\\n"\n'
+
     return f"""\
+
+@app.cell(hide_code=True)
+def _(mo):
+    {VERIFICATION_MARKER}
+    _mograder_checks = [
+        {checks_list},
+    ]
+    _mograder_marks = {marks_repr}
+    _cell_errors = {cell_errors}
+    _auto_earned = 0
+    _table = ""
+    for _label, _s in _mograder_checks:
+        _key = _label.split(":")[0].strip()
+        _avail = _mograder_marks.get(_key, "")
+        _earned = _avail if _s == "PASS" else 0
+        if _s == "PASS" and isinstance(_avail, (int, float)):
+            _auto_earned += _avail
+        _marks_col = f"{{_earned}}/{{_avail}}" if _avail != "" else ""
+        _table += f"| {{_label}} | {{_s}} | {{_marks_col}} |\\n"
+{manual_rows}\
+    _total_avail = sum(_mograder_marks.values())
+    _table += f"| **Total** | | **{{_auto_earned}}/{{_total_avail}}** |\\n"
+    mo.callout(mo.md(f"## Verification Summary\\n\\n"
+        f"| Check | Result | Marks |\\n|-------|--------|-------|\\n{{_table}}\\n"
+        f"Cell errors: {{_cell_errors}}"),
+        kind="success" if all(s == "PASS" for _, s in _mograder_checks) else "danger")
+    return
+
+"""
+
+
+def _build_feedback_cell(
+    auto_mark: int | float | None = None,
+    manual_available: int | float | None = None,
+    total_available: int | float | None = None,
+) -> str:
+    """Build the GTA feedback cell source."""
+    if auto_mark is None:
+        return f"""\
 @app.cell
 def _(mo):
     {FEEDBACK_MARKER}
@@ -68,6 +182,26 @@ def _(mo):
 
 """
 
+    return f"""\
+@app.cell
+def _(mo):
+    {FEEDBACK_MARKER}
+    # Auto marks: {auto_mark}/{total_available - manual_available}
+    # Set _mark for manual questions (out of {manual_available}), then save.
+    _mark = None       # e.g. _mark = {manual_available}
+    _feedback = ""     # e.g. _feedback = "Good analysis of the DP approach..."
+
+    # --- display (do not edit below) ---
+    if _mark is not None:
+        _total = {auto_mark} + _mark
+        mo.callout(mo.md(f"**Mark: {{_total}}/{total_available}** (auto: {auto_mark}, manual: {{_mark}})\\n\\n{{_feedback}}"), kind="success")
+    else:
+        mo.callout(mo.md("**Awaiting GTA feedback** — edit `_mark` (out of {manual_available}) and `_feedback` above\\n\\n"
+            f"Auto marks so far: {auto_mark}/{total_available - manual_available}"), kind="warn")
+    return
+
+"""
+
 
 def has_grading_cells(source_lines: list[str]) -> bool:
     """Detect if grading cells are already injected."""
@@ -79,17 +213,39 @@ def inject_grading_cells(
     source_lines: list[str],
     checks: list[CheckResult],
     cell_errors: int = 0,
+    marks: dict[str, int | float] | None = None,
 ) -> list[str]:
     """Insert verification summary + GTA feedback cells before ``if __name__``.
 
     Returns modified source lines. Idempotent: if grading cells already exist,
     returns the input unchanged.
+
+    When ``marks`` is provided, the verification cell includes a marks column
+    and the feedback cell is pre-configured for manual-only grading.
     """
     if has_grading_cells(source_lines):
         return source_lines
 
-    verification = _build_verification_cell(checks, cell_errors)
-    feedback = _build_feedback_cell()
+    if marks is not None:
+        # Compute auto marks and manual available
+        check_keys = {c.label.split(":")[0].strip() for c in checks}
+        auto_mark = sum(
+            marks[k]
+            for k in check_keys
+            if k in marks
+            and any(
+                c.status == "success"
+                for c in checks
+                if c.label.split(":")[0].strip() == k
+            )
+        )
+        manual_available = sum(v for k, v in marks.items() if k not in check_keys)
+        total_available = sum(marks.values())
+        verification = _build_verification_cell(checks, cell_errors, marks)
+        feedback = _build_feedback_cell(auto_mark, manual_available, total_available)
+    else:
+        verification = _build_verification_cell(checks, cell_errors)
+        feedback = _build_feedback_cell()
 
     # Find the `if __name__` line
     insert_idx = None

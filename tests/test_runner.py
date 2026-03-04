@@ -160,6 +160,69 @@ def test_write_csv(tmp_path):
     assert rows[2][1] == "EXPORT_FAILED"
 
 
+def test_write_csv_with_marks(tmp_path):
+    results = [
+        NotebookResult(
+            path=Path("alice.py"),
+            checks=[
+                CheckResult("Q1: Foo", "success"),
+                CheckResult("Q2: Bar", "danger"),
+            ],
+            cell_errors=0,
+        ),
+    ]
+    labels = ["Q1: Foo", "Q2: Bar"]
+    marks = {"Q1": 10, "Q2": 20, "Analysis": 70}
+    csv_path = tmp_path / "results.csv"
+    write_csv(results, labels, csv_path, marks=marks)
+
+    with open(csv_path) as f:
+        reader = csv.reader(f)
+        rows = list(reader)
+
+    assert "auto_mark" in rows[0]
+    assert rows[1][-1] == "10"  # Only Q1 passed
+
+
+def test_write_csv_without_marks_unchanged(tmp_path):
+    results = [
+        NotebookResult(
+            path=Path("alice.py"),
+            checks=[CheckResult("Q1: Foo", "success")],
+            cell_errors=0,
+        ),
+    ]
+    labels = ["Q1: Foo"]
+    csv_path = tmp_path / "results.csv"
+    write_csv(results, labels, csv_path)
+
+    with open(csv_path) as f:
+        reader = csv.reader(f)
+        rows = list(reader)
+
+    assert "auto_mark" not in rows[0]
+
+
+def test_print_summary_with_marks(capsys):
+    results = [
+        NotebookResult(
+            path=Path("alice.py"),
+            checks=[
+                CheckResult("Q1: Foo", "success"),
+                CheckResult("Q2: Bar", "danger"),
+            ],
+        ),
+    ]
+    labels = ["Q1: Foo", "Q2: Bar"]
+    marks = {"Q1": 10, "Q2": 20}
+    from mograder.runner import print_summary
+
+    print_summary(results, labels, marks=marks)
+    captured = capsys.readouterr()
+    assert "Marks" in captured.out
+    assert "10/30" in captured.out
+
+
 def test_build_zip(tmp_path):
     nb = tmp_path / "alice.py"
     nb.write_text("# notebook")

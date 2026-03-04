@@ -240,5 +240,20 @@ def _(mo):
     return
 
 
+@app.cell(hide_code=True)
+def _(mo):
+    # === MOGRADER: MARKS ===
+    _marks = {
+        "Q1": 10,
+        "Q2": 15,
+        "Q3": 15,
+        "Analysis": 60,
+    }
+    # --- display (do not edit below) ---
+    _total = sum(_marks.values())
+    mo.callout(mo.md(f"**Total marks available: {_total}**"), kind="neutral")
+    return (_marks,)
+
+
 if __name__ == "__main__":
     app.run()

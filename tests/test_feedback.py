@@ -102,3 +102,79 @@ def test_write_grades_csv(tmp_path):
     assert rows[0]["student"] == "alice"
     assert rows[0]["mark"] == "72"
     assert rows[1]["feedback"] == "Needs work"
+
+
+# --- per-question marks ---
+
+
+def _make_graded_notebook_with_marks(manual_mark, feedback_text):
+    """Create graded notebook with per-question marks."""
+    marks = {"Q1": 10, "Analysis": 90}
+    lines = [
+        "import marimo\n",
+        "app = marimo.App()\n",
+        "\n",
+        "@app.cell\n",
+        "def _():\n",
+        "    x = 1\n",
+        "    return\n",
+        "\n",
+        "\n",
+        'if __name__ == "__main__":\n',
+        "    app.run()\n",
+    ]
+    checks = [CheckResult("Q1: Foo", "success")]
+    injected = inject_grading_cells(lines, checks, marks=marks)
+    text = "".join(injected)
+    if manual_mark is not None:
+        text = text.replace("_mark = None", f"_mark = {manual_mark}")
+    if feedback_text:
+        text = text.replace('_feedback = ""', f'_feedback = "{feedback_text}"')
+    return text
+
+
+def test_collect_grades_with_auto_marks(tmp_path):
+    nb = tmp_path / "alice.py"
+    nb.write_text(_make_graded_notebook_with_marks(70, "Good analysis"))
+    grades = collect_grades([nb])
+    assert len(grades) == 1
+    assert grades[0]["auto_mark"] == 10  # Q1 passed
+    assert grades[0]["mark"] == 80  # 10 auto + 70 manual
+
+
+def test_collect_grades_auto_marks_none_without_marks(tmp_path):
+    nb = tmp_path / "alice.py"
+    nb.write_text(_make_graded_notebook(72, "Good"))
+    grades = collect_grades([nb])
+    assert grades[0]["auto_mark"] is None
+    assert grades[0]["mark"] == 72
+
+
+def test_write_grades_csv_with_auto_mark(tmp_path):
+    grades = [
+        {"student": "alice", "mark": 80, "auto_mark": 10, "feedback": "Good"},
+        {"student": "bob", "mark": 75, "auto_mark": 10, "feedback": "OK"},
+    ]
+    csv_path = tmp_path / "grades.csv"
+    write_grades_csv(grades, csv_path)
+
+    with open(csv_path) as f:
+        reader = csv.DictReader(f)
+        rows = list(reader)
+
+    assert "auto_mark" in rows[0]
+    assert rows[0]["auto_mark"] == "10"
+
+
+def test_write_grades_csv_omits_auto_mark_when_none(tmp_path):
+    grades = [
+        {"student": "alice", "mark": 72, "auto_mark": None, "feedback": "Good"},
+    ]
+    csv_path = tmp_path / "grades.csv"
+    write_grades_csv(grades, csv_path)
+
+    with open(csv_path) as f:
+        reader = csv.DictReader(f)
+        rows = list(reader)
+
+    assert "auto_mark" not in rows[0]
