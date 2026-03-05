@@ -22,6 +22,7 @@ class MograderConfig:
     submitted_dir: str = "submitted"
     autograded_dir: str = "autograded"
     feedback_dir: str = "feedback"
+    import_dir: str = "import"
     # [gradebook]
     gradebook: str = "gradebook.db"
 
@@ -51,5 +52,6 @@ def load_config(course_dir: Path) -> MograderConfig:
         submitted_dir=dirs.get("submitted", "submitted"),
         autograded_dir=dirs.get("autograded", "autograded"),
         feedback_dir=dirs.get("feedback", "feedback"),
+        import_dir=dirs.get("import", "import"),
         gradebook=gradebook.get("path", "gradebook.db"),
     )

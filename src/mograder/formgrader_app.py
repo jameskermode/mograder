@@ -28,6 +28,7 @@ def _():
         submitted=MOGRADER_CONFIG.submitted_dir,
         autograded=MOGRADER_CONFIG.autograded_dir,
         feedback=MOGRADER_CONFIG.feedback_dir,
+        import_dir=MOGRADER_CONFIG.import_dir,
     )
 
     _gb_path = COURSE_DIR / MOGRADER_CONFIG.gradebook
@@ -55,24 +56,26 @@ def _(mo):
     get_pending_action, set_pending_action = mo.state(None)
     get_grading_index, set_grading_index = mo.state(0)
     get_data_version, set_data_version = mo.state(0)
+    get_grading_inputs, set_grading_inputs = mo.state(None)
     return (
         get_action_log,
         get_data_version,
         get_grading_index,
+        get_grading_inputs,
         get_pending_action,
         get_selected,
         set_action_log,
         set_data_version,
         set_grading_index,
+        set_grading_inputs,
         set_pending_action,
         set_selected,
     )
 
 
 @app.cell
-def _(COURSE_DIR, mo):
+def _(mo):
     refresh_btn = mo.ui.button(label="Refresh")
-    mo.md(f"# mograder formgrader\n\n`{COURSE_DIR}`")
     return (refresh_btn,)
 
 
@@ -140,8 +143,8 @@ def _(
             _rel_btns_list.append(
                 mo.ui.button(
                     label="\u270f\ufe0f",
-                    on_change=lambda _, p=_p2, n=_n2: _open_marimo("run", p, n),
-                    tooltip=f"Preview {_a.release_path}",
+                    on_change=lambda _, p=_p2, n=_n2: _open_marimo("edit", p, n),
+                    tooltip=f"Edit {_a.release_path}",
                 )
             )
         else:
@@ -185,24 +188,38 @@ def _(
                 mo.ui.button(label="\u2192", disabled=True, tooltip="Autograde")
             )
 
-        # Feedback export
+        # Export Moodle (feedback + moodle merge)
         _auto_dir = COURSE_DIR / DIR_NAMES.autograded / _a.name
-        if _auto_dir.is_dir() and any(_auto_dir.glob("*.py")):
+        _worksheet_path = COURSE_DIR / DIR_NAMES.import_dir / f"{_a.name}.csv"
+        if (
+            _auto_dir.is_dir()
+            and any(_auto_dir.glob("*.py"))
+            and _worksheet_path.is_file()
+        ):
             _ffiles = [str(f) for f in sorted(_auto_dir.glob("*.py"))]
-            _cmd2 = ["feedback"] + _ffiles
+            _fb_dir = str(COURSE_DIR / DIR_NAMES.feedback / _a.name)
+            _cmd_fb = ["feedback"] + _ffiles
+            _cmd_moodle = [
+                "moodle",
+                str(_worksheet_path),
+                "--feedback-dir",
+                _fb_dir,
+            ]
             _n5 = _a.name
             _fb.append(
                 mo.ui.button(
                     label="\u2192",
-                    on_change=lambda _, c=_cmd2, n=_n5: set_pending_action(
-                        {"cmd": c, "label": f"feedback {n}"}
+                    on_change=lambda _, c1=_cmd_fb, c2=_cmd_moodle, n=_n5: (
+                        set_pending_action(
+                            {"cmd": [c1, c2], "label": f"export moodle {n}"}
+                        )
                     ),
-                    tooltip="Export feedback",
+                    tooltip="Export Moodle",
                 )
             )
         else:
             _fb.append(
-                mo.ui.button(label="\u2192", disabled=True, tooltip="Export feedback")
+                mo.ui.button(label="\u2192", disabled=True, tooltip="Export Moodle")
             )
 
     # Wrap interactive buttons in mo.ui.array for marimo state tracking
@@ -264,13 +281,13 @@ def _(
                 "Graded": f"{_a.num_graded}/{_a.num_autograded}"
                 if _a.num_autograded
                 else "\u2013",
-                "Export FB": fb_btns[_i],
+                "Export Moodle": fb_btns[_i],
                 "Feedback": mo.md(_fb_text),
             }
         )
 
     assignments_content = (
-        mo.ui.table(_rows)
+        mo.ui.table(_rows, selection=None)
         if _rows
         else mo.md(
             "_No assignments found. Check that the course directory contains "
@@ -322,12 +339,12 @@ def _(
                 _p = _s.autograded_path
                 _edit_list.append(
                     mo.ui.button(
-                        label="Edit",
+                        label="✏️",
                         on_change=lambda _, p=_p: _open_editor(p),
                     )
                 )
             else:
-                _edit_list.append(mo.ui.button(label="Edit", disabled=True))
+                _edit_list.append(mo.ui.button(label="✏️", disabled=True))
 
         edit_btns = mo.ui.array(_edit_list)
 
@@ -352,32 +369,33 @@ def _(
                 }
             )
 
-        # Seaborn histogram of marks
-        _marks = [_s.mark for _s in _subs if _s.mark is not None]
+        # Three histograms: Auto Mark, Manual Mark, Total
+        _auto_marks = [_s.auto_mark for _s in _subs if _s.auto_mark is not None]
+        _manual_marks = [
+            _s.mark - _s.auto_mark
+            for _s in _subs
+            if _s.mark is not None and _s.auto_mark is not None
+        ]
+        _total_marks = [_s.mark for _s in _subs if _s.mark is not None]
         _histogram = mo.md("")
-        if len(_marks) >= 2:
-            _fig, _ax = plt.subplots(figsize=(5, 2.5))
-            sns.histplot(_marks, bins=8, ax=_ax, color="#4C78A8")
-            _ax.set_xlabel("Mark")
-            _ax.set_ylabel("Count")
+        _any_data = _auto_marks or _manual_marks or _total_marks
+        if _any_data:
+            _fig, _axes = plt.subplots(1, 3, figsize=(12, 3))
+            for _ax, _data, _label in zip(
+                _axes,
+                [_auto_marks, _manual_marks, _total_marks],
+                ["Auto Mark", "Manual Mark", "Total"],
+            ):
+                if _data:
+                    sns.histplot(_data, bins=8, ax=_ax, color="#4C78A8")
+                _ax.set_xlabel(_label)
+                _ax.set_ylabel("Count")
             _fig.tight_layout()
-            _mean = sum(_marks) / len(_marks)
-            _var = sum((m - _mean) ** 2 for m in _marks) / len(_marks)
-            _std = _var**0.5
-            _histogram = mo.vstack(
-                [
-                    mo.as_html(_fig),
-                    mo.md(
-                        f"**Mean:** {_mean:.1f} | **Std:** {_std:.1f} "
-                        f"| **Min:** {min(_marks)} | **Max:** {max(_marks)}"
-                    ),
-                ]
-            )
+            _histogram = mo.as_html(_fig)
             plt.close(_fig)
 
         submissions_content = mo.vstack(
             [
-                mo.md(f"## Submissions: {_selected}"),
                 mo.ui.table(_rows, selection=None)
                 if _rows
                 else mo.md("_No submissions found._"),
@@ -386,16 +404,17 @@ def _(
         )
     else:
         edit_btns = mo.ui.array([])
-        submissions_content = mo.md("_Select an assignment in the Assignments tab._")
+        submissions_content = mo.md(
+            "_Select an assignment from the Assignment dropdown above._"
+        )
     return edit_btns, scan_submissions, submissions_content
 
 
 @app.cell
 def _(mo):
     show_names = mo.ui.switch(label="Show names")
-    moodle_file = mo.ui.file(label="Moodle CSV", filetypes=[".csv"])
-    students_controls = mo.hstack([show_names, moodle_file], justify="start", gap=1)
-    return moodle_file, show_names, students_controls
+    students_controls = mo.hstack([show_names], justify="start", gap=1)
+    return show_names, students_controls
 
 
 @app.cell
@@ -405,31 +424,26 @@ def _(name_lookup, show_names):
 
 
 @app.cell
-def _(COURSE_DIR, MOGRADER_CONFIG, Path, moodle_file):
+def _(COURSE_DIR, GRADEBOOK, MOGRADER_CONFIG):
     from mograder.moodle import read_moodle_worksheet as _read_ws
 
-    _match_col = MOGRADER_CONFIG.moodle_match_column
-    _name_col = MOGRADER_CONFIG.moodle_name_column
-    _rows = None
-
-    # Priority 1: uploaded file
-    if moodle_file.value:
-        _bytes = moodle_file.value[0].contents
-        _tmp = Path("/tmp/_mograder_moodle_upload.csv")
-        _tmp.write_bytes(_bytes)
-        _, _rows = _read_ws(_tmp)
+    # Priority 1: gradebook students table
+    if GRADEBOOK is not None:
+        name_lookup = GRADEBOOK.get_name_lookup()
     # Priority 2: config moodle_csv
     elif MOGRADER_CONFIG.moodle_csv:
+        _match_col = MOGRADER_CONFIG.moodle_match_column
+        _name_col = MOGRADER_CONFIG.moodle_name_column
         _csv_path = COURSE_DIR / MOGRADER_CONFIG.moodle_csv
         if _csv_path.is_file():
             _, _rows = _read_ws(_csv_path)
-
-    if _rows is not None:
-        name_lookup = {
-            r[_match_col]: r[_name_col]
-            for r in _rows
-            if _match_col in r and _name_col in r
-        }
+            name_lookup = {
+                r[_match_col]: r[_name_col]
+                for r in _rows
+                if _match_col in r and _name_col in r
+            }
+        else:
+            name_lookup = {}
     else:
         name_lookup = {}
     return (name_lookup,)
@@ -542,7 +556,7 @@ def _(get_grading_index, grading_subs):
 
 
 @app.cell
-def _(GRADEBOOK, grading_assignment_name, grading_current_sub, mo):
+def _(GRADEBOOK, grading_assignment_name, grading_current_sub, mo, set_grading_inputs):
     from mograder.cells import parse_auto_marks as _parse_auto
     from mograder.cells import parse_gta_feedback as _parse_fb
 
@@ -608,6 +622,7 @@ def _(GRADEBOOK, grading_assignment_name, grading_current_sub, mo):
         grading_mark_input = mo.ui.text(value="", label="Mark")
         grading_feedback_input = mo.ui.text_area(value="", label="Feedback")
         grading_auto_info = ""
+    set_grading_inputs({"mark": grading_mark_input, "feedback": grading_feedback_input})
     return grading_auto_info, grading_feedback_input, grading_mark_input
 
 
@@ -646,10 +661,9 @@ def _(
     Gradebook,
     MOGRADER_CONFIG,
     get_grading_index,
+    get_grading_inputs,
     grading_assignment_name,
     grading_current_sub,
-    grading_feedback_input,
-    grading_mark_input,
     grading_show_names,
     grading_subs,
     mo,
@@ -660,10 +674,15 @@ def _(
     from mograder.cells import write_gta_feedback as _write_fb
 
     def _save_current():
-        if grading_current_sub is not None and grading_current_sub.autograded_path:
-            _mark_str = grading_mark_input.value.strip()
+        _inputs = get_grading_inputs()
+        if (
+            grading_current_sub is not None
+            and grading_current_sub.autograded_path
+            and _inputs is not None
+        ):
+            _mark_str = _inputs["mark"].value.strip()
             _mark = int(_mark_str) if _mark_str else None
-            _feedback = grading_feedback_input.value or ""
+            _feedback = _inputs["feedback"].value or ""
             # Write to DB if available
             if GRADEBOOK is not None and grading_assignment_name:
                 GRADEBOOK.save_manual_grade(
@@ -755,7 +774,9 @@ def _(
             gap=1,
         )
     else:
-        grading_nav = mo.md("_Select an assignment in the Assignments tab._")
+        grading_nav = mo.md(
+            "_Select an assignment from the Assignment dropdown above._"
+        )
     return (grading_nav,)
 
 
@@ -800,7 +821,7 @@ def _(
         )
         if grading_subs
         else mo.md(
-            "_Select an assignment with autograded submissions in the Assignments tab._"
+            "_Select an assignment with autograded submissions from the Assignment dropdown above._"
         )
     )
     return (grading_content,)
@@ -830,6 +851,7 @@ def _(clear_btn, get_action_log, mo):
 
 @app.cell
 def _(
+    COURSE_DIR,
     action_log_content,
     assignment_dropdown,
     assignments_content,
@@ -841,7 +863,16 @@ def _(
 ):
     mo.vstack(
         [
-            mo.hstack([assignment_dropdown, refresh_btn], justify="start", gap=1),
+            mo.hstack(
+                [
+                    mo.md("# mograder"),
+                    mo.md(f"`{COURSE_DIR}`"),
+                    assignment_dropdown,
+                    refresh_btn,
+                ],
+                justify="start",
+                gap=1,
+            ),
             mo.ui.tabs(
                 {
                     "Assignments": assignments_content,
@@ -871,10 +902,46 @@ def _(
     _action = get_pending_action()
     if _action is not None:
         _cmd, _label = _action["cmd"], _action["label"]
-        _is_autograde = _cmd and _cmd[0] == "autograde"
+        # Compound action: list of sub-commands to run sequentially
+        _is_compound = _cmd and isinstance(_cmd[0], list)
+        _is_autograde = not _is_compound and _cmd and _cmd[0] == "autograde"
 
         try:
-            if _is_autograde:
+            if _is_compound:
+                _combined_output = []
+                _overall_ok = True
+                for _sub_cmd in _cmd:
+                    _sub_auto = _sub_cmd and _sub_cmd[0] == "autograde"
+                    if _sub_auto:
+                        _full = ["mograder"] + _sub_cmd + ["--progress"]
+                        _p = sp.Popen(
+                            _full, stdout=sp.PIPE, stderr=sp.PIPE, text=True, bufsize=1
+                        )
+                        _p.wait()
+                        _out = (
+                            (_p.stdout.read() if _p.stdout else "")
+                            + (_p.stderr.read() if _p.stderr else "")
+                        ).strip()
+                    else:
+                        _p = sp.run(
+                            ["mograder"] + _sub_cmd,
+                            capture_output=True,
+                            text=True,
+                            timeout=600,
+                        )
+                        _out = (_p.stdout + _p.stderr).strip()
+                    if _out:
+                        _combined_output.append(_out)
+                    if _p.returncode != 0:
+                        _overall_ok = False
+                        break
+                _combined = "\n".join(_combined_output)
+                _code = f"\n```\n{_combined}\n```" if _combined else ""
+                if _overall_ok:
+                    set_action_log(f"**{_label}** — done.{_code}")
+                else:
+                    set_action_log(f"**{_label}** — failed.{_code}")
+            elif _is_autograde:
                 _full_cmd = ["mograder"] + _cmd + ["--progress"]
                 _proc = sp.Popen(
                     _full_cmd, stdout=sp.PIPE, stderr=sp.PIPE, text=True, bufsize=1

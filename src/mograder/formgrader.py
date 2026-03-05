@@ -26,6 +26,7 @@ class DirNames:
     submitted: str = "submitted"
     autograded: str = "autograded"
     feedback: str = "feedback"
+    import_dir: str = "import"
 
 
 @dataclass

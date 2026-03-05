@@ -222,6 +222,32 @@ def test_app_assignments_table_no_stats_columns():
     assert '"Mean"' not in source
     assert '"Std"' not in source
     assert "dropdown" in source
+    assert '"Export Moodle"' in source
+    assert '"Export FB"' not in source
+
+
+def test_app_title_is_mograder():
+    """Header should be '# mograder' not '# mograder formgrader'."""
+    from pathlib import Path
+
+    app_path = Path(__file__).parent.parent / "src" / "mograder" / "formgrader_app.py"
+    source = app_path.read_text()
+    assert '"# mograder"' in source
+    assert "formgrader" not in source.split('"# mograder"')[0].split("@app.cell")[-1]
+
+
+def test_app_assignments_table_selection_none():
+    """Assignments table should use selection=None to disable checkboxes."""
+    from pathlib import Path
+
+    app_path = Path(__file__).parent.parent / "src" / "mograder" / "formgrader_app.py"
+    source = app_path.read_text()
+    # Find the assignments_content table creation
+    assert "assignments_content" in source
+    # The mo.ui.table for assignments should have selection=None
+    idx = source.index("assignments_content")
+    snippet = source[idx : idx + 200]
+    assert "selection=None" in snippet
 
 
 def test_app_no_svg_histogram():
@@ -426,9 +452,6 @@ def test_app_students_cell_does_not_depend_on_ui_elements():
 
     assert "show_names" not in params, (
         "students content cell should not depend on show_names directly"
-    )
-    assert "moodle_file" not in params, (
-        "students content cell should not depend on moodle_file directly"
     )
 
 

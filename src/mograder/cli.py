@@ -571,6 +571,20 @@ def moodle_cmd(ctx, worksheet, grades_csv, feedback_dir, output_dir, match_colum
         )
         click.echo(f"Feedback ZIP: {_rel(zip_path)} ({count} files)")
 
+    # Auto-upsert student names into gradebook
+    db_path = Path.cwd() / config.gradebook
+    if db_path.is_file():
+        _name_col = config.moodle_name_column
+        if _name_col in fieldnames and match_column in fieldnames:
+            _student_mapping = {
+                r[match_column]: r[_name_col]
+                for r in moodle_rows
+                if r.get(match_column) and r.get(_name_col)
+            }
+            if _student_mapping:
+                with Gradebook(db_path) as _gb:
+                    _gb.upsert_students(_student_mapping)
+
     # Statistics
     if result.marks:
         click.echo("")
@@ -578,6 +592,48 @@ def moodle_cmd(ctx, worksheet, grades_csv, feedback_dir, output_dir, match_colum
 
 
 cli.add_command(moodle_cmd, "moodle")
+
+
+@cli.command("import-students")
+@click.argument("worksheet", type=click.Path(exists=True, path_type=Path))
+@click.option(
+    "--match-column",
+    default=None,
+    help="Moodle CSV column to match student against (default: from config)",
+)
+@click.pass_context
+def import_students(ctx, worksheet, match_column):
+    """Import student names from a Moodle CSV into the gradebook."""
+    config = ctx.obj["config"]
+    match_col = match_column or config.moodle_match_column
+    name_col = config.moodle_name_column
+
+    fieldnames, rows = moodle.read_moodle_worksheet(worksheet)
+    if match_col not in fieldnames:
+        click.echo(
+            f"ERROR: match column '{match_col}' not found in worksheet "
+            f"(available: {', '.join(fieldnames)})",
+            err=True,
+        )
+        sys.exit(1)
+    if name_col not in fieldnames:
+        click.echo(
+            f"ERROR: name column '{name_col}' not found in worksheet "
+            f"(available: {', '.join(fieldnames)})",
+            err=True,
+        )
+        sys.exit(1)
+
+    mapping = {
+        r[match_col]: r[name_col]
+        for r in rows
+        if match_col in r and name_col in r and r[match_col] and r[name_col]
+    }
+
+    db_path = Path.cwd() / config.gradebook
+    with Gradebook(db_path) as gb:
+        gb.upsert_students(mapping)
+    click.echo(f"Imported {len(mapping)} students into {_rel(db_path)}")
 
 
 @cli.command()

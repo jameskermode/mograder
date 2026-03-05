@@ -307,6 +307,29 @@ def test_import_from_py_empty_dir(tmp_path):
         assert count == 0
 
 
+# --- Students ---
+
+
+def test_upsert_students(tmp_path):
+    with Gradebook(tmp_path / "test.db") as gb:
+        gb.upsert_students({"alice": "Alice Smith", "bob": "Bob Jones"})
+        lookup = gb.get_name_lookup()
+        assert lookup == {"alice": "Alice Smith", "bob": "Bob Jones"}
+
+
+def test_upsert_students_update(tmp_path):
+    with Gradebook(tmp_path / "test.db") as gb:
+        gb.upsert_students({"alice": "Alice Smith"})
+        gb.upsert_students({"alice": "Alice Johnson"})
+        lookup = gb.get_name_lookup()
+        assert lookup == {"alice": "Alice Johnson"}
+
+
+def test_get_name_lookup_empty(tmp_path):
+    with Gradebook(tmp_path / "test.db") as gb:
+        assert gb.get_name_lookup() == {}
+
+
 def test_import_preserves_existing(tmp_path):
     """Import should not overwrite existing manual grades."""
     auto_dir = tmp_path / "autograded" / "hw1"

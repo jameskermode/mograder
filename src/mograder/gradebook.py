@@ -39,6 +39,10 @@ class Gradebook:
                 max_mark        REAL NOT NULL DEFAULT 100,
                 marks_metadata  TEXT
             );
+            CREATE TABLE IF NOT EXISTS students (
+                username  TEXT PRIMARY KEY,
+                full_name TEXT NOT NULL
+            );
             CREATE TABLE IF NOT EXISTS submissions (
                 assignment      TEXT NOT NULL REFERENCES assignments(name),
                 student         TEXT NOT NULL,
@@ -267,6 +271,21 @@ class Gradebook:
             (assignment,),
         ).fetchone()
         return row["c"]
+
+    # --- Students ---
+
+    def upsert_students(self, mapping: dict[str, str]) -> None:
+        """Bulk insert or replace student name mappings."""
+        self._conn.executemany(
+            "INSERT OR REPLACE INTO students (username, full_name) VALUES (?, ?)",
+            mapping.items(),
+        )
+        self._conn.commit()
+
+    def get_name_lookup(self) -> dict[str, str]:
+        """Return {username: full_name} for all students."""
+        rows = self._conn.execute("SELECT username, full_name FROM students").fetchall()
+        return {r["username"]: r["full_name"] for r in rows}
 
     # --- Migration ---
 

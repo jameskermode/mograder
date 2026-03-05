@@ -74,6 +74,7 @@ def test_load_config_full(tmp_path):
         submitted_dir="sub",
         autograded_dir="auto",
         feedback_dir="fb",
+        import_dir="import",
     )
 
 
@@ -100,6 +101,20 @@ def test_load_config_gradebook_default(tmp_path):
     (tmp_path / "mograder.toml").write_text("")
     config = load_config(tmp_path)
     assert config.gradebook == "gradebook.db"
+
+
+def test_load_config_import_dir_default(tmp_path):
+    """Missing import key uses default 'import'."""
+    (tmp_path / "mograder.toml").write_text("")
+    config = load_config(tmp_path)
+    assert config.import_dir == "import"
+
+
+def test_load_config_import_dir_custom(tmp_path):
+    """[dirs] import key overrides default."""
+    (tmp_path / "mograder.toml").write_text('[dirs]\nimport = "worksheets"\n')
+    config = load_config(tmp_path)
+    assert config.import_dir == "worksheets"
 
 
 def test_config_is_frozen():

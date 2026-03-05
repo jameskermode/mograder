@@ -458,3 +458,30 @@ def test_autograde_progress_emits_results(mock_batch, mock_inject, tmp_path):
     assert results_data["rows"][0]["notebook"] == "student"
     assert results_data["rows"][0]["checks"]["Q1"] == "PASS"
     assert results_data["rows"][0]["checks"]["Q2"] == "FAIL"
+
+
+def test_import_students(tmp_path, monkeypatch):
+    """import-students reads a Moodle CSV and populates the gradebook."""
+    import csv
+
+    from mograder.gradebook import Gradebook
+
+    monkeypatch.chdir(tmp_path)
+
+    # Create a Moodle-style CSV
+    ws = tmp_path / "moodle.csv"
+    with open(ws, "w", newline="", encoding="utf-8-sig") as f:
+        writer = csv.DictWriter(f, fieldnames=["Username", "Full name", "Grade"])
+        writer.writeheader()
+        writer.writerow({"Username": "alice", "Full name": "Alice Smith", "Grade": ""})
+        writer.writerow({"Username": "bob", "Full name": "Bob Jones", "Grade": ""})
+
+    runner = CliRunner()
+    result = runner.invoke(cli, ["import-students", str(ws)])
+    assert result.exit_code == 0
+    assert "Imported 2 students" in result.output
+
+    with Gradebook(tmp_path / "gradebook.db") as gb:
+        lookup = gb.get_name_lookup()
+        assert lookup["alice"] == "Alice Smith"
+        assert lookup["bob"] == "Bob Jones"
