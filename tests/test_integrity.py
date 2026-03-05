@@ -1,0 +1,182 @@
+"""Tests for integrity checking of check/marks cells."""
+
+from mograder.integrity import check_integrity
+
+# -- Minimal notebook templates -----------------------------------------------
+
+_HEADER = """\
+import marimo
+
+__generated_with = "0.20.0"
+app = marimo.App()
+
+"""
+
+_FOOTER = """\
+if __name__ == "__main__":
+    app.run()
+"""
+
+
+def _cell(code: str, hide_code: bool = False) -> str:
+    """Build a single marimo cell string.
+
+    *code* should be unindented; this function adds the 4-space indent
+    required inside the ``def _():`` body.
+    """
+    decorator = "@app.cell(hide_code=True)" if hide_code else "@app.cell"
+    indented = "\n".join(
+        ("    " + line) if line.strip() else "" for line in code.splitlines()
+    )
+    return f"""\
+{decorator}
+def _():
+{indented}
+    return
+
+
+"""
+
+
+def _notebook(*cells: str) -> str:
+    """Assemble cells into a complete marimo notebook."""
+    return _HEADER + "".join(cells) + _FOOTER
+
+
+# -- Source notebooks ----------------------------------------------------------
+
+SOURCE_HOLISTIC = _notebook(
+    _cell("import marimo as mo\nfrom mograder.runtime import check", hide_code=True),
+    _cell(
+        'check(\n    "Q1: Palindrome",\n    [\n        (True, "ok"),\n    ],\n)',
+        hide_code=True,
+    ),
+    _cell(
+        'check(\n    "Q2: Counter",\n    [\n        (True, "ok"),\n    ],\n)',
+        hide_code=True,
+    ),
+)
+
+SOURCE_WITH_MARKS = _notebook(
+    _cell(
+        "import marimo as mo\n"
+        "from mograder.runtime import Grader\n"
+        "# === MOGRADER: MARKS ===\n"
+        '_marks = {"Q1": 10, "Q2": 20}\n'
+        "grader = Grader(mo, _marks)\n"
+        "check = grader.check",
+        hide_code=True,
+    ),
+    _cell(
+        'check(\n    "Q1: Add",\n    [\n        (1 + 1 == 2, "ok"),\n    ],\n)',
+        hide_code=True,
+    ),
+    _cell(
+        'check(\n    "Q2: Mul",\n    [\n        (2 * 3 == 6, "ok"),\n    ],\n)',
+        hide_code=True,
+    ),
+)
+
+
+# -- Tests ---------------------------------------------------------------------
+
+
+def test_no_tampering():
+    """Identical source and submitted → nothing tampered."""
+    result = check_integrity(SOURCE_HOLISTIC, SOURCE_HOLISTIC)
+    assert result.tampered_checks == []
+    assert result.tampered_marks is False
+
+
+def test_tampered_check_cell():
+    """Modified check cell → detected and reinjected."""
+    submitted = SOURCE_HOLISTIC.replace(
+        '(True, "ok")',
+        '(True, "hacked")',
+        1,  # only replace first occurrence (Q1)
+    )
+    result = check_integrity(SOURCE_HOLISTIC, submitted)
+    assert "Q1" in result.tampered_checks
+    assert "Q2" not in result.tampered_checks
+    assert result.tampered_marks is False
+    assert '(True, "ok")' in result.fixed_source
+
+
+def test_tampered_marks_cell():
+    """Modified marks cell → detected and reinjected."""
+    submitted = SOURCE_WITH_MARKS.replace(
+        '_marks = {"Q1": 10, "Q2": 20}',
+        '_marks = {"Q1": 100, "Q2": 200}',
+    )
+    result = check_integrity(SOURCE_WITH_MARKS, submitted)
+    assert result.tampered_marks is True
+    assert '{"Q1": 10, "Q2": 20}' in result.fixed_source
+
+
+def test_deleted_check_cell():
+    """Removed check cell → detected and reinjected."""
+    submitted = _notebook(
+        _cell(
+            "import marimo as mo\nfrom mograder.runtime import check", hide_code=True
+        ),
+        _cell(
+            'check(\n    "Q1: Palindrome",\n    [\n        (True, "ok"),\n    ],\n)',
+            hide_code=True,
+        ),
+        # Q2 check cell removed
+    )
+    result = check_integrity(SOURCE_HOLISTIC, submitted)
+    assert "Q2" in result.tampered_checks
+    assert "Q2: Counter" in result.fixed_source
+
+
+def test_multiple_tampered():
+    """Multiple check cells + marks all tampered → all detected."""
+    submitted = (
+        SOURCE_WITH_MARKS.replace(
+            '_marks = {"Q1": 10, "Q2": 20}',
+            '_marks = {"Q1": 999, "Q2": 999}',
+        )
+        .replace(
+            '(1 + 1 == 2, "ok")',
+            '(True, "hacked")',
+        )
+        .replace(
+            '(2 * 3 == 6, "ok")',
+            '(True, "hacked")',
+        )
+    )
+    result = check_integrity(SOURCE_WITH_MARKS, submitted)
+    assert result.tampered_marks is True
+    assert "Q1" in result.tampered_checks
+    assert "Q2" in result.tampered_checks
+
+
+def test_no_marks_cell():
+    """Holistic notebook (no marks) → only checks compared."""
+    submitted = SOURCE_HOLISTIC.replace('(True, "ok")', '(True, "hacked")', 1)
+    result = check_integrity(SOURCE_HOLISTIC, submitted)
+    assert result.tampered_marks is False
+    assert "Q1" in result.tampered_checks
+
+
+def test_extra_student_cell_not_flagged():
+    """Extra cells added by student → not flagged as tampering."""
+    submitted = _notebook(
+        _cell(
+            "import marimo as mo\nfrom mograder.runtime import check", hide_code=True
+        ),
+        _cell("x = 42"),
+        _cell(
+            'check(\n    "Q1: Palindrome",\n    [\n        (True, "ok"),\n    ],\n)',
+            hide_code=True,
+        ),
+        _cell(
+            'check(\n    "Q2: Counter",\n    [\n        (True, "ok"),\n    ],\n)',
+            hide_code=True,
+        ),
+        _cell("y = x + 1"),
+    )
+    result = check_integrity(SOURCE_HOLISTIC, submitted)
+    assert result.tampered_checks == []
+    assert result.tampered_marks is False

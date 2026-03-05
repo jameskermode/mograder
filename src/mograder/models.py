@@ -23,3 +23,4 @@ class NotebookResult:
     export_error: str = ""
     cell_errors: int = 0
     html_path: Path | None = None
+    tampered: list[str] = field(default_factory=list)

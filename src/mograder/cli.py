@@ -1,11 +1,51 @@
 """Click CLI for mograder: generate, autograde, feedback."""
 
+import shutil
 import sys
+import tempfile
 from pathlib import Path
 
 import click
 
-from mograder import cells, feedback, markers, moodle, runner
+from mograder import cells, feedback, integrity, markers, moodle, runner
+
+
+def _infer_output_dir(
+    input_path: Path,
+    expected_parent: str,
+    target_dir: str,
+    fallback: str,
+) -> Path:
+    """Infer output directory from nbgrader-style directory convention.
+
+    If *input_path* is inside *expected_parent/* (e.g. ``source/assignment/nb.py``),
+    return the sibling *target_dir* (e.g. ``release/assignment/``).
+    Otherwise return *fallback*.
+    """
+    # Check grandparent: source/assignment-name/file.py → grandparent = source
+    grandparent = input_path.parent.parent
+    if grandparent.name == expected_parent:
+        return grandparent.parent / target_dir / input_path.parent.name
+    # Check parent: source/file.py → parent = source
+    if input_path.parent.name == expected_parent:
+        return input_path.parent.parent / target_dir
+    return Path(fallback)
+
+
+def _find_source(submitted_path: Path) -> Path | None:
+    """Auto-discover the source notebook for a submitted file.
+
+    Looks for ``source/<assignment>/<name>.py`` relative to the submitted
+    file's directory structure.
+    """
+    assignment = submitted_path.parent.name
+    name = submitted_path.name
+    # Walk up to find source/ sibling
+    for ancestor in [submitted_path.parent.parent, submitted_path.parent.parent.parent]:
+        candidate = ancestor / "source" / assignment / name
+        if candidate.exists():
+            return candidate
+    return None
 
 
 @click.group()
@@ -21,7 +61,7 @@ def cli():
     "-o",
     "--output-dir",
     type=click.Path(path_type=Path),
-    default="release",
+    default=None,
     help="Output directory (default: release/)",
 )
 @click.option("--dry-run", is_flag=True, help="Preview changes without writing files")
@@ -29,14 +69,43 @@ def cli():
     "--validate", is_flag=True, help="Only validate markers, don't generate output"
 )
 def generate(files, output_dir, dry_run, validate):
-    """Strip solutions from staff notebooks to produce student versions."""
+    """Strip solutions from source notebooks to produce release versions."""
+    if output_dir is None:
+        output_dir = _infer_output_dir(files[0], "source", "release", "release")
+
     success = True
+    processed_dirs: set[Path] = set()
+    files_set = set(files)
     for filepath in files:
         if filepath.suffix != ".py":
             click.echo(f"SKIP: {filepath} (not a .py file)")
             continue
-        if not markers.process_file(filepath, output_dir, dry_run, validate):
+        # Preserve assignment subdirectory in output
+        dest_dir = (
+            output_dir / filepath.parent.name
+            if filepath.parent.name != "."
+            else output_dir
+        )
+        if not markers.process_file(filepath, dest_dir, dry_run, validate):
             success = False
+        else:
+            processed_dirs.add(filepath.parent)
+
+    # Copy auxiliary files from each source dir to release dir
+    if not dry_run and not validate:
+        for src_dir in processed_dirs:
+            rel_dir = output_dir / src_dir.name if src_dir.name != "." else output_dir
+            for f in src_dir.iterdir():
+                if f.is_dir():
+                    continue
+                if f.suffix == ".py" and f in files_set:
+                    continue  # already processed as notebook
+                dest = rel_dir / f.name
+                if not dest.exists() or f.stat().st_mtime > dest.stat().st_mtime:
+                    rel_dir.mkdir(parents=True, exist_ok=True)
+                    shutil.copy2(f, dest)
+                    click.echo(f"COPY: {f} → {dest}")
+
     if not success:
         sys.exit(1)
 
@@ -46,10 +115,11 @@ def generate(files, output_dir, dry_run, validate):
     "files", nargs=-1, required=True, type=click.Path(exists=True, path_type=Path)
 )
 @click.option(
-    "--staff",
+    "--source",
+    "source_path",
     type=click.Path(exists=True, path_type=Path),
     default=None,
-    help="Staff source notebook (run first to establish expected labels)",
+    help="Source notebook (with solutions); auto-discovered from source/ directory if omitted",
 )
 @click.option(
     "--csv",
@@ -66,45 +136,96 @@ def generate(files, output_dir, dry_run, validate):
     "-o",
     "--output-dir",
     type=click.Path(path_type=Path),
-    default="grading",
-    help="Output directory for grading copies (default: grading/)",
+    default=None,
+    help="Output directory for grading copies (default: autograded/)",
 )
-def autograde(files, staff, csv_path, jobs, timeout, output_dir):
+def autograde(files, source_path, csv_path, jobs, timeout, output_dir):
     """Run notebooks and inject grading cells for GTA review."""
     notebooks = [f for f in files if f.suffix == ".py"]
     if not notebooks:
         click.echo("ERROR: no valid .py files found", err=True)
         sys.exit(1)
 
-    # Optionally run staff solution first
+    if output_dir is None:
+        output_dir = _infer_output_dir(
+            notebooks[0], "submitted", "autograded", "autograded"
+        )
+
+    # Auto-discover source notebook if not given
+    if source_path is None:
+        found = _find_source(notebooks[0])
+        if found:
+            source_path = found
+            click.echo(f"Auto-discovered source: {source_path}")
+
+    # Optionally run source solution first
     all_labels: list[str] = []
     marks: dict[str, int | float] | None = None
-    if staff:
-        click.echo(f"Running staff solution: {staff}")
-        staff_result = runner.run_notebook(staff, timeout=timeout)
-        if staff_result.checks:
-            all_labels = [c.label for c in staff_result.checks]
-            n_pass = sum(1 for c in staff_result.checks if c.status == "success")
+    source_text: str | None = None
+    if source_path:
+        click.echo(f"Running source notebook: {source_path}")
+        source_result = runner.run_notebook(source_path, timeout=timeout)
+        if source_result.checks:
+            all_labels = [c.label for c in source_result.checks]
+            n_pass = sum(1 for c in source_result.checks if c.status == "success")
             click.echo(
-                f"  → {n_pass}/{len(staff_result.checks)} checks pass "
-                f"({staff_result.cell_errors} cell errors)"
+                f"  → {n_pass}/{len(source_result.checks)} checks pass "
+                f"({source_result.cell_errors} cell errors)"
             )
         else:
-            click.echo("  → WARNING: no check results found in staff notebook")
+            click.echo("  → WARNING: no check results found in source notebook")
 
         # Parse per-question marks metadata
-        staff_lines = staff.read_text().splitlines(keepends=True)
-        marks = cells.parse_marks_metadata(staff_lines)
+        source_text = source_path.read_text()
+        source_lines = source_text.splitlines(keepends=True)
+        marks = cells.parse_marks_metadata(source_lines)
         if marks:
             marks_info = " ".join(f"{k}={v}" for k, v in marks.items())
             total = sum(marks.values())
             click.echo(f"  Marks metadata: {marks_info} (total: {total})")
 
+    # Integrity check + reinject tampered cells
+    run_paths: list[Path] = list(notebooks)
+    tamper_info: dict[str, integrity.IntegrityResult] = {}
+    fixed_dir: Path | None = None
+    if source_text:
+        fixed_dir = Path(tempfile.mkdtemp())
+        run_paths = []
+        for nb in notebooks:
+            ir = integrity.check_integrity(source_text, nb.read_text())
+            if ir.tampered_checks or ir.tampered_marks:
+                fixed = fixed_dir / nb.name
+                fixed.write_text(ir.fixed_source)
+                run_paths.append(fixed)
+                tamper_info[nb.stem] = ir
+                warns = [f"check({k})" for k in ir.tampered_checks]
+                if ir.tampered_marks:
+                    warns.append("marks")
+                click.echo(
+                    f"  WARNING: {nb.stem} — tampered cells reinjected: "
+                    f"{', '.join(warns)}"
+                )
+            else:
+                run_paths.append(nb)
+
     # Run student submissions
     click.echo(f"Autograding {len(notebooks)} submission(s) with {jobs} workers...")
-    results = runner.run_batch(notebooks, jobs=jobs, timeout=timeout)
+    results = runner.run_batch(run_paths, jobs=jobs, timeout=timeout)
 
-    # Discover labels from results if no staff notebook
+    # Map results back to original paths + record tampering
+    for r in results:
+        original = next((nb for nb in notebooks if nb.name == r.path.name), r.path)
+        r.path = original
+        if original.stem in tamper_info:
+            ti = tamper_info[original.stem]
+            r.tampered = [f"check({k})" for k in ti.tampered_checks]
+            if ti.tampered_marks:
+                r.tampered.append("marks")
+
+    if fixed_dir:
+        shutil.rmtree(fixed_dir, ignore_errors=True)
+
+    # Discover labels from results if no source notebook
     if not all_labels:
         all_labels = runner.discover_labels(results)
 
@@ -137,7 +258,7 @@ def autograde(files, staff, csv_path, jobs, timeout, output_dir):
     "-o",
     "--output-dir",
     type=click.Path(path_type=Path),
-    default="feedback",
+    default=None,
     help="Output directory for HTML feedback (default: feedback/)",
 )
 @click.option(
@@ -156,6 +277,11 @@ def feedback_cmd(files, output_dir, grades_csv, timeout, jobs):
     if not notebooks:
         click.echo("ERROR: no valid .py files found", err=True)
         sys.exit(1)
+
+    if output_dir is None:
+        output_dir = _infer_output_dir(
+            notebooks[0], "autograded", "feedback", "feedback"
+        )
 
     # Collect grades from graded notebooks
     grades = feedback.collect_grades(notebooks)

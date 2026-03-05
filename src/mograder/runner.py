@@ -137,6 +137,8 @@ def print_summary(
     marks: dict[str, int | float] | None = None,
 ):
     """Print a formatted summary table to stdout."""
+    has_tampering = any(r.tampered for r in results)
+
     stem_width = max(len(r.path.stem) for r in results) if results else 20
     stem_width = max(stem_width, 10)
     header = f"{'Notebook':<{stem_width}}  "
@@ -144,6 +146,8 @@ def print_summary(
     if marks is not None:
         header += "  Marks"
     header += "  Errors"
+    if has_tampering:
+        header += "  Tampered"
     print(header)
     print("-" * len(header))
 
@@ -167,6 +171,8 @@ def print_summary(
             total = sum(marks.values())
             line += f"  {auto_mark}/{total}"
         line += f"  {result.cell_errors}"
+        if has_tampering:
+            line += f"  {', '.join(result.tampered)}" if result.tampered else ""
         print(line)
 
 
@@ -177,12 +183,16 @@ def write_csv(
     marks: dict[str, int | float] | None = None,
 ):
     """Write results to a CSV file."""
+    has_tampering = any(r.tampered for r in results)
+
     with open(path, "w", newline="") as f:
         writer = csv.writer(f)
         q_headers = [label.split(":")[0].strip() for label in all_labels]
         header = ["notebook"] + q_headers + ["cell_errors", "export_error"]
         if marks is not None:
             header.append("auto_mark")
+        if has_tampering:
+            header.append("tampered")
         writer.writerow(header)
 
         for result in results:
@@ -191,6 +201,8 @@ def write_csv(
                 row += [0, result.export_error]
                 if marks is not None:
                     row.append("")
+                if has_tampering:
+                    row.append("; ".join(result.tampered))
             else:
                 check_map = {
                     c.label.split(":")[0].strip(): format_status_plain(c.status)
@@ -206,6 +218,8 @@ def write_csv(
                         if k in check_map and check_map[k] == "PASS"
                     )
                     row.append(auto_mark)
+                if has_tampering:
+                    row.append("; ".join(result.tampered))
             writer.writerow(row)
 
     print(f"\nCSV written to {path}")

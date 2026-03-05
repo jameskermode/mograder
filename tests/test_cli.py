@@ -3,7 +3,7 @@ from unittest.mock import MagicMock, patch
 
 from click.testing import CliRunner
 
-from mograder.cli import cli
+from mograder.cli import _find_source, _infer_output_dir, cli
 from mograder.models import CheckResult, NotebookResult
 
 
@@ -122,3 +122,79 @@ def test_feedback_writes_grades_csv(mock_grades, mock_export, mock_csv, tmp_path
     )
     assert result.exit_code == 0
     mock_csv.assert_called_once()
+
+
+# -- Smart defaults -----------------------------------------------------------
+
+
+def test_infer_output_dir_source_convention(tmp_path):
+    source_dir = tmp_path / "source" / "hw1"
+    source_dir.mkdir(parents=True)
+    nb = source_dir / "hw1.py"
+    nb.touch()
+    result = _infer_output_dir(nb, "source", "release", "release")
+    assert result == tmp_path / "release" / "hw1"
+
+
+def test_infer_output_dir_fallback(tmp_path):
+    nb = tmp_path / "notebook.py"
+    nb.touch()
+    result = _infer_output_dir(nb, "source", "release", "release")
+    assert result == Path("release")
+
+
+def test_find_source_convention(tmp_path):
+    # Set up: submitted/hw1/student.py  + source/hw1/student.py
+    (tmp_path / "submitted" / "hw1").mkdir(parents=True)
+    (tmp_path / "source" / "hw1").mkdir(parents=True)
+    sub = tmp_path / "submitted" / "hw1" / "nb.py"
+    src = tmp_path / "source" / "hw1" / "nb.py"
+    sub.touch()
+    src.write_text("# source")
+    found = _find_source(sub)
+    assert found == src
+
+
+def test_find_source_not_found(tmp_path):
+    nb = tmp_path / "random" / "nb.py"
+    nb.parent.mkdir(parents=True)
+    nb.touch()
+    assert _find_source(nb) is None
+
+
+@patch("mograder.runner.run_notebook")
+@patch("mograder.cells.inject_grading_cells")
+@patch("mograder.runner.run_batch")
+def test_autograde_with_source(mock_batch, mock_inject, mock_run_nb, tmp_path):
+    """autograde --source runs the source notebook and uses integrity check."""
+    nb = tmp_path / "student.py"
+    nb.write_text(
+        "import marimo\napp = marimo.App()\n\nif __name__ == '__main__':\n    app.run()\n"
+    )
+    source = tmp_path / "source.py"
+    source.write_text(
+        "import marimo\napp = marimo.App()\n\nif __name__ == '__main__':\n    app.run()\n"
+    )
+
+    mock_run_nb.return_value = NotebookResult(
+        path=source,
+        checks=[CheckResult("Q1: Foo", "success")],
+        cell_errors=0,
+    )
+    mock_batch.return_value = [
+        NotebookResult(
+            path=nb,
+            checks=[CheckResult("Q1: Foo", "success")],
+            cell_errors=0,
+        )
+    ]
+    mock_inject.return_value = nb.read_text().splitlines(keepends=True)
+
+    out_dir = tmp_path / "grading"
+    runner = CliRunner()
+    result = runner.invoke(
+        cli, ["autograde", str(nb), "--source", str(source), "-o", str(out_dir)]
+    )
+    assert result.exit_code == 0
+    mock_run_nb.assert_called_once()
+    assert "Running source notebook" in result.output

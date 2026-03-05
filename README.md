@@ -6,20 +6,46 @@ mograder is the Marimo equivalent of [nbgrader](https://nbgrader.readthedocs.io/
 
 ## Try it
 
-[![Open in marimo](https://marimo.io/shield.svg)](https://molab.marimo.io/github/jameskermode/mograder/blob/main/examples/release/demo-assignment.py)
+[![Open in marimo](https://marimo.io/shield.svg)](https://molab.marimo.io/github/jameskermode/mograder/blob/main/examples/release/demo-assignment/demo-assignment.py)
+
+## Directory convention
+
+mograder follows [nbgrader's terminology](https://nbgrader.readthedocs.io/en/latest/user_guide/philosophy.html): **source** → **release** → **submitted** → **autograded** → **feedback**.
+
+```
+course/
+  source/
+    assignment-name/
+      assignment-name.py   ← source notebook (with solutions)
+      data.csv             ← auxiliary files (copied to release)
+  release/
+    assignment-name/
+      assignment-name.py   ← generated (solutions stripped)
+      data.csv             ← copied from source
+  submitted/
+    assignment-name/
+      student1.py          ← student submissions
+  autograded/
+    assignment-name/
+      student1.py          ← output of mograder autograde
+  feedback/
+    assignment-name/
+      student1.html        ← output of mograder feedback
+```
 
 ## Workflow
 
 ```
-1. mograder generate   ──→  staff.py  →  student.py  (strip solutions)
+1. mograder generate   ──→  source/*.py  →  release/*.py  (strip solutions)
 2. Students complete and submit .py files
-3. mograder autograde  ──→  submissions/*.py  →  grading/*.py
+3. mograder autograde  ──→  submitted/*.py  →  autograded/*.py
+   - Integrity check against source notebook (detects tampered check/marks cells)
    - Runs each notebook via `marimo export html`
    - Parses check results from HTML
    - Injects verification summary + GTA feedback cells
-4. GTAs grade          ──→  marimo edit grading/student.py
+4. GTAs grade          ──→  marimo edit autograded/student.py
    - GTA sets _mark and writes _feedback, then saves
-5. mograder feedback   ──→  grading/*.py  →  feedback/*.html
+5. mograder feedback   ──→  autograded/*.py  →  feedback/*.html
    - Exports graded notebooks to standalone HTML
    - Aggregates marks into CSV
 6. mograder moodle     ──→  grades.csv + worksheet.csv  →  export/
@@ -37,17 +63,17 @@ uv venv && uv pip install -e ".[dev]"
 
 ## Usage
 
-### Generate student notebooks
+### Generate release notebooks
 
-Strip solution blocks from staff notebooks:
+Strip solution blocks from source notebooks:
 
 ```bash
-mograder generate staff_notebook.py -o release/
-mograder generate staff_notebook.py --dry-run    # preview only
-mograder generate staff_notebook.py --validate   # check markers only
+mograder generate source/hw1/hw1.py -o release/
+mograder generate source/hw1/hw1.py --dry-run    # preview only
+mograder generate source/hw1/hw1.py --validate   # check markers only
 ```
 
-Staff notebooks use markers to delimit solutions:
+Source notebooks use markers to delimit solutions:
 
 ```python
 ### BEGIN SOLUTION
@@ -55,25 +81,27 @@ x = 42
 ### END SOLUTION
 ```
 
-Solution blocks are replaced with `# YOUR CODE HERE` / `pass` in the student version. Notebooks import `check()` from `mograder.runtime` for formative feedback, or use `Grader` for per-question marks with reactive score tracking.
+Solution blocks are replaced with `# YOUR CODE HERE` / `pass` in the release version. Auxiliary files (data, helper modules) are automatically copied from the source directory. Notebooks import `check()` from `mograder.runtime` for formative feedback, or use `Grader` for per-question marks with reactive score tracking.
 
 ### Autograde submissions
 
 Run student notebooks and prepare grading copies with injected feedback cells:
 
 ```bash
-mograder autograde submissions/*.py -o grading/
-mograder autograde submissions/*.py --staff staff.py --csv results.csv
-mograder autograde submissions/*.py -j 8 --timeout 600
+mograder autograde submitted/hw1/*.py -o autograded/hw1/
+mograder autograde submitted/hw1/*.py --source source/hw1/hw1.py --csv results.csv
+mograder autograde submitted/hw1/*.py -j 8 --timeout 600
 ```
+
+When `--source` is provided (or auto-discovered from a sibling `source/` directory), mograder performs an integrity check — tampered check cells or marks definitions are reinjected from the source before execution.
 
 ### Export feedback
 
 Export graded notebooks to HTML and aggregate marks:
 
 ```bash
-mograder feedback grading/*.py -o feedback/
-mograder feedback grading/*.py --grades-csv grades.csv
+mograder feedback autograded/hw1/*.py -o feedback/hw1/
+mograder feedback autograded/hw1/*.py --grades-csv grades.csv
 ```
 
 ### Upload to Moodle

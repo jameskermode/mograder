@@ -51,5 +51,5 @@ jobs:
 
       - name: Check generated examples are fresh
         run: |
-          uv run mograder generate examples/demo-assignment.py examples/demo-holistic.py -o examples/release
+          uv run mograder generate examples/source/demo-assignment/demo-assignment.py examples/source/demo-holistic/demo-holistic.py -o examples/release
           git diff --exit-code examples/release/
