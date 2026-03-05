@@ -148,7 +148,7 @@ def _(
             _n3 = _a.name
             _gen.append(
                 mo.ui.button(
-                    label="\u25b6",
+                    label="\u2192",
                     on_change=lambda _, s=_src, o=_out, n=_n3: set_pending_action(
                         {"cmd": ["generate", s, "-o", o], "label": f"generate {n}"}
                     ),
@@ -156,7 +156,7 @@ def _(
                 )
             )
         else:
-            _gen.append(mo.ui.button(label="\u25b6", disabled=True, tooltip="Generate"))
+            _gen.append(mo.ui.button(label="\u2192", disabled=True, tooltip="Generate"))
 
         # Autograde
         _sub_dir = COURSE_DIR / "submitted" / _a.name
@@ -167,7 +167,7 @@ def _(
             _n4 = _a.name
             _auto.append(
                 mo.ui.button(
-                    label="\u25b6",
+                    label="\u2192",
                     on_change=lambda _, c=_cmd, n=_n4: set_pending_action(
                         {"cmd": c, "label": f"autograde {n}"}
                     ),
@@ -176,7 +176,7 @@ def _(
             )
         else:
             _auto.append(
-                mo.ui.button(label="\u25b6", disabled=True, tooltip="Autograde")
+                mo.ui.button(label="\u2192", disabled=True, tooltip="Autograde")
             )
 
         # Feedback export
@@ -187,7 +187,7 @@ def _(
             _n5 = _a.name
             _fb.append(
                 mo.ui.button(
-                    label="\u25b6",
+                    label="\u2192",
                     on_change=lambda _, c=_cmd2, n=_n5: set_pending_action(
                         {"cmd": c, "label": f"feedback {n}"}
                     ),
@@ -196,7 +196,7 @@ def _(
             )
         else:
             _fb.append(
-                mo.ui.button(label="\u25b6", disabled=True, tooltip="Export feedback")
+                mo.ui.button(label="\u2192", disabled=True, tooltip="Export feedback")
             )
 
     # Wrap interactive buttons in mo.ui.array for marimo state tracking
@@ -213,11 +213,6 @@ def _(
     _rel_idx = 0
 
     # --- build merged assignments + grades table ---
-    # Unlabelled arrow column keys (visually empty, must be unique)
-    _COL_GEN = "\u00a0"  # between Source and Release
-    _COL_AUTO = "\u00a0\u00a0"  # between Submitted and Autograded
-    _COL_FB = "\u00a0\u00a0\u00a0"  # between Graded and Feedback
-
     _rows = []
     for _i, _a in enumerate(assignments):
         _st = grade_stats.get(_a.name, {})
@@ -254,15 +249,15 @@ def _(
             {
                 "Assignment": _a.name,
                 "Source": _src_cell,
-                _COL_GEN: gen_btns[_i],
+                "Generate": gen_btns[_i],
                 "Release": _rel_cell,
                 "Submitted": _sub_cell,
-                _COL_AUTO: auto_btns[_i],
+                "Autograde": auto_btns[_i],
                 "Autograded": "\u2705" if _a.num_autograded > 0 else "\u2013",
                 "Graded": f"{_a.num_graded}/{_a.num_autograded}"
                 if _a.num_autograded
                 else "\u2013",
-                _COL_FB: fb_btns[_i],
+                "Export FB": fb_btns[_i],
                 "Feedback": mo.md(_fb_text),
                 "Mean": f"{_st['mean']:.1f}" if _st else "\u2013",
                 "Std": f"{_st['std']:.1f}" if _st else "\u2013",
@@ -532,7 +527,7 @@ def _(get_pending_action, mo, set_action_log, set_pending_action, sp):
                 except _json.JSONDecodeError:
                     continue
                 if _msg.get("event") == "sandbox_start":
-                    _sandbox_bar = mo.status.progress_bar(
+                    _sandbox_bar = mo.status.spinner(
                         title=f"{_label}: installing dependencies…",
                         remove_on_exit=True,
                     )
