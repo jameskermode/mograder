@@ -55,14 +55,7 @@ def _(mo):
 @app.cell
 def _(COURSE_DIR, mo):
     refresh_btn = mo.ui.button(label="Refresh")
-    mo.hstack(
-        [
-            mo.md(f"# mograder formgrader\n\n`{COURSE_DIR}`"),
-            refresh_btn,
-        ],
-        justify="space-between",
-        align="start",
-    )
+    mo.md(f"# mograder formgrader\n\n`{COURSE_DIR}`")
     return (refresh_btn,)
 
 
@@ -76,35 +69,13 @@ def _(COURSE_DIR, DIR_NAMES, get_data_version, refresh_btn):
 
 
 @app.cell
-def _(COURSE_DIR, DIR_NAMES, assignments, get_data_version, refresh_btn):
-    from mograder.feedback import collect_grades as _collect_grades
-
-    _refresh = refresh_btn.value, get_data_version()
-    _stats = {}
-    for _a in assignments:
-        _d = COURSE_DIR / DIR_NAMES.autograded / _a.name
-        if not _d.is_dir():
-            continue
-        _nbs = sorted(_d.glob("*.py"))
-        if not _nbs:
-            continue
-        _grades = _collect_grades(_nbs)
-        _marks = [g["mark"] for g in _grades if g["mark"] is not None]
-        if _marks:
-            _mean = sum(_marks) / len(_marks)
-            _var = (
-                sum((m - _mean) ** 2 for m in _marks) / len(_marks)
-                if len(_marks) > 1
-                else 0
-            )
-            _stats[_a.name] = {
-                "mean": _mean,
-                "std": _var**0.5,
-                "min": min(_marks),
-                "max": max(_marks),
-            }
-    grade_stats = _stats
-    return (grade_stats,)
+def _(assignments, mo, set_selected):
+    assignment_dropdown = mo.ui.dropdown(
+        options={a.name: a.name for a in assignments},
+        label="Assignment",
+        on_change=lambda val: set_selected(val or ""),
+    )
+    return (assignment_dropdown,)
 
 
 @app.cell
@@ -112,7 +83,7 @@ def _(
     COURSE_DIR,
     DIR_NAMES,
     assignments,
-    grade_stats,
+    get_selected,
     mo,
     set_action_log,
     set_pending_action,
@@ -232,9 +203,8 @@ def _(
 
     # --- build merged assignments + grades table ---
     _rows = []
+    _selected_name = get_selected()
     for _i, _a in enumerate(assignments):
-        _st = grade_stats.get(_a.name, {})
-
         # Source column: ✅ + edit button only
         if isinstance(_src_btns_list[_i], mo.Html):
             _src_cell = _src_btns_list[_i]
@@ -263,9 +233,11 @@ def _(
             f"{_a.num_feedback}/{_a.num_autograded}" if _a.num_autograded else "\u2013"
         )
 
+        _name = f"**{_a.name}**" if _a.name == _selected_name else _a.name
+
         _rows.append(
             {
-                "Assignment": _a.name,
+                "Assignment": mo.md(_name),
                 "Source": _src_cell,
                 "Generate": gen_btns[_i],
                 "Release": _rel_cell,
@@ -277,23 +249,12 @@ def _(
                 else "\u2013",
                 "Export FB": fb_btns[_i],
                 "Feedback": mo.md(_fb_text),
-                "Mean": f"{_st['mean']:.1f}" if _st else "\u2013",
-                "Std": f"{_st['std']:.1f}" if _st else "\u2013",
             }
         )
 
-    assignments_table = (
-        mo.ui.table(
-            _rows,
-            selection="single",
-            label="Select an assignment to view submissions",
-        )
-        if _rows
-        else None
-    )
     assignments_content = (
-        mo.vstack([assignments_table])
-        if assignments_table
+        mo.ui.table(_rows)
+        if _rows
         else mo.md(
             "_No assignments found. Check that the course directory contains "
             "`source/`, `submitted/`, etc._"
@@ -301,21 +262,12 @@ def _(
     )
     return (
         assignments_content,
-        assignments_table,
         src_btns,
         rel_btns,
         gen_btns,
         auto_btns,
         fb_btns,
     )
-
-
-@app.cell
-def _(assignments_table, set_selected):
-    if assignments_table is not None and assignments_table.value:
-        _sel = assignments_table.value[0]
-        set_selected(_sel["Assignment"])
-    return
 
 
 @app.cell
@@ -802,14 +754,17 @@ def _(clear_btn, get_action_log, mo):
 @app.cell
 def _(
     action_log_content,
+    assignment_dropdown,
     assignments_content,
     grading_content,
     mo,
+    refresh_btn,
     students_content,
     submissions_content,
 ):
     mo.vstack(
         [
+            mo.hstack([assignment_dropdown, refresh_btn], justify="start", gap=1),
             mo.ui.tabs(
                 {
                     "Assignments": assignments_content,

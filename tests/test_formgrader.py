@@ -213,15 +213,15 @@ def test_scan_submissions_multiple_students(tmp_path):
 # --- formgrader app source code assertions ---
 
 
-def test_app_assignments_table_has_std_column():
-    """Assignments table should have Std column instead of Min/Max."""
+def test_app_assignments_table_no_stats_columns():
+    """Assignments table should not have Mean/Std columns; uses dropdown for selection."""
     from pathlib import Path
 
     app_path = Path(__file__).parent.parent / "src" / "mograder" / "formgrader_app.py"
     source = app_path.read_text()
-    assert '"Std"' in source
-    assert '"Min"' not in source
-    assert '"Max"' not in source
+    assert '"Mean"' not in source
+    assert '"Std"' not in source
+    assert "dropdown" in source
 
 
 def test_app_no_svg_histogram():
