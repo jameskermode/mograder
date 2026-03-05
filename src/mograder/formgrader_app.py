@@ -6,9 +6,11 @@ app = marimo.App(width="medium")
 
 @app.cell
 def _():
+    import io
     import os
     import subprocess as sp
     import sys
+    import zipfile
     from pathlib import Path
 
     import marimo as mo
@@ -40,12 +42,14 @@ def _():
         Gradebook,
         MOGRADER_CONFIG,
         Path,
+        io,
         mo,
         os,
         plt,
         sns,
         sp,
         sys,
+        zipfile,
     )
 
 
@@ -107,11 +111,13 @@ def _(
     DIR_NAMES,
     assignments,
     get_selected,
+    io,
     mo,
     set_action_log,
     set_pending_action,
     sp,
     sys,
+    zipfile,
 ):
     def _open_marimo(mode, path, label):
         sp.Popen([sys.executable, "-m", "marimo", mode, "--sandbox", str(path)])
@@ -120,9 +126,13 @@ def _(
     # --- build per-assignment buttons ---
     _src_btns_list = []
     _rel_btns_list = []
+    _rel_dl_list = []
+    _imp_list = []
     _gen = []
     _auto = []
     _fb = []
+    _fb_csv_dl_list = []
+    _fb_zip_dl_list = []
 
     for _a in assignments:
         # Source — edit source notebook
@@ -150,8 +160,33 @@ def _(
                     tooltip=f"Edit {_a.release_path}",
                 )
             )
+            _rel_dir = _a.release_path.parent
+            _zip_name = f"{_a.name}.zip"
+
+            def _make_zip(d=_rel_dir):
+                buf = io.BytesIO()
+                with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+                    for f in sorted(d.iterdir()):
+                        if not f.is_dir():
+                            zf.write(f, f.name)
+                return buf.getvalue()
+
+            _rel_dl_list.append(
+                mo.download(data=_make_zip, filename=_zip_name, label="\U0001f4e6")
+            )
         else:
             _rel_btns_list.append(mo.md("\u2013"))
+            _rel_dl_list.append(None)
+
+        # Import — file upload for CSV + ZIP
+        _imp_list.append(
+            mo.ui.file(
+                filetypes=[".csv", ".zip"],
+                multiple=True,
+                label="📥",
+                kind="button",
+            )
+        )
 
         # Generate
         if _a.source_path:
@@ -194,6 +229,7 @@ def _(
         # Export Moodle (feedback + optional moodle merge)
         _auto_dir = COURSE_DIR / DIR_NAMES.autograded / _a.name
         _worksheet_path = COURSE_DIR / DIR_NAMES.import_dir / f"{_a.name}.csv"
+        _export_dir = COURSE_DIR / "export"
         if _auto_dir.is_dir() and any(_auto_dir.glob("*.py")):
             _ffiles = [str(f) for f in sorted(_auto_dir.glob("*.py"))]
             _fb_dir = str(COURSE_DIR / DIR_NAMES.feedback / _a.name)
@@ -206,6 +242,8 @@ def _(
                         str(_worksheet_path),
                         "--feedback-dir",
                         _fb_dir,
+                        "-o",
+                        str(_export_dir),
                     ]
                 )
             _n5 = _a.name
@@ -226,11 +264,56 @@ def _(
                 mo.ui.button(label="\u2192", disabled=True, tooltip="Export Moodle")
             )
 
+        # Feedback downloads — CSV and ZIP if they exist
+        _export_csv = _export_dir / f"{_a.name}.csv"
+        if _export_csv.is_file():
+            _cp = _export_csv
+            _cn = _export_csv.name
+
+            def _read_fb_csv(p=_cp):
+                return p.read_bytes()
+
+            _fb_csv_dl_list.append(
+                mo.download(data=_read_fb_csv, filename=_cn, label="📋")
+            )
+        else:
+            _fb_csv_dl_list.append(None)
+
+        _export_zip = _export_dir / f"feedback_{_a.name}.zip"
+        if _export_zip.is_file():
+            _zp = _export_zip
+            _zn = _export_zip.name
+
+            def _read_fb_zip(p=_zp):
+                return p.read_bytes()
+
+            _fb_zip_dl_list.append(
+                mo.download(data=_read_fb_zip, filename=_zn, label="\U0001f4e6")
+            )
+        else:
+            _fb_zip_dl_list.append(None)
+
     # Wrap interactive buttons in mo.ui.array for marimo state tracking
     _src_ui = [e for e in _src_btns_list if not isinstance(e, mo.Html)]
     _rel_ui = [e for e in _rel_btns_list if not isinstance(e, mo.Html)]
     src_btns = mo.ui.array(_src_ui) if _src_ui else None
     rel_btns = mo.ui.array(_rel_ui) if _rel_ui else None
+    rel_downloads = (
+        mo.ui.array([e for e in _rel_dl_list if e is not None])
+        if any(e is not None for e in _rel_dl_list)
+        else None
+    )
+    fb_csv_downloads = (
+        mo.ui.array([e for e in _fb_csv_dl_list if e is not None])
+        if any(e is not None for e in _fb_csv_dl_list)
+        else None
+    )
+    fb_zip_downloads = (
+        mo.ui.array([e for e in _fb_zip_dl_list if e is not None])
+        if any(e is not None for e in _fb_zip_dl_list)
+        else None
+    )
+    imp_uploads = mo.ui.array(_imp_list)
     gen_btns = mo.ui.array(_gen)
     auto_btns = mo.ui.array(_auto)
     fb_btns = mo.ui.array(_fb)
@@ -238,6 +321,9 @@ def _(
     # Map array indices back to row positions for mixed button/md lists
     _src_idx = 0
     _rel_idx = 0
+    _rel_dl_idx = 0
+    _fb_csv_dl_idx = 0
+    _fb_zip_dl_idx = 0
 
     # --- build merged assignments + grades table ---
     _rows = []
@@ -254,14 +340,23 @@ def _(
             )
             _src_idx += 1
 
-        # Release column: ✅ + preview button or –
+        # Release column: ✅ + edit button, or –
         if isinstance(_rel_btns_list[_i], mo.Html):
             _rel_cell = _rel_btns_list[_i]
         else:
             _rel_cell = mo.hstack(
-                [mo.md("\u2705"), rel_btns[_rel_idx]], justify="start", gap=0.25
+                [mo.md("\u2705"), rel_btns[_rel_idx]],
+                justify="start",
+                gap=0.25,
             )
             _rel_idx += 1
+
+        # Release download column
+        if _rel_dl_list[_i] is not None and rel_downloads is not None:
+            _rel_dl_cell = rel_downloads[_rel_dl_idx]
+            _rel_dl_idx += 1
+        else:
+            _rel_dl_cell = mo.md("\u2013")
 
         # Submitted column: count only
         _sub_cell = mo.md(str(_a.num_submitted))
@@ -271,6 +366,19 @@ def _(
             f"{_a.num_feedback}/{_a.num_autograded}" if _a.num_autograded else "\u2013"
         )
 
+        # Feedback download columns (CSV + ZIP)
+        if _fb_csv_dl_list[_i] is not None and fb_csv_downloads is not None:
+            _fb_csv_cell = fb_csv_downloads[_fb_csv_dl_idx]
+            _fb_csv_dl_idx += 1
+        else:
+            _fb_csv_cell = mo.md("\u2013")
+
+        if _fb_zip_dl_list[_i] is not None and fb_zip_downloads is not None:
+            _fb_zip_cell = fb_zip_downloads[_fb_zip_dl_idx]
+            _fb_zip_dl_idx += 1
+        else:
+            _fb_zip_cell = mo.md("\u2013")
+
         _name = f"**{_a.name}**" if _a.name == _selected_name else _a.name
 
         _rows.append(
@@ -279,6 +387,8 @@ def _(
                 "Source": _src_cell,
                 "Generate": gen_btns[_i],
                 "Release": _rel_cell,
+                "📥 Release": _rel_dl_cell,
+                "Import": imp_uploads[_i],
                 "Submitted": _sub_cell,
                 "Autograde": auto_btns[_i],
                 "Autograded": "\u2705" if _a.num_autograded > 0 else "\u2013",
@@ -286,6 +396,8 @@ def _(
                 if _a.num_autograded
                 else "\u2013",
                 "Export": fb_btns[_i],
+                "📋 Grades": _fb_csv_cell,
+                "📥 Feedback": _fb_zip_cell,
                 "Feedback": mo.md(_fb_text),
             }
         )
@@ -302,10 +414,92 @@ def _(
         assignments_content,
         src_btns,
         rel_btns,
+        rel_downloads,
+        fb_csv_downloads,
+        fb_zip_downloads,
+        imp_uploads,
         gen_btns,
         auto_btns,
         fb_btns,
     )
+
+
+@app.cell
+def _(
+    imp_uploads,
+    assignments,
+    COURSE_DIR,
+    DIR_NAMES,
+    MOGRADER_CONFIG,
+    Gradebook,
+    mo,
+    set_action_log,
+    set_data_version,
+):
+    from mograder.moodle import extract_submissions, read_moodle_worksheet
+
+    for _i, _a in enumerate(assignments):
+        _files = imp_uploads[_i].value
+        if not _files:
+            continue
+
+        _import_dir = COURSE_DIR / DIR_NAMES.import_dir
+        _import_dir.mkdir(parents=True, exist_ok=True)
+
+        _csv_file = None
+        _zip_file = None
+        for _f in _files:
+            if _f.name.endswith(".csv"):
+                _csv_file = _f
+            elif _f.name.endswith(".zip"):
+                _zip_file = _f
+
+        _msgs = []
+
+        # Save CSV to import/assignment.csv
+        if _csv_file:
+            _csv_dest = _import_dir / f"{_a.name}.csv"
+            _csv_dest.write_bytes(_csv_file.contents)
+            _msgs.append(f"Saved `{_csv_dest.name}`")
+
+            # Upsert students into gradebook
+            _db_path = COURSE_DIR / MOGRADER_CONFIG.gradebook
+            _fieldnames, _rows = read_moodle_worksheet(_csv_dest)
+            _match_col = MOGRADER_CONFIG.moodle_match_column
+            _name_col = MOGRADER_CONFIG.moodle_name_column
+            if _match_col in _fieldnames and _name_col in _fieldnames:
+                _mapping = {
+                    r[_match_col]: r[_name_col]
+                    for r in _rows
+                    if r.get(_match_col) and r.get(_name_col)
+                }
+                if _mapping:
+                    with Gradebook(_db_path) as _gb:
+                        _gb.upsert_students(_mapping)
+                    _msgs.append(f"Imported {len(_mapping)} students")
+
+        # Extract ZIP to submitted/assignment/
+        if _zip_file and _csv_file:
+            _zip_tmp = _import_dir / f"{_a.name}.zip"
+            _zip_tmp.write_bytes(_zip_file.contents)
+            _sub_dir = COURSE_DIR / DIR_NAMES.submitted / _a.name
+            _sub_dir.mkdir(parents=True, exist_ok=True)
+            _result = extract_submissions(
+                _zip_tmp,
+                _csv_dest,
+                _sub_dir,
+                match_column=MOGRADER_CONFIG.moodle_match_column,
+            )
+            _msgs.append(f"Extracted {_result.extracted} submissions")
+            if _result.warnings:
+                _msgs.extend(_result.warnings)
+        elif _zip_file and not _csv_file:
+            _msgs.append("⚠️ ZIP provided without CSV — cannot map student names")
+
+        if _msgs:
+            set_action_log(f"**Import {_a.name}:** " + "; ".join(_msgs))
+            set_data_version(lambda v: v + 1)
+    return
 
 
 @app.cell
@@ -428,8 +622,10 @@ def _(name_lookup, show_names):
 
 
 @app.cell
-def _(COURSE_DIR, GRADEBOOK, MOGRADER_CONFIG):
+def _(COURSE_DIR, GRADEBOOK, MOGRADER_CONFIG, get_data_version, refresh_btn):
     from mograder.moodle import read_moodle_worksheet as _read_ws
+
+    _ = refresh_btn.value, get_data_version()
 
     # Priority 1: gradebook students table
     if GRADEBOOK is not None:
@@ -864,6 +1060,7 @@ def _(
                     refresh_btn,
                 ],
                 justify="start",
+                align="center",
                 gap=1,
             ),
             mo.ui.tabs(
@@ -882,6 +1079,7 @@ def _(
 
 @app.cell
 def _(
+    COURSE_DIR,
     get_pending_action,
     mo,
     set_action_log,
@@ -914,6 +1112,7 @@ def _(
                                 stderr=sp.PIPE,
                                 text=True,
                                 bufsize=1,
+                                cwd=COURSE_DIR,
                             )
                             _p.wait()
                             _out = (
@@ -926,6 +1125,7 @@ def _(
                                 capture_output=True,
                                 text=True,
                                 timeout=600,
+                                cwd=COURSE_DIR,
                             )
                             _out = (_p.stdout + _p.stderr).strip()
                         if _out:
@@ -942,7 +1142,12 @@ def _(
             elif _is_autograde:
                 _full_cmd = ["mograder"] + _cmd + ["--progress"]
                 _proc = sp.Popen(
-                    _full_cmd, stdout=sp.PIPE, stderr=sp.PIPE, text=True, bufsize=1
+                    _full_cmd,
+                    stdout=sp.PIPE,
+                    stderr=sp.PIPE,
+                    text=True,
+                    bufsize=1,
+                    cwd=COURSE_DIR,
                 )
                 _bar_ctx = None
                 _bar_inner = None
@@ -1034,6 +1239,7 @@ def _(
                         capture_output=True,
                         text=True,
                         timeout=600,
+                        cwd=COURSE_DIR,
                     )
                 _output = (_proc.stdout + _proc.stderr).strip()
                 _code = f"\n```\n{_output}\n```" if _output else ""

@@ -14,44 +14,49 @@ mograder follows [nbgrader's terminology](https://nbgrader.readthedocs.io/en/lat
 
 ```
 course/
+  mograder.toml              ← optional config (dirs, moodle settings, etc.)
+  gradebook.db               ← SQLite gradebook (created by autograde)
   source/
     assignment-name/
-      assignment-name.py   ← source notebook (with solutions)
-      data.csv             ← auxiliary files (copied to release)
+      assignment-name.py     ← source notebook (with solutions)
+      data.csv               ← auxiliary files (copied to release)
   release/
     assignment-name/
-      assignment-name.py   ← generated (solutions stripped)
-      data.csv             ← copied from source
+      assignment-name.py     ← generated (solutions stripped)
+      data.csv               ← copied from source
   submitted/
     assignment-name/
-      student1.py          ← student submissions
+      student1.py            ← student submissions
   autograded/
     assignment-name/
-      student1.py          ← output of mograder autograde
+      student1.py            ← output of mograder autograde
   feedback/
     assignment-name/
-      student1.html        ← output of mograder feedback
+      student1.html          ← output of mograder feedback
+  import/
+    assignment-name.csv      ← Moodle offline grading worksheet (optional)
 ```
 
 ## Workflow
 
-```
-1. mograder generate   ──→  source/*.py  →  release/*.py  (strip solutions)
-2. Students complete and submit .py files
-3. mograder autograde  ──→  submitted/*.py  →  autograded/*.py
+1. **`mograder generate`** — `source/*.py` → `release/*.py` (strip solutions)
+2. **Students** complete and submit `.py` files
+3. **`mograder autograde`** — `submitted/*.py` → `autograded/*.py`
    - Integrity check against source notebook (detects tampered check/marks cells)
    - Runs each notebook via `marimo export html`
    - Parses check results from HTML
    - Injects verification summary + GTA feedback cells
-4. GTAs grade          ──→  marimo edit autograded/student.py
-   - GTA sets _mark and writes _feedback, then saves
-5. mograder feedback   ──→  autograded/*.py  →  feedback/*.html
-   - Exports graded notebooks to standalone HTML
-   - Aggregates marks into CSV
-6. mograder moodle     ──→  grades.csv + worksheet.csv  →  export/
+   - Stores results in `gradebook.db`
+4. **GTAs grade** — formgrader Grading tab or `marimo edit`
+   - GTA sets manual mark and feedback per student
+   - Grades saved to `gradebook.db`
+5. **`mograder feedback`** — `autograded/*.py` → `feedback/*.html`
+   - Injects mark + feedback callout into existing autograde HTML
+   - Removes self-assessment scores cell
+6. **`mograder moodle`** — `gradebook.db` + `worksheet.csv` → `export/`
    - Merges grades into Moodle offline grading worksheets
-   - Optionally bundles HTML feedback into a Moodle-compatible ZIP
-```
+   - Bundles HTML feedback into a Moodle-compatible ZIP
+   - Auto-imports student names into gradebook
 
 ## Installation
 
@@ -71,12 +76,14 @@ Launch an interactive grading management dashboard:
 mograder formgrader course/
 ```
 
-This opens a marimo app with two tabs:
+This opens a marimo app with four tabs:
 
-- **Assignments** — overview table with per-assignment pipeline status, grade statistics (mean/min/max), and action buttons to run generate, autograde, and feedback export directly from the UI. Source and release columns link to `marimo edit` and `marimo run` respectively.
-- **Submissions** — drill-down for a selected assignment showing per-student status, marks breakdown, edit buttons to open autograded notebooks in `marimo edit` for GTA grading, and a mark distribution histogram.
+- **Assignments** — overview table with pipeline status and action buttons for generate, autograde, and export (feedback + Moodle merge). Source and release columns link to `marimo edit`.
+- **Submissions** — per-student status for the selected assignment with marks breakdown, edit buttons, and auto/manual/total histograms.
+- **Grading** — navigate between students with prev/next, set manual marks and feedback, auto-saved to the gradebook.
+- **Students** — cross-assignment marks table with name lookup from the gradebook.
 
-Options: `--port PORT` to set the server port, `--headless` to suppress the browser.
+The formgrader reads `mograder.toml` from the course directory for directory names, Moodle settings, and gradebook path (see [Configuration](#configuration)). Options: `--port PORT` to set the server port, `--headless` to suppress the browser.
 
 ### Generate release notebooks
 
@@ -108,7 +115,7 @@ mograder autograde submitted/hw1/*.py --source source/hw1/hw1.py --csv results.c
 mograder autograde submitted/hw1/*.py -j 8 --timeout 600
 ```
 
-When `--source` is provided (or auto-discovered from a sibling `source/` directory), mograder performs an integrity check — tampered check cells or marks definitions are reinjected from the source before execution.
+When `--source` is provided (or auto-discovered from a sibling `source/` directory), mograder performs an integrity check — tampered check cells or marks definitions are reinjected from the source before execution. Default values for `-j` and `--timeout` can be set in `mograder.toml` (see [Configuration](#configuration)).
 
 ### Export feedback
 
@@ -119,13 +126,46 @@ mograder feedback autograded/hw1/*.py -o feedback/hw1/
 mograder feedback autograded/hw1/*.py --grades-csv grades.csv
 ```
 
+### Import student names
+
+Import student names from a Moodle CSV into the gradebook (used for name display in the formgrader):
+
+```bash
+mograder import-students worksheet.csv
+```
+
 ### Upload to Moodle
 
 Merge grades into a Moodle offline grading worksheet and bundle feedback:
 
 ```bash
-mograder moodle worksheet.csv --grades-csv grades.csv -o export/
-mograder moodle worksheet.csv --grades-csv grades.csv --feedback-dir feedback/ -o export/
+mograder moodle worksheet.csv -o export/
+mograder moodle worksheet.csv --feedback-dir feedback/ -o export/
+mograder moodle worksheet.csv --grades-csv grades.csv -o export/   # manual CSV instead of gradebook
+```
+
+Grades are read from `gradebook.db` by default. The match column and name column can be configured in `mograder.toml` (see [Configuration](#configuration)). Student names are auto-imported into the gradebook when the moodle command runs.
+
+## Configuration
+
+Create `mograder.toml` in the course directory to customise settings:
+
+```toml
+[dirs]
+source = "source"       # default directory names
+import = "import"       # Moodle worksheets for export
+
+[moodle]
+csv = "moodle.csv"      # default Moodle worksheet
+match_column = "Username"
+name_column = "Full name"
+
+[defaults]
+jobs = 4
+timeout = 300
+
+[gradebook]
+path = "gradebook.db"
 ```
 
 ## Development

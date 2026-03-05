@@ -2,6 +2,7 @@
 
 import csv
 import math
+import re
 import zipfile
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -88,6 +89,77 @@ def write_moodle_csv(rows: list[dict], fieldnames: list[str], path: Path) -> Non
         writer = csv.DictWriter(f, fieldnames=fieldnames)
         writer.writeheader()
         writer.writerows(rows)
+
+
+@dataclass
+class ExtractResult:
+    """Tracks submission extraction outcomes."""
+
+    extracted: int = 0
+    skipped: int = 0
+    warnings: list[str] = field(default_factory=list)
+
+
+def extract_submissions(
+    zip_path: Path,
+    csv_path: Path,
+    output_dir: Path,
+    match_column: str = "Username",
+) -> ExtractResult:
+    """Extract Moodle submission ZIP into output_dir/<username>.py.
+
+    Moodle ZIP entries have paths like:
+        Full Name_participantid_assignsubmission_file_/original.py
+
+    Uses the CSV to map participant_id → username (match_column value).
+    """
+    _, rows = read_moodle_worksheet(csv_path)
+
+    # Build {participant_id: username} from Identifier column + match_column
+    pid_to_username: dict[str, str] = {}
+    for row in rows:
+        identifier = row.get("Identifier", "")
+        # "Participant 4454589" → "4454589"
+        parts = identifier.split()
+        if len(parts) >= 2:
+            pid_to_username[parts[-1]] = row[match_column]
+
+    result = ExtractResult()
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    # Group .py entries by participant_id
+    pid_pattern = re.compile(r"_(\d+)_assignsubmission_file_/")
+    py_entries: dict[str, list[str]] = {}  # pid → [entry names]
+
+    with zipfile.ZipFile(zip_path) as zf:
+        for entry in zf.namelist():
+            if not entry.endswith(".py"):
+                continue
+            m = pid_pattern.search(entry)
+            if not m:
+                continue
+            pid = m.group(1)
+            py_entries.setdefault(pid, []).append(entry)
+
+        for pid, entries in py_entries.items():
+            if pid not in pid_to_username:
+                result.warnings.append(
+                    f"⚠️ participant {pid} not found in CSV — skipped"
+                )
+                result.skipped += 1
+                continue
+            username = pid_to_username[pid]
+            if len(entries) > 1:
+                result.warnings.append(
+                    f"⚠️ {username} has {len(entries)} .py files — skipped"
+                )
+                result.skipped += 1
+                continue
+            data = zf.read(entries[0])
+            (output_dir / f"{username}.py").write_bytes(data)
+            result.extracted += 1
+
+    return result
 
 
 def build_feedback_zip(

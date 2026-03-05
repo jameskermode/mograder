@@ -10,6 +10,7 @@ from mograder.cli import cli
 from mograder.moodle import (
     build_feedback_zip,
     compute_statistics,
+    extract_submissions,
     merge_grades,
     read_grades_csv,
     read_moodle_worksheet,
@@ -376,6 +377,107 @@ def test_moodle_cli_no_feedback(tmp_path):
     assert (out_dir / "worksheet.csv").exists()
     # No ZIP should be created
     assert not list(out_dir.glob("*.zip"))
+
+
+def _make_submission_zip(path: Path, entries: dict[str, str]) -> Path:
+    """Create a ZIP with given {arc_path: content} entries."""
+    with zipfile.ZipFile(path, "w") as zf:
+        for arc, content in entries.items():
+            zf.writestr(arc, content)
+    return path
+
+
+# --- extract_submissions ---
+
+
+def test_extract_submissions_basic(tmp_path):
+    """One .py per student extracts correctly."""
+    csv_path = _make_moodle_csv(
+        tmp_path / "worksheet.csv",
+        [
+            _moodle_row(
+                username="u1234567",
+                full_name="Alice Example",
+                identifier="Participant 9900001",
+            ),
+            _moodle_row(
+                username="u7654321",
+                full_name="Bob Sample",
+                identifier="Participant 9900002",
+                id_number="7654321",
+            ),
+        ],
+    )
+    zip_path = _make_submission_zip(
+        tmp_path / "submissions.zip",
+        {
+            "Alice Example_9900001_assignsubmission_file_/hw1.py": "print('alice')",
+            "Bob Sample_9900002_assignsubmission_file_/hw1.py": "print('bob')",
+        },
+    )
+    out = tmp_path / "submitted"
+    result = extract_submissions(zip_path, csv_path, out)
+    assert result.extracted == 2
+    assert result.skipped == 0
+    assert not result.warnings
+    assert (out / "u1234567.py").read_text() == "print('alice')"
+    assert (out / "u7654321.py").read_text() == "print('bob')"
+
+
+def test_extract_submissions_multiple_py_skipped(tmp_path):
+    """Multiple .py files for one student → warning, skipped."""
+    csv_path = _make_moodle_csv(
+        tmp_path / "worksheet.csv",
+        [_moodle_row(username="u1234567", identifier="Participant 9900001")],
+    )
+    zip_path = _make_submission_zip(
+        tmp_path / "submissions.zip",
+        {
+            "Alice_9900001_assignsubmission_file_/hw1.py": "a",
+            "Alice_9900001_assignsubmission_file_/hw2.py": "b",
+        },
+    )
+    out = tmp_path / "submitted"
+    result = extract_submissions(zip_path, csv_path, out)
+    assert result.extracted == 0
+    assert result.skipped == 1
+    assert any("2 .py files" in w for w in result.warnings)
+
+
+def test_extract_submissions_missing_pid_in_csv(tmp_path):
+    """Participant ID in ZIP but not in CSV → warning, skipped."""
+    csv_path = _make_moodle_csv(
+        tmp_path / "worksheet.csv",
+        [_moodle_row(username="u1234567", identifier="Participant 9900001")],
+    )
+    zip_path = _make_submission_zip(
+        tmp_path / "submissions.zip",
+        {"Unknown_9999999_assignsubmission_file_/hw1.py": "x"},
+    )
+    out = tmp_path / "submitted"
+    result = extract_submissions(zip_path, csv_path, out)
+    assert result.extracted == 0
+    assert result.skipped == 1
+    assert any("9999999" in w for w in result.warnings)
+
+
+def test_extract_submissions_ignores_non_py(tmp_path):
+    """Non-.py files in ZIP are ignored."""
+    csv_path = _make_moodle_csv(
+        tmp_path / "worksheet.csv",
+        [_moodle_row(username="u1234567", identifier="Participant 9900001")],
+    )
+    zip_path = _make_submission_zip(
+        tmp_path / "submissions.zip",
+        {
+            "Alice_9900001_assignsubmission_file_/notes.txt": "text",
+            "Alice_9900001_assignsubmission_file_/hw1.py": "code",
+        },
+    )
+    out = tmp_path / "submitted"
+    result = extract_submissions(zip_path, csv_path, out)
+    assert result.extracted == 1
+    assert (out / "u1234567.py").read_text() == "code"
 
 
 def test_moodle_cli_bad_match_column(tmp_path):
