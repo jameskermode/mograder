@@ -400,9 +400,7 @@ def test_app_no_value_access_in_creator_cell():
     cells = re.split(r"@app\.cell", source)
     for cell in cells:
         # Find UI element creation patterns
-        created = re.findall(
-            r"(\w+)\s*=\s*mo\.ui\.(?:switch|file|button)\(", cell
-        )
+        created = re.findall(r"(\w+)\s*=\s*mo\.ui\.(?:switch|file|button)\(", cell)
         for name in created:
             # The same cell must not access <name>.value
             assert f"{name}.value" not in cell, (
@@ -426,7 +424,9 @@ def test_app_students_cell_does_not_depend_on_ui_elements():
 
     # Find the cell that builds students_content
     cells = re.split(r"@app\.cell", source)
-    students_cell = [c for c in cells if "students_content" in c and "collect_student_marks" in c]
+    students_cell = [
+        c for c in cells if "students_content" in c and "collect_student_marks" in c
+    ]
     assert len(students_cell) == 1, "Expected exactly one students content cell"
 
     # Extract the function signature (parameter list)

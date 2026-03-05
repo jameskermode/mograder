@@ -15,6 +15,7 @@ def _rel(p: Path) -> str:
     except ValueError:
         return str(p)
 
+
 import click
 
 from mograder import cells, feedback, integrity, markers, moodle, runner
@@ -187,7 +188,9 @@ def autograde(files, source_path, csv_path, jobs, timeout, output_dir, progress)
         shared_sandbox = runner.create_shared_sandbox(source_path)
         if progress:
             click.echo(
-                json.dumps({"event": "sandbox_done", "created": shared_sandbox is not None}),
+                json.dumps(
+                    {"event": "sandbox_done", "created": shared_sandbox is not None}
+                ),
                 err=True,
             )
         if shared_sandbox:

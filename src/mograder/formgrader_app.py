@@ -91,7 +91,16 @@ def _(COURSE_DIR, assignments, refresh_btn):
 
 
 @app.cell
-def _(COURSE_DIR, assignments, grade_stats, mo, set_action_log, set_pending_action, sp, sys):
+def _(
+    COURSE_DIR,
+    assignments,
+    grade_stats,
+    mo,
+    set_action_log,
+    set_pending_action,
+    sp,
+    sys,
+):
     def _open_marimo(mode, path, label):
         sp.Popen([sys.executable, "-m", "marimo", mode, "--sandbox", str(path)])
         set_action_log(f"Opened **{mode}** for `{label}`")
@@ -147,9 +156,7 @@ def _(COURSE_DIR, assignments, grade_stats, mo, set_action_log, set_pending_acti
                 )
             )
         else:
-            _gen.append(
-                mo.ui.button(label="\u25b6", disabled=True, tooltip="Generate")
-            )
+            _gen.append(mo.ui.button(label="\u25b6", disabled=True, tooltip="Generate"))
 
         # Autograde
         _sub_dir = COURSE_DIR / "submitted" / _a.name
@@ -207,8 +214,8 @@ def _(COURSE_DIR, assignments, grade_stats, mo, set_action_log, set_pending_acti
 
     # --- build merged assignments + grades table ---
     # Unlabelled arrow column keys (visually empty, must be unique)
-    _COL_GEN = "\u00a0"      # between Source and Release
-    _COL_AUTO = "\u00a0\u00a0"    # between Submitted and Autograded
+    _COL_GEN = "\u00a0"  # between Source and Release
+    _COL_AUTO = "\u00a0\u00a0"  # between Submitted and Autograded
     _COL_FB = "\u00a0\u00a0\u00a0"  # between Graded and Feedback
 
     _rows = []
@@ -240,9 +247,7 @@ def _(COURSE_DIR, assignments, grade_stats, mo, set_action_log, set_pending_acti
 
         # Feedback column: text only
         _fb_text = (
-            f"{_a.num_feedback}/{_a.num_autograded}"
-            if _a.num_autograded
-            else "\u2013"
+            f"{_a.num_feedback}/{_a.num_autograded}" if _a.num_autograded else "\u2013"
         )
 
         _rows.append(
@@ -417,7 +422,13 @@ def _(Path, moodle_file, show_names):
 
 @app.cell
 def _(
-    COURSE_DIR, assignments, mo, name_lookup, plt, refresh_btn, sns,
+    COURSE_DIR,
+    assignments,
+    mo,
+    name_lookup,
+    plt,
+    refresh_btn,
+    sns,
     students_controls,
 ):
     from mograder.formgrader import collect_student_marks, get_max_marks
@@ -489,9 +500,7 @@ def _(get_action_log, mo, set_action_log):
             label="Dismiss",
             on_change=lambda _: set_action_log(""),
         )
-        action_log_content = mo.vstack(
-            [mo.callout(mo.md(_log), kind=_kind), clear_btn]
-        )
+        action_log_content = mo.vstack([mo.callout(mo.md(_log), kind=_kind), clear_btn])
     else:
         clear_btn = mo.ui.button(label="Dismiss", disabled=True)
         action_log_content = mo.md("")

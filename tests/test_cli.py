@@ -200,7 +200,9 @@ def test_formgrader_app_has_no_script_header():
 @patch("mograder.runner.run_notebook")
 @patch("mograder.cells.inject_grading_cells")
 @patch("mograder.runner.run_batch")
-def test_autograde_with_source(mock_batch, mock_inject, mock_run_nb, mock_sandbox, tmp_path):
+def test_autograde_with_source(
+    mock_batch, mock_inject, mock_run_nb, mock_sandbox, tmp_path
+):
     """autograde --source runs the source notebook and uses integrity check."""
     nb = tmp_path / "student.py"
     nb.write_text(

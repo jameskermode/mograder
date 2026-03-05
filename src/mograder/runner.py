@@ -56,13 +56,25 @@ def create_shared_sandbox(notebook_path: Path) -> Path | None:
         reqs_file.write_text(proc.stdout)
         venv_python = venv_dir / "bin" / "python"
         subprocess.run(
-            ["uv", "pip", "install", "--python", str(venv_python), "-r", str(reqs_file)],
+            [
+                "uv",
+                "pip",
+                "install",
+                "--python",
+                str(venv_python),
+                "-r",
+                str(reqs_file),
+            ],
             capture_output=True,
             text=True,
             timeout=300,
             check=True,
         )
-    except (subprocess.CalledProcessError, subprocess.TimeoutExpired, FileNotFoundError):
+    except (
+        subprocess.CalledProcessError,
+        subprocess.TimeoutExpired,
+        FileNotFoundError,
+    ):
         shutil.rmtree(venv_dir, ignore_errors=True)
         return None
 
