@@ -1,7 +1,13 @@
 """Directory scanning for formgrader dashboard."""
 
+from __future__ import annotations
+
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from mograder.gradebook import Gradebook
 
 from mograder.cells import (
     has_grading_cells,
@@ -54,7 +60,9 @@ class AssignmentInfo:
 
 
 def scan_course(
-    course_dir: Path, dir_names: DirNames | None = None
+    course_dir: Path,
+    dir_names: DirNames | None = None,
+    gradebook: Gradebook | None = None,
 ) -> list[AssignmentInfo]:
     """Scan a course directory and return status for each assignment.
 
@@ -111,13 +119,16 @@ def scan_course(
                 if py_files:
                     info = _ensure(d.name)
                     info.num_autograded = len(py_files)
-                    graded_count = 0
-                    for f in py_files:
-                        lines = f.read_text().splitlines(keepends=True)
-                        mark, _ = parse_gta_feedback(lines)
-                        if mark is not None:
-                            graded_count += 1
-                    info.num_graded = graded_count
+                    if gradebook is not None:
+                        info.num_graded = gradebook.count_graded(d.name)
+                    else:
+                        graded_count = 0
+                        for f in py_files:
+                            lines = f.read_text().splitlines(keepends=True)
+                            mark, _ = parse_gta_feedback(lines)
+                            if mark is not None:
+                                graded_count += 1
+                        info.num_graded = graded_count
 
     # Scan feedback/
     feedback_dir = course_dir / dn.feedback
@@ -133,7 +144,10 @@ def scan_course(
 
 
 def scan_submissions(
-    course_dir: Path, assignment: str, dir_names: DirNames | None = None
+    course_dir: Path,
+    assignment: str,
+    dir_names: DirNames | None = None,
+    gradebook: Gradebook | None = None,
 ) -> list[SubmissionInfo]:
     """Scan per-student submission details for an assignment.
 
@@ -159,25 +173,48 @@ def scan_submissions(
 
     # Autograded
     auto_dir = course_dir / dn.autograded / assignment
+    # Pre-load DB submissions if available
+    db_subs: dict[str, dict] = {}
+    if gradebook is not None:
+        for sub in gradebook.list_submissions(assignment):
+            db_subs[sub["student"]] = sub
+
     if auto_dir.is_dir():
         for f in auto_dir.iterdir():
             if f.suffix == ".py":
                 info = _ensure(f.stem)
                 info.autograded_path = f
-                lines = f.read_text().splitlines(keepends=True)
-                info.has_grading_cells = has_grading_cells(lines)
-                mark, feedback_text = parse_gta_feedback(lines)
-                auto_mark = parse_auto_marks(lines)
-                info.auto_mark = auto_mark
-                info.feedback_text = feedback_text
-                if auto_mark is not None and mark is not None:
-                    info.mark = auto_mark + mark
-                    info.graded = True
-                elif auto_mark is None and mark is not None:
-                    info.mark = mark
-                    info.graded = True
+
+                if f.stem in db_subs:
+                    # Use DB data
+                    sub = db_subs[f.stem]
+                    info.has_grading_cells = True
+                    info.auto_mark = (
+                        int(sub["auto_mark"]) if sub["auto_mark"] is not None else None
+                    )
+                    info.mark = (
+                        int(sub["total_mark"])
+                        if sub["total_mark"] is not None
+                        else None
+                    )
+                    info.feedback_text = sub["feedback"] or ""
+                    info.graded = sub["graded_at"] is not None
                 else:
-                    info.graded = False
+                    # Fall back to .py parsing
+                    lines = f.read_text().splitlines(keepends=True)
+                    info.has_grading_cells = has_grading_cells(lines)
+                    mark, feedback_text = parse_gta_feedback(lines)
+                    auto_mark = parse_auto_marks(lines)
+                    info.auto_mark = auto_mark
+                    info.feedback_text = feedback_text
+                    if auto_mark is not None and mark is not None:
+                        info.mark = auto_mark + mark
+                        info.graded = True
+                    elif auto_mark is None and mark is not None:
+                        info.mark = mark
+                        info.graded = True
+                    else:
+                        info.graded = False
 
     # Feedback HTML
     fb_dir = course_dir / dn.feedback / assignment
@@ -194,8 +231,12 @@ def collect_student_marks(
     course_dir: Path,
     assignments: list[AssignmentInfo],
     dir_names: DirNames | None = None,
+    gradebook: Gradebook | None = None,
 ) -> dict[str, dict[str, int | None]]:
     """Build ``{student_id: {assignment_name: mark | None}}`` across all assignments."""
+    if gradebook is not None:
+        return gradebook.collect_student_marks([a.name for a in assignments])
+
     course_dir = Path(course_dir)
     dn = dir_names or DirNames()
     result: dict[str, dict[str, int | None]] = {}

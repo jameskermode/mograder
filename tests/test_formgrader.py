@@ -589,6 +589,75 @@ def test_collect_student_marks_custom_dirs(tmp_path):
     assert result_default == {}
 
 
+# --- DB-backed scan tests ---
+
+
+def test_scan_course_with_gradebook(tmp_path):
+    """scan_course uses gradebook.count_graded when available."""
+    from mograder.gradebook import Gradebook
+
+    name = "hw1"
+    (tmp_path / "source" / name).mkdir(parents=True)
+    (tmp_path / "source" / name / f"{name}.py").write_text(_minimal_notebook())
+    auto_dir = tmp_path / "autograded" / name
+    auto_dir.mkdir(parents=True)
+    (auto_dir / "alice.py").write_text(_make_autograded(graded=False))
+    (auto_dir / "bob.py").write_text(_make_autograded(graded=False))
+
+    with Gradebook(tmp_path / "gradebook.db") as gb:
+        gb.upsert_assignment(name)
+        checks = [CheckResult("Q1: Foo", "success")]
+        gb.save_autograde_result(name, "alice", checks)
+        gb.save_autograde_result(name, "bob", checks)
+        gb.save_manual_grade(name, "alice", 80)
+
+        result = scan_course(tmp_path, gradebook=gb)
+        assert len(result) == 1
+        assert result[0].num_graded == 1
+
+
+def test_scan_submissions_with_gradebook(tmp_path):
+    """scan_submissions reads marks from DB when gradebook is provided."""
+    from mograder.gradebook import Gradebook
+
+    name = "hw1"
+    auto_dir = tmp_path / "autograded" / name
+    auto_dir.mkdir(parents=True)
+    (auto_dir / "alice.py").write_text(_make_autograded(graded=False))
+
+    with Gradebook(tmp_path / "gradebook.db") as gb:
+        gb.upsert_assignment(name)
+        checks = [CheckResult("Q1: Foo", "success")]
+        gb.save_autograde_result(name, "alice", checks, auto_mark=10)
+        gb.save_manual_grade(name, "alice", 60, "Good work")
+
+        result = scan_submissions(tmp_path, name, gradebook=gb)
+        assert len(result) == 1
+        assert result[0].student == "alice"
+        assert result[0].mark == 70
+        assert result[0].auto_mark == 10
+        assert result[0].feedback_text == "Good work"
+        assert result[0].graded is True
+
+
+def test_collect_student_marks_with_gradebook(tmp_path):
+    """collect_student_marks reads from DB when gradebook is provided."""
+    from mograder.formgrader import AssignmentInfo
+    from mograder.gradebook import Gradebook
+
+    name = "hw1"
+
+    with Gradebook(tmp_path / "gradebook.db") as gb:
+        gb.upsert_assignment(name)
+        checks = [CheckResult("Q1: Foo", "success")]
+        gb.save_autograde_result(name, "alice", checks, auto_mark=10)
+        gb.save_manual_grade(name, "alice", 60)
+
+        assignments = [AssignmentInfo(name=name)]
+        result = collect_student_marks(tmp_path, assignments, gradebook=gb)
+        assert result["alice"][name] == 70
+
+
 def test_app_progress_bar_uses_context_manager_return():
     """progress_bar.__enter__() returns a ProgressBar; update() must be called on that, not the wrapper."""
     import re

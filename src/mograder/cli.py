@@ -10,6 +10,7 @@ from pathlib import Path
 import click
 
 from mograder import cells, feedback, integrity, markers, moodle, runner
+from mograder.gradebook import Gradebook
 
 
 def _rel(p: Path) -> str:
@@ -56,6 +57,32 @@ def _find_source(submitted_path: Path, source_dir: str = "source") -> Path | Non
         if candidate.exists():
             return candidate
     return None
+
+
+def _find_gradebook(path: Path, gradebook_name: str = "gradebook.db") -> Path | None:
+    """Walk up from *path* looking for a gradebook database file."""
+    for ancestor in [path.parent, path.parent.parent, path.parent.parent.parent]:
+        candidate = ancestor / gradebook_name
+        if candidate.is_file():
+            return candidate
+    return None
+
+
+def _compute_auto_mark(
+    checks: list, marks: dict[str, int | float] | None
+) -> float | None:
+    """Compute auto-scored marks from check results and marks metadata."""
+    if marks is None:
+        return None
+    check_keys = {c.label.split(":")[0].strip() for c in checks}
+    return sum(
+        marks[k]
+        for k in check_keys
+        if k in marks
+        and any(
+            c.status == "success" for c in checks if c.label.split(":")[0].strip() == k
+        )
+    )
 
 
 @click.group()
@@ -340,6 +367,39 @@ def autograde(ctx, files, source_path, csv_path, jobs, timeout, output_dir, prog
         dest.write_text("".join(modified))
         click.echo(f"  Grading copy: {_rel(dest)}")
 
+    # Write results to gradebook
+    db_path = output_dir.parent / config.gradebook
+    with Gradebook(db_path) as gb:
+        # Auto-import existing grades if this is a fresh DB
+        if gb.is_new:
+            # Scan for existing autograded dirs
+            for d in output_dir.parent.iterdir() if output_dir.parent.is_dir() else []:
+                if d.is_dir() and d != output_dir:
+                    for sub_d in d.iterdir():
+                        if sub_d.is_dir() and any(sub_d.glob("*.py")):
+                            gb.upsert_assignment(sub_d.name)
+                            imported = gb.import_from_py(sub_d.name, sub_d)
+                            if imported:
+                                click.echo(
+                                    f"  Auto-imported {imported} grades from {_rel(sub_d)}"
+                                )
+
+        assignment_name = notebooks[0].parent.name
+        max_mark = sum(marks.values()) if marks else 100
+        gb.upsert_assignment(assignment_name, max_mark=max_mark, marks_metadata=marks)
+        for result in results:
+            if not result.export_ok:
+                continue
+            auto_mark = _compute_auto_mark(result.checks, marks)
+            gb.save_autograde_result(
+                assignment_name,
+                result.path.stem,
+                result.checks,
+                result.cell_errors,
+                auto_mark,
+                result.tampered,
+            )
+
     # Write CSV if requested
     if csv_path:
         runner.write_csv(results, all_labels, csv_path, marks)
@@ -383,8 +443,18 @@ def feedback_cmd(ctx, files, output_dir, grades_csv, timeout, jobs):
             config.feedback_dir,
         )
 
-    # Collect grades from graded notebooks
-    grades = feedback.collect_grades(notebooks)
+    # Collect grades — prefer gradebook, fall back to .py parsing
+    assignment_name = notebooks[0].parent.name
+    db_path = _find_gradebook(notebooks[0], config.gradebook)
+    grades_by_student: dict[str, dict] = {}
+    if db_path:
+        with Gradebook(db_path) as gb:
+            grades = gb.collect_grades(assignment_name)
+            grades_by_student = {g["student"]: g for g in grades}
+        click.echo(f"Reading grades from {_rel(db_path)}")
+    else:
+        grades = feedback.collect_grades(notebooks)
+        grades_by_student = {g["student"]: g for g in grades}
     n_graded = sum(1 for g in grades if g["mark"] is not None)
     click.echo(f"{n_graded}/{len(notebooks)} notebooks have been graded")
 
@@ -394,8 +464,15 @@ def feedback_cmd(ctx, files, output_dir, grades_csv, timeout, jobs):
     )
     for nb in notebooks:
         try:
+            # Use pre-loaded grade data from DB if available
+            grade_data = grades_by_student.get(nb.stem)
             html_path = feedback.export_feedback_html(
-                nb, output_dir_path, timeout=timeout
+                nb,
+                output_dir_path,
+                timeout=timeout,
+                mark=grade_data.get("mark") if grade_data else None,
+                feedback_text=grade_data.get("feedback") if grade_data else None,
+                auto_mark=grade_data.get("auto_mark") if grade_data else None,
             )
             click.echo(f"  Exported: {_rel(html_path)}")
         except Exception as e:
@@ -414,9 +491,10 @@ cli.add_command(feedback_cmd, "feedback")
 @click.argument("worksheet", type=click.Path(exists=True, path_type=Path))
 @click.option(
     "--grades-csv",
-    required=True,
+    required=False,
     type=click.Path(exists=True, path_type=Path),
-    help="mograder grades CSV",
+    default=None,
+    help="mograder grades CSV (auto-discovered from gradebook.db if omitted)",
 )
 @click.option(
     "--feedback-dir",
@@ -452,7 +530,20 @@ def moodle_cmd(ctx, worksheet, grades_csv, feedback_dir, output_dir, match_colum
         )
         sys.exit(1)
 
-    grades = moodle.read_grades_csv(grades_csv)
+    # Read grades — prefer CSV if given, otherwise try gradebook
+    if grades_csv:
+        grades = moodle.read_grades_csv(grades_csv)
+    else:
+        db_path = Path.cwd() / config.gradebook
+        if db_path.is_file():
+            grades = moodle.grades_from_gradebook(db_path)
+            click.echo(f"Reading grades from {_rel(db_path)}")
+        else:
+            click.echo(
+                "ERROR: no --grades-csv provided and no gradebook.db found",
+                err=True,
+            )
+            sys.exit(1)
 
     # Merge
     updated_rows, result = moodle.merge_grades(moodle_rows, grades, match_column)

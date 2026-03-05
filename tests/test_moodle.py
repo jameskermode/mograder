@@ -4,12 +4,10 @@ import csv
 import zipfile
 from pathlib import Path
 
-import pytest
 from click.testing import CliRunner
 
 from mograder.cli import cli
 from mograder.moodle import (
-    MergeResult,
     build_feedback_zip,
     compute_statistics,
     merge_grades,

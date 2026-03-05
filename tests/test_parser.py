@@ -1,5 +1,3 @@
-from pathlib import Path
-
 from mograder.parser import count_cell_errors, parse_check_results
 
 

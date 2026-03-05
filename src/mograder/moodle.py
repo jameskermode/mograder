@@ -123,6 +123,36 @@ def build_feedback_zip(
     return count
 
 
+def grades_from_gradebook(db_path: "Path") -> dict[str, dict]:
+    """Read grades from a gradebook DB, merging all assignments.
+
+    Returns same format as ``read_grades_csv()``: ``{student: {mark, feedback, ...}}``.
+    """
+    from mograder.gradebook import Gradebook
+
+    grades: dict[str, dict] = {}
+    with Gradebook(db_path) as gb:
+        # Get all assignments
+        rows = gb._conn.execute("SELECT name FROM assignments").fetchall()
+        for row in rows:
+            for g in gb.collect_grades(row["name"]):
+                student = g["student"]
+                if student not in grades:
+                    grades[student] = {"student": student, "mark": None, "feedback": ""}
+                # Sum marks across assignments
+                if g["mark"] is not None:
+                    if grades[student]["mark"] is None:
+                        grades[student]["mark"] = g["mark"]
+                    else:
+                        grades[student]["mark"] += g["mark"]
+                if g["feedback"]:
+                    if grades[student]["feedback"]:
+                        grades[student]["feedback"] += "\n" + g["feedback"]
+                    else:
+                        grades[student]["feedback"] = g["feedback"]
+    return grades
+
+
 def compute_statistics(marks: list[int]) -> str:
     """Format grade statistics: min, max, mean±stddev, distribution buckets."""
     if not marks:

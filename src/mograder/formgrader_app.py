@@ -18,6 +18,7 @@ def _():
 
     from mograder.config import load_config
     from mograder.formgrader import DirNames
+    from mograder.gradebook import Gradebook
 
     COURSE_DIR = Path(os.environ.get("MOGRADER_COURSE_DIR", ".")).resolve()
     MOGRADER_CONFIG = load_config(COURSE_DIR)
@@ -28,7 +29,23 @@ def _():
         autograded=MOGRADER_CONFIG.autograded_dir,
         feedback=MOGRADER_CONFIG.feedback_dir,
     )
-    return COURSE_DIR, DIR_NAMES, MOGRADER_CONFIG, Path, mo, os, plt, sns, sp, sys
+
+    _gb_path = COURSE_DIR / MOGRADER_CONFIG.gradebook
+    GRADEBOOK = Gradebook(_gb_path) if _gb_path.is_file() else None
+    return (
+        COURSE_DIR,
+        DIR_NAMES,
+        GRADEBOOK,
+        Gradebook,
+        MOGRADER_CONFIG,
+        Path,
+        mo,
+        os,
+        plt,
+        sns,
+        sp,
+        sys,
+    )
 
 
 @app.cell
@@ -60,11 +77,11 @@ def _(COURSE_DIR, mo):
 
 
 @app.cell
-def _(COURSE_DIR, DIR_NAMES, get_data_version, refresh_btn):
+def _(COURSE_DIR, DIR_NAMES, GRADEBOOK, get_data_version, refresh_btn):
     from mograder.formgrader import scan_course
 
     _refresh = refresh_btn.value, get_data_version()
-    assignments = scan_course(COURSE_DIR, dir_names=DIR_NAMES)
+    assignments = scan_course(COURSE_DIR, dir_names=DIR_NAMES, gradebook=GRADEBOOK)
     return assignments, scan_course
 
 
@@ -274,6 +291,7 @@ def _(
 def _(
     COURSE_DIR,
     DIR_NAMES,
+    GRADEBOOK,
     get_data_version,
     get_selected,
     mo,
@@ -290,7 +308,9 @@ def _(
     _selected = get_selected()
 
     if _selected:
-        _subs = scan_submissions(COURSE_DIR, _selected, dir_names=DIR_NAMES)
+        _subs = scan_submissions(
+            COURSE_DIR, _selected, dir_names=DIR_NAMES, gradebook=GRADEBOOK
+        )
 
         def _open_editor(path):
             sp.Popen([sys.executable, "-m", "marimo", "edit", "--sandbox", str(path)])
@@ -379,34 +399,37 @@ def _(mo):
 
 
 @app.cell
-def _(COURSE_DIR, MOGRADER_CONFIG, Path, moodle_file, show_names):
-    if show_names.value:
-        from mograder.moodle import read_moodle_worksheet as _read_ws
+def _(name_lookup, show_names):
+    students_name_lookup = name_lookup if show_names.value else {}
+    return (students_name_lookup,)
 
-        _match_col = MOGRADER_CONFIG.moodle_match_column
-        _name_col = MOGRADER_CONFIG.moodle_name_column
-        _rows = None
 
-        # Priority 1: uploaded file
-        if moodle_file.value:
-            _bytes = moodle_file.value[0].contents
-            _tmp = Path("/tmp/_mograder_moodle_upload.csv")
-            _tmp.write_bytes(_bytes)
-            _, _rows = _read_ws(_tmp)
-        # Priority 2: config moodle_csv
-        elif MOGRADER_CONFIG.moodle_csv:
-            _csv_path = COURSE_DIR / MOGRADER_CONFIG.moodle_csv
-            if _csv_path.is_file():
-                _, _rows = _read_ws(_csv_path)
+@app.cell
+def _(COURSE_DIR, MOGRADER_CONFIG, Path, moodle_file):
+    from mograder.moodle import read_moodle_worksheet as _read_ws
 
-        if _rows is not None:
-            name_lookup = {
-                r[_match_col]: r[_name_col]
-                for r in _rows
-                if _match_col in r and _name_col in r
-            }
-        else:
-            name_lookup = {}
+    _match_col = MOGRADER_CONFIG.moodle_match_column
+    _name_col = MOGRADER_CONFIG.moodle_name_column
+    _rows = None
+
+    # Priority 1: uploaded file
+    if moodle_file.value:
+        _bytes = moodle_file.value[0].contents
+        _tmp = Path("/tmp/_mograder_moodle_upload.csv")
+        _tmp.write_bytes(_bytes)
+        _, _rows = _read_ws(_tmp)
+    # Priority 2: config moodle_csv
+    elif MOGRADER_CONFIG.moodle_csv:
+        _csv_path = COURSE_DIR / MOGRADER_CONFIG.moodle_csv
+        if _csv_path.is_file():
+            _, _rows = _read_ws(_csv_path)
+
+    if _rows is not None:
+        name_lookup = {
+            r[_match_col]: r[_name_col]
+            for r in _rows
+            if _match_col in r and _name_col in r
+        }
     else:
         name_lookup = {}
     return (name_lookup,)
@@ -416,25 +439,28 @@ def _(COURSE_DIR, MOGRADER_CONFIG, Path, moodle_file, show_names):
 def _(
     COURSE_DIR,
     DIR_NAMES,
+    GRADEBOOK,
     assignments,
     mo,
-    name_lookup,
     plt,
     refresh_btn,
     sns,
     students_controls,
+    students_name_lookup,
 ):
     from mograder.formgrader import collect_student_marks, get_max_marks
 
     _ = refresh_btn.value
-    _student_marks = collect_student_marks(COURSE_DIR, assignments, dir_names=DIR_NAMES)
+    _student_marks = collect_student_marks(
+        COURSE_DIR, assignments, dir_names=DIR_NAMES, gradebook=GRADEBOOK
+    )
     _max_marks = get_max_marks(COURSE_DIR, assignments, dir_names=DIR_NAMES)
     _assignment_names = [a.name for a in assignments]
 
     _rows = []
     _averages = []
     for _sid in sorted(_student_marks):
-        _display = name_lookup.get(_sid, _sid)
+        _display = students_name_lookup.get(_sid, _sid)
         _row = {"Student": _display}
         _total = 0
         _max_total = 0
@@ -483,7 +509,7 @@ def _(
 
 
 @app.cell
-def _(COURSE_DIR, DIR_NAMES, get_selected, refresh_btn, set_grading_index):
+def _(COURSE_DIR, DIR_NAMES, GRADEBOOK, get_selected, refresh_btn, set_grading_index):
     from mograder.formgrader import scan_submissions as _scan_subs
 
     _ = refresh_btn.value
@@ -491,7 +517,9 @@ def _(COURSE_DIR, DIR_NAMES, get_selected, refresh_btn, set_grading_index):
     # Use the assignment selected in the Assignments tab
     _sel = get_selected()
     if _sel:
-        grading_subs = _scan_subs(COURSE_DIR, _sel, dir_names=DIR_NAMES)
+        grading_subs = _scan_subs(
+            COURSE_DIR, _sel, dir_names=DIR_NAMES, gradebook=GRADEBOOK
+        )
         grading_subs = [s for s in grading_subs if s.autograded_path]
     else:
         grading_subs = []
@@ -514,17 +542,41 @@ def _(get_grading_index, grading_subs):
 
 
 @app.cell
-def _(grading_current_sub, mo):
+def _(GRADEBOOK, grading_assignment_name, grading_current_sub, mo):
     from mograder.cells import parse_auto_marks as _parse_auto
     from mograder.cells import parse_gta_feedback as _parse_fb
 
-    # Create mark + feedback inputs, re-reading the .py file for fresh data
+    # Create mark + feedback inputs, re-reading from DB or .py file for fresh data
     if grading_current_sub is not None and grading_current_sub.autograded_path:
-        _lines = grading_current_sub.autograded_path.read_text().splitlines(
-            keepends=True
-        )
-        _mark, _feedback_text = _parse_fb(_lines)
-        _auto_mark = _parse_auto(_lines)
+        _mark = None
+        _feedback_text = ""
+        _auto_mark = None
+
+        # Try DB first
+        if GRADEBOOK is not None and grading_assignment_name:
+            _db_sub = GRADEBOOK.get_submission(
+                grading_assignment_name, grading_current_sub.student
+            )
+            if _db_sub is not None:
+                _mark = (
+                    int(_db_sub["manual_mark"])
+                    if _db_sub["manual_mark"] is not None
+                    else None
+                )
+                _feedback_text = _db_sub["feedback"] or ""
+                _auto_mark = (
+                    int(_db_sub["auto_mark"])
+                    if _db_sub["auto_mark"] is not None
+                    else None
+                )
+
+        # Fall back to .py parsing if no DB data
+        if GRADEBOOK is None or not grading_assignment_name:
+            _lines = grading_current_sub.autograded_path.read_text().splitlines(
+                keepends=True
+            )
+            _mark, _feedback_text = _parse_fb(_lines)
+            _auto_mark = _parse_auto(_lines)
 
         _existing_mark = ""
         if _mark is not None:
@@ -589,6 +641,10 @@ def _(mo):
 
 @app.cell
 def _(
+    COURSE_DIR,
+    GRADEBOOK,
+    Gradebook,
+    MOGRADER_CONFIG,
     get_grading_index,
     grading_assignment_name,
     grading_current_sub,
@@ -608,7 +664,28 @@ def _(
             _mark_str = grading_mark_input.value.strip()
             _mark = int(_mark_str) if _mark_str else None
             _feedback = grading_feedback_input.value or ""
-            _write_fb(grading_current_sub.autograded_path, _mark, _feedback)
+            # Write to DB if available
+            if GRADEBOOK is not None and grading_assignment_name:
+                GRADEBOOK.save_manual_grade(
+                    grading_assignment_name,
+                    grading_current_sub.student,
+                    _mark,
+                    _feedback,
+                )
+            elif grading_assignment_name:
+                _gb_path = COURSE_DIR / MOGRADER_CONFIG.gradebook
+                if _gb_path.is_file():
+                    with Gradebook(_gb_path) as _gb:
+                        _gb.save_manual_grade(
+                            grading_assignment_name,
+                            grading_current_sub.student,
+                            _mark,
+                            _feedback,
+                        )
+                else:
+                    _write_fb(grading_current_sub.autograded_path, _mark, _feedback)
+            else:
+                _write_fb(grading_current_sub.autograded_path, _mark, _feedback)
         set_data_version(lambda v: v + 1)
 
     def _save_and_navigate(new_idx):

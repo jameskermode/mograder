@@ -193,12 +193,19 @@ def export_feedback_html(
     notebook_path: Path,
     output_dir: Path,
     timeout: int = 300,
+    mark: int | float | None = None,
+    feedback_text: str | None = None,
+    auto_mark: int | float | None = None,
+    total_available: int | float | None = None,
 ) -> Path:
     """Export a graded notebook to standalone HTML feedback.
 
     If an autograde HTML file exists alongside the notebook, injects the
     GTA feedback directly into it (fast, no subprocess). Otherwise falls
     back to running ``marimo export html``.
+
+    When *mark* is provided, uses those values directly instead of parsing
+    the ``.py`` file for grade data.
 
     Returns the path to the exported HTML file.
     """
@@ -208,28 +215,36 @@ def export_feedback_html(
     autograde_html = notebook_path.with_suffix(".html")
 
     if autograde_html.exists():
-        # Read grades from the .py file
-        lines = notebook_path.read_text().splitlines(keepends=True)
-        manual_mark, feedback_text = parse_gta_feedback(lines)
-        auto_mark = parse_auto_marks(lines)
-        marks_meta = parse_marks_metadata(lines)
+        # Use pre-loaded values if provided, else read from .py
+        if mark is not None and feedback_text is not None:
+            _mark = mark
+            _feedback = feedback_text
+            _auto_mark = auto_mark
+            _total_avail = total_available
+        else:
+            lines = notebook_path.read_text().splitlines(keepends=True)
+            manual_mark, _feedback = parse_gta_feedback(lines)
+            _auto_mark = parse_auto_marks(lines)
+            marks_meta = parse_marks_metadata(lines)
 
-        if manual_mark is not None:
-            # Compute total mark
-            if auto_mark is not None:
-                total_mark = auto_mark + manual_mark
+            if manual_mark is not None:
+                if _auto_mark is not None:
+                    _mark = _auto_mark + manual_mark
+                else:
+                    _mark = manual_mark
+                _total_avail = sum(marks_meta.values()) if marks_meta else None
             else:
-                total_mark = manual_mark
+                _mark = None
+                _total_avail = None
 
-            total_available = sum(marks_meta.values()) if marks_meta else None
-
+        if _mark is not None:
             inject_feedback_html(
                 autograde_html.read_text(),
                 dest,
-                mark=total_mark,
-                feedback_text=feedback_text,
-                auto_mark=auto_mark,
-                total_available=total_available,
+                mark=_mark,
+                feedback_text=_feedback or "",
+                auto_mark=_auto_mark,
+                total_available=_total_avail,
             )
         else:
             # Not yet graded — just copy the HTML as-is

@@ -1,0 +1,55 @@
+"""TOML configuration file support for mograder."""
+
+import tomllib
+from dataclasses import dataclass
+from pathlib import Path
+
+
+@dataclass(frozen=True)
+class MograderConfig:
+    """Configuration loaded from ``mograder.toml``."""
+
+    # [moodle]
+    moodle_csv: str | None = None
+    moodle_match_column: str = "Username"
+    moodle_name_column: str = "Full name"
+    # [defaults]
+    jobs: int = 4
+    timeout: int = 300
+    # [dirs]
+    source_dir: str = "source"
+    release_dir: str = "release"
+    submitted_dir: str = "submitted"
+    autograded_dir: str = "autograded"
+    feedback_dir: str = "feedback"
+    # [gradebook]
+    gradebook: str = "gradebook.db"
+
+
+DEFAULT_CONFIG = MograderConfig()
+
+
+def load_config(course_dir: Path) -> MograderConfig:
+    """Load ``mograder.toml`` from *course_dir*. Returns defaults if missing."""
+    config_path = course_dir / "mograder.toml"
+    if not config_path.is_file():
+        return DEFAULT_CONFIG
+    with open(config_path, "rb") as f:
+        data = tomllib.load(f)
+    moodle = data.get("moodle", {})
+    defaults = data.get("defaults", {})
+    dirs = data.get("dirs", {})
+    gradebook = data.get("gradebook", {})
+    return MograderConfig(
+        moodle_csv=moodle.get("csv"),
+        moodle_match_column=moodle.get("match_column", "Username"),
+        moodle_name_column=moodle.get("name_column", "Full name"),
+        jobs=defaults.get("jobs", 4),
+        timeout=defaults.get("timeout", 300),
+        source_dir=dirs.get("source", "source"),
+        release_dir=dirs.get("release", "release"),
+        submitted_dir=dirs.get("submitted", "submitted"),
+        autograded_dir=dirs.get("autograded", "autograded"),
+        feedback_dir=dirs.get("feedback", "feedback"),
+        gradebook=gradebook.get("path", "gradebook.db"),
+    )
