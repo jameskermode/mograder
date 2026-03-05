@@ -7,6 +7,7 @@ import subprocess
 import sys
 import tempfile
 import zipfile
+from collections.abc import Callable
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from pathlib import Path
 
@@ -14,10 +15,65 @@ from mograder.models import NotebookResult
 from mograder.parser import count_cell_errors, parse_check_results
 
 
+def create_shared_sandbox(notebook_path: Path) -> Path | None:
+    """Create or reuse a shared venv from a notebook's PEP 723 inline script metadata.
+
+    The venv is stored at ``<notebook_parent>/.venv`` so it persists across runs.
+    On repeat invocations, ``uv pip install`` is a near-instant no-op when the
+    uv cache already has the packages.
+
+    Returns the venv directory, or None if the notebook has no inline deps.
+    """
+    # Extract requirements from PEP 723 metadata
+    try:
+        proc = subprocess.run(
+            ["uv", "export", "--script", str(notebook_path), "--no-hashes"],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        return None
+
+    if proc.returncode != 0 or not proc.stdout.strip():
+        return None
+
+    venv_dir = notebook_path.parent / ".venv"
+    reqs_file = venv_dir / "requirements.txt"
+
+    try:
+        # Create venv only if it doesn't already exist
+        if not (venv_dir / "bin" / "python").exists():
+            subprocess.run(
+                ["uv", "venv", "--seed", str(venv_dir)],
+                capture_output=True,
+                text=True,
+                timeout=60,
+                check=True,
+            )
+
+        # Always run install — uv is fast on cache hits
+        reqs_file.write_text(proc.stdout)
+        venv_python = venv_dir / "bin" / "python"
+        subprocess.run(
+            ["uv", "pip", "install", "--python", str(venv_python), "-r", str(reqs_file)],
+            capture_output=True,
+            text=True,
+            timeout=300,
+            check=True,
+        )
+    except (subprocess.CalledProcessError, subprocess.TimeoutExpired, FileNotFoundError):
+        shutil.rmtree(venv_dir, ignore_errors=True)
+        return None
+
+    return venv_dir
+
+
 def run_notebook(
     notebook_path: Path,
     timeout: int = 300,
     html_dir: Path | None = None,
+    sandbox_dir: Path | None = None,
 ) -> NotebookResult:
     """Execute a notebook and return its check results."""
     result = NotebookResult(path=notebook_path)
@@ -26,17 +82,26 @@ def run_notebook(
         tmp_path = Path(tmp.name)
 
     try:
+        if sandbox_dir is not None:
+            python_exe = str(sandbox_dir / "bin" / "python")
+        else:
+            python_exe = sys.executable
+
+        cmd = [
+            python_exe,
+            "-m",
+            "marimo",
+            "export",
+            "html",
+            str(notebook_path),
+            "-o",
+            str(tmp_path),
+        ]
+        if sandbox_dir is not None:
+            cmd.append("--no-sandbox")
+
         proc = subprocess.run(
-            [
-                sys.executable,
-                "-m",
-                "marimo",
-                "export",
-                "html",
-                str(notebook_path),
-                "-o",
-                str(tmp_path),
-            ],
+            cmd,
             capture_output=True,
             text=True,
             timeout=timeout,
@@ -76,13 +141,18 @@ def run_batch(
     jobs: int = 4,
     timeout: int = 300,
     html_dir: Path | None = None,
+    on_progress: Callable[[int, int, Path], None] | None = None,
+    sandbox_dir: Path | None = None,
 ) -> list[NotebookResult]:
     """Run notebooks in parallel and return results sorted by filename."""
     results: list[NotebookResult] = []
+    total = len(notebooks)
+    completed = 0
 
     with ProcessPoolExecutor(max_workers=jobs) as executor:
         futures = {
-            executor.submit(run_notebook, nb, timeout, html_dir): nb for nb in notebooks
+            executor.submit(run_notebook, nb, timeout, html_dir, sandbox_dir): nb
+            for nb in notebooks
         }
         for future in as_completed(futures):
             nb_path = futures[future]
@@ -92,6 +162,9 @@ def run_batch(
                 results.append(
                     NotebookResult(path=nb_path, export_ok=False, export_error=str(e))
                 )
+            completed += 1
+            if on_progress is not None:
+                on_progress(completed, total, nb_path)
 
     results.sort(key=lambda r: r.path.stem)
     return results

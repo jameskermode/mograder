@@ -1,5 +1,6 @@
 import csv
 import subprocess
+import sys
 import zipfile
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -7,6 +8,7 @@ from unittest.mock import MagicMock, patch
 from mograder.models import CheckResult, NotebookResult
 from mograder.runner import (
     build_zip,
+    create_shared_sandbox,
     discover_labels,
     run_batch,
     run_notebook,
@@ -223,6 +225,31 @@ def test_print_summary_with_marks(capsys):
     assert "10/30" in captured.out
 
 
+def test_run_batch_on_progress_called(tmp_path):
+    nbs = []
+    for name in ["alice.py", "bob.py", "carol.py"]:
+        nb = tmp_path / name
+        nb.write_text("# notebook")
+        nbs.append(nb)
+
+    progress_calls = []
+
+    def on_progress(completed, total, path):
+        progress_calls.append((completed, total, path))
+
+    with patch(
+        "mograder.runner.subprocess.run", side_effect=_mock_subprocess_success(tmp_path)
+    ):
+        results = run_batch(nbs, jobs=2, timeout=60, on_progress=on_progress)
+
+    assert len(results) == 3
+    assert len(progress_calls) == 3
+    # All calls should have total=3
+    assert all(t == 3 for _, t, _ in progress_calls)
+    # Completed counts should be 1, 2, 3 (in some order due to parallel execution)
+    assert sorted(c for c, _, _ in progress_calls) == [1, 2, 3]
+
+
 def test_build_zip(tmp_path):
     nb = tmp_path / "alice.py"
     nb.write_text("# notebook")
@@ -241,3 +268,113 @@ def test_build_zip(tmp_path):
         names = zf.namelist()
         assert "results.csv" in names
         assert "sources/alice.py" in names
+
+
+def test_run_notebook_with_sandbox_dir(tmp_path):
+    """When sandbox_dir is provided, run_notebook uses its python and --no-sandbox."""
+    nb = tmp_path / "student.py"
+    nb.write_text("# notebook")
+
+    # Create a fake sandbox dir structure (.venv with bin/python)
+    sandbox_dir = tmp_path / ".venv"
+    (sandbox_dir / "bin").mkdir(parents=True)
+    fake_python = sandbox_dir / "bin" / "python"
+    fake_python.touch()
+
+    with patch(
+        "mograder.runner.subprocess.run", side_effect=_mock_subprocess_success(tmp_path)
+    ) as mock_run:
+        result = run_notebook(nb, timeout=60, sandbox_dir=sandbox_dir)
+
+    assert result.export_ok is True
+    cmd = mock_run.call_args[0][0]
+    assert cmd[0] == str(fake_python)
+    assert "--no-sandbox" in cmd
+
+
+def test_run_notebook_without_sandbox_uses_sys_executable(tmp_path):
+    """Without sandbox_dir, run_notebook uses sys.executable and no --no-sandbox."""
+    nb = tmp_path / "student.py"
+    nb.write_text("# notebook")
+
+    with patch(
+        "mograder.runner.subprocess.run", side_effect=_mock_subprocess_success(tmp_path)
+    ) as mock_run:
+        run_notebook(nb, timeout=60)
+
+    cmd = mock_run.call_args[0][0]
+    assert cmd[0] == sys.executable
+    assert "--no-sandbox" not in cmd
+
+
+def test_run_batch_passes_sandbox_dir(tmp_path):
+    """run_batch passes sandbox_dir through to run_notebook."""
+    nbs = []
+    for name in ["alice.py", "bob.py"]:
+        nb = tmp_path / name
+        nb.write_text("# notebook")
+        nbs.append(nb)
+
+    sandbox_dir = tmp_path / ".venv"
+    (sandbox_dir / "bin").mkdir(parents=True)
+
+    with patch(
+        "mograder.runner.subprocess.run", side_effect=_mock_subprocess_success(tmp_path)
+    ) as mock_run:
+        results = run_batch(nbs, jobs=2, timeout=60, sandbox_dir=sandbox_dir)
+
+    assert len(results) == 2
+    # Every subprocess call should use the sandbox python
+    for call in mock_run.call_args_list:
+        cmd = call[0][0]
+        assert cmd[0] == str(sandbox_dir / "bin" / "python")
+        assert "--no-sandbox" in cmd
+
+
+def test_create_shared_sandbox_returns_none_without_deps(tmp_path):
+    """create_shared_sandbox returns None when uv export fails or returns empty."""
+    nb = tmp_path / "simple.py"
+    nb.write_text("# no deps")
+
+    def mock_run(cmd, **kwargs):
+        result = MagicMock()
+        result.returncode = 1
+        result.stdout = ""
+        result.stderr = "no script metadata"
+        return result
+
+    with patch("mograder.runner.subprocess.run", side_effect=mock_run):
+        result = create_shared_sandbox(nb)
+
+    assert result is None
+
+
+def test_create_shared_sandbox_reuses_existing_venv(tmp_path):
+    """create_shared_sandbox skips venv creation if .venv/bin/python already exists."""
+    nb = tmp_path / "notebook.py"
+    nb.write_text("# has deps")
+
+    # Pre-create the venv structure
+    venv_dir = tmp_path / ".venv"
+    (venv_dir / "bin").mkdir(parents=True)
+    (venv_dir / "bin" / "python").touch()
+
+    calls = []
+
+    def mock_run(cmd, **kwargs):
+        calls.append(cmd)
+        result = MagicMock()
+        result.returncode = 0
+        result.stdout = "numpy>=1.0\n"
+        result.stderr = ""
+        return result
+
+    with patch("mograder.runner.subprocess.run", side_effect=mock_run):
+        result = create_shared_sandbox(nb)
+
+    assert result == venv_dir
+    # Should have called uv export + uv pip install, but NOT uv venv
+    cmd_strs = [" ".join(str(c) for c in cmd) for cmd in calls]
+    assert any("uv export" in c for c in cmd_strs)
+    assert any("uv pip install" in c for c in cmd_strs)
+    assert not any("uv venv" in c for c in cmd_strs)

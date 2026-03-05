@@ -24,7 +24,15 @@ def _():
 def _(mo):
     get_selected, set_selected = mo.state("")
     get_action_log, set_action_log = mo.state("")
-    return get_action_log, get_selected, set_action_log, set_selected
+    get_pending_action, set_pending_action = mo.state(None)
+    return (
+        get_action_log,
+        get_pending_action,
+        get_selected,
+        set_action_log,
+        set_pending_action,
+        set_selected,
+    )
 
 
 @app.cell
@@ -83,26 +91,7 @@ def _(COURSE_DIR, assignments, refresh_btn):
 
 
 @app.cell
-def _(COURSE_DIR, assignments, grade_stats, mo, set_action_log, sp, sys):
-    def _run_cli(cmd, label):
-        try:
-            _proc = sp.run(
-                ["mograder"] + cmd,
-                capture_output=True,
-                text=True,
-                timeout=600,
-            )
-            _output = (_proc.stdout + _proc.stderr).strip()
-            _code = f"\n```\n{_output}\n```" if _output else ""
-            if _proc.returncode == 0:
-                set_action_log(f"**{label}** — done.{_code}")
-            else:
-                set_action_log(
-                    f"**{label}** — exited with code {_proc.returncode}.{_code}"
-                )
-        except sp.TimeoutExpired:
-            set_action_log(f"**{label}** — timed out after 600s.")
-
+def _(COURSE_DIR, assignments, grade_stats, mo, set_action_log, set_pending_action, sp, sys):
     def _open_marimo(mode, path, label):
         sp.Popen([sys.executable, "-m", "marimo", mode, "--sandbox", str(path)])
         set_action_log(f"Opened **{mode}** for `{label}`")
@@ -151,8 +140,8 @@ def _(COURSE_DIR, assignments, grade_stats, mo, set_action_log, sp, sys):
             _gen.append(
                 mo.ui.button(
                     label="\u25b6",
-                    on_change=lambda _, s=_src, o=_out, n=_n3: _run_cli(
-                        ["generate", s, "-o", o], f"generate {n}"
+                    on_change=lambda _, s=_src, o=_out, n=_n3: set_pending_action(
+                        {"cmd": ["generate", s, "-o", o], "label": f"generate {n}"}
                     ),
                     tooltip="Generate",
                 )
@@ -172,7 +161,9 @@ def _(COURSE_DIR, assignments, grade_stats, mo, set_action_log, sp, sys):
             _auto.append(
                 mo.ui.button(
                     label="\u25b6",
-                    on_change=lambda _, c=_cmd, n=_n4: _run_cli(c, f"autograde {n}"),
+                    on_change=lambda _, c=_cmd, n=_n4: set_pending_action(
+                        {"cmd": c, "label": f"autograde {n}"}
+                    ),
                     tooltip="Autograde",
                 )
             )
@@ -190,7 +181,9 @@ def _(COURSE_DIR, assignments, grade_stats, mo, set_action_log, sp, sys):
             _fb.append(
                 mo.ui.button(
                     label="\u25b6",
-                    on_change=lambda _, c=_cmd2, n=_n5: _run_cli(c, f"feedback {n}"),
+                    on_change=lambda _, c=_cmd2, n=_n5: set_pending_action(
+                        {"cmd": c, "label": f"feedback {n}"}
+                    ),
                     tooltip="Export feedback",
                 )
             )
@@ -213,20 +206,27 @@ def _(COURSE_DIR, assignments, grade_stats, mo, set_action_log, sp, sys):
     _rel_idx = 0
 
     # --- build merged assignments + grades table ---
+    # Unlabelled arrow column keys (visually empty, must be unique)
+    _COL_GEN = "\u00a0"      # between Source and Release
+    _COL_AUTO = "\u00a0\u00a0"    # between Submitted and Autograded
+    _COL_FB = "\u00a0\u00a0\u00a0"  # between Graded and Feedback
+
     _rows = []
     for _i, _a in enumerate(assignments):
         _st = grade_stats.get(_a.name, {})
 
-        # Source column: ✅ + edit button or –
+        # Source column: ✅ + edit button only
         if isinstance(_src_btns_list[_i], mo.Html):
             _src_cell = _src_btns_list[_i]
         else:
             _src_cell = mo.hstack(
-                [mo.md("\u2705"), src_btns[_src_idx]], justify="start", gap=0.25
+                [mo.md("\u2705"), src_btns[_src_idx]],
+                justify="start",
+                gap=0.25,
             )
             _src_idx += 1
 
-        # Release column: ✅ + edit button or –
+        # Release column: ✅ + preview button or –
         if isinstance(_rel_btns_list[_i], mo.Html):
             _rel_cell = _rel_btns_list[_i]
         else:
@@ -235,26 +235,32 @@ def _(COURSE_DIR, assignments, grade_stats, mo, set_action_log, sp, sys):
             )
             _rel_idx += 1
 
+        # Submitted column: count only
+        _sub_cell = mo.md(str(_a.num_submitted))
+
+        # Feedback column: text only
+        _fb_text = (
+            f"{_a.num_feedback}/{_a.num_autograded}"
+            if _a.num_autograded
+            else "\u2013"
+        )
+
         _rows.append(
             {
                 "Assignment": _a.name,
                 "Source": _src_cell,
+                _COL_GEN: gen_btns[_i],
                 "Release": _rel_cell,
-                "Submitted": _a.num_submitted,
+                "Submitted": _sub_cell,
+                _COL_AUTO: auto_btns[_i],
                 "Autograded": "\u2705" if _a.num_autograded > 0 else "\u2013",
                 "Graded": f"{_a.num_graded}/{_a.num_autograded}"
                 if _a.num_autograded
                 else "\u2013",
-                "Feedback": f"{_a.num_feedback}/{_a.num_autograded}"
-                if _a.num_autograded
-                else "\u2013",
+                _COL_FB: fb_btns[_i],
+                "Feedback": mo.md(_fb_text),
                 "Mean": f"{_st['mean']:.1f}" if _st else "\u2013",
                 "Std": f"{_st['std']:.1f}" if _st else "\u2013",
-                "Actions": mo.hstack(
-                    [gen_btns[_i], auto_btns[_i], fb_btns[_i]],
-                    justify="start",
-                    gap=0.25,
-                ),
             }
         )
 
@@ -386,7 +392,8 @@ def _(COURSE_DIR, get_selected, mo, plt, refresh_btn, set_action_log, sns, sp, s
 def _(mo):
     show_names = mo.ui.switch(label="Show names")
     moodle_file = mo.ui.file(label="Moodle CSV", filetypes=[".csv"])
-    return moodle_file, show_names
+    students_controls = mo.hstack([show_names, moodle_file], justify="start", gap=1)
+    return moodle_file, show_names, students_controls
 
 
 @app.cell
@@ -410,8 +417,8 @@ def _(Path, moodle_file, show_names):
 
 @app.cell
 def _(
-    COURSE_DIR, assignments, mo, moodle_file, name_lookup, plt, refresh_btn, show_names,
-    sns,
+    COURSE_DIR, assignments, mo, name_lookup, plt, refresh_btn, sns,
+    students_controls,
 ):
     from mograder.formgrader import collect_student_marks, get_max_marks
 
@@ -423,7 +430,7 @@ def _(
     _rows = []
     _averages = []
     for _sid in sorted(_student_marks):
-        _display = name_lookup.get(_sid, _sid) if show_names.value else _sid
+        _display = name_lookup.get(_sid, _sid)
         _row = {"Student": _display}
         _total = 0
         _max_total = 0
@@ -440,7 +447,6 @@ def _(
             _averages.append(_avg)
         _rows.append(_row)
 
-    _controls = mo.hstack([show_names, moodle_file], justify="start", gap=1)
     _table = (
         mo.ui.table(_rows, selection=None)
         if _rows
@@ -468,7 +474,7 @@ def _(
         )
         plt.close(_fig)
 
-    students_content = mo.vstack([_controls, _table, _histogram])
+    students_content = mo.vstack([students_controls, _table, _histogram])
     return collect_student_marks, get_max_marks, students_content
 
 
@@ -490,6 +496,82 @@ def _(get_action_log, mo, set_action_log):
         clear_btn = mo.ui.button(label="Dismiss", disabled=True)
         action_log_content = mo.md("")
     return action_log_content, clear_btn
+
+
+@app.cell
+def _(get_pending_action, mo, set_action_log, set_pending_action, sp):
+    import json as _json
+
+    _action = get_pending_action()
+    if _action is not None:
+        _cmd, _label = _action["cmd"], _action["label"]
+        _is_autograde = _cmd and _cmd[0] == "autograde"
+
+        if _is_autograde:
+            _full_cmd = ["mograder"] + _cmd + ["--progress"]
+            _proc = sp.Popen(
+                _full_cmd, stdout=sp.PIPE, stderr=sp.PIPE, text=True, bufsize=1
+            )
+            _bar = None
+            _sandbox_bar = None
+            for _line in _proc.stderr:
+                _line = _line.strip()
+                if not _line.startswith("{"):
+                    continue
+                try:
+                    _msg = _json.loads(_line)
+                except _json.JSONDecodeError:
+                    continue
+                if _msg.get("event") == "sandbox_start":
+                    _sandbox_bar = mo.status.progress_bar(
+                        title=f"{_label}: installing dependencies…",
+                        remove_on_exit=True,
+                    )
+                    _sandbox_bar.__enter__()
+                elif _msg.get("event") == "sandbox_done":
+                    if _sandbox_bar is not None:
+                        _sandbox_bar.__exit__(None, None, None)
+                        _sandbox_bar = None
+                elif _msg.get("event") == "start":
+                    _bar = mo.status.progress_bar(
+                        total=_msg["total"], title=_label, remove_on_exit=True
+                    )
+                    _bar.__enter__()
+                elif _msg.get("event") == "progress" and _bar is not None:
+                    _bar.update(subtitle=f"{_msg['notebook']}")
+            if _sandbox_bar is not None:
+                _sandbox_bar.__exit__(None, None, None)
+            if _bar is not None:
+                _bar.__exit__(None, None, None)
+            _proc.wait()
+            _stdout = (_proc.stdout.read() if _proc.stdout else "").strip()
+            _code = f"\n```\n{_stdout}\n```" if _stdout else ""
+            if _proc.returncode == 0:
+                set_action_log(f"**{_label}** — done.{_code}")
+            else:
+                set_action_log(
+                    f"**{_label}** — exited with code {_proc.returncode}.{_code}"
+                )
+        else:
+            try:
+                _proc = sp.run(
+                    ["mograder"] + _cmd,
+                    capture_output=True,
+                    text=True,
+                    timeout=600,
+                )
+                _output = (_proc.stdout + _proc.stderr).strip()
+                _code = f"\n```\n{_output}\n```" if _output else ""
+                if _proc.returncode == 0:
+                    set_action_log(f"**{_label}** — done.{_code}")
+                else:
+                    set_action_log(
+                        f"**{_label}** — exited with code {_proc.returncode}.{_code}"
+                    )
+            except sp.TimeoutExpired:
+                set_action_log(f"**{_label}** — timed out after 600s.")
+        set_pending_action(None)
+    return
 
 
 @app.cell

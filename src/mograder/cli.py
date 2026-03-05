@@ -1,5 +1,6 @@
 """Click CLI for mograder: generate, autograde, feedback."""
 
+import json
 import os
 import shutil
 import sys
@@ -148,7 +149,14 @@ def generate(files, output_dir, dry_run, validate):
     default=None,
     help="Output directory for grading copies (default: autograded/)",
 )
-def autograde(files, source_path, csv_path, jobs, timeout, output_dir):
+@click.option(
+    "--progress",
+    "progress",
+    is_flag=True,
+    hidden=True,
+    help="Emit JSON progress lines to stderr (machine-readable)",
+)
+def autograde(files, source_path, csv_path, jobs, timeout, output_dir, progress):
     """Run notebooks and inject grading cells for GTA review."""
     notebooks = [f for f in files if f.suffix == ".py"]
     if not notebooks:
@@ -171,9 +179,22 @@ def autograde(files, source_path, csv_path, jobs, timeout, output_dir):
     all_labels: list[str] = []
     marks: dict[str, int | float] | None = None
     source_text: str | None = None
+    shared_sandbox: Path | None = None
     if source_path:
         click.echo(f"Running source notebook: {_rel(source_path)}")
-        source_result = runner.run_notebook(source_path, timeout=timeout)
+        if progress:
+            click.echo(json.dumps({"event": "sandbox_start"}), err=True)
+        shared_sandbox = runner.create_shared_sandbox(source_path)
+        if progress:
+            click.echo(
+                json.dumps({"event": "sandbox_done", "created": shared_sandbox is not None}),
+                err=True,
+            )
+        if shared_sandbox:
+            click.echo(f"  Shared sandbox: {_rel(shared_sandbox)}")
+        source_result = runner.run_notebook(
+            source_path, timeout=timeout, sandbox_dir=shared_sandbox
+        )
         if source_result.checks:
             all_labels = [c.label for c in source_result.checks]
             n_pass = sum(1 for c in source_result.checks if c.status == "success")
@@ -219,7 +240,34 @@ def autograde(files, source_path, csv_path, jobs, timeout, output_dir):
 
     # Run student submissions
     click.echo(f"Autograding {len(notebooks)} submission(s) with {jobs} workers...")
-    results = runner.run_batch(run_paths, jobs=jobs, timeout=timeout)
+
+    progress_cb = None
+    if progress:
+        click.echo(
+            json.dumps({"event": "start", "total": len(run_paths)}),
+            err=True,
+        )
+
+        def progress_cb(completed, total, nb_path):
+            click.echo(
+                json.dumps(
+                    {
+                        "event": "progress",
+                        "completed": completed,
+                        "total": total,
+                        "notebook": nb_path.name,
+                    }
+                ),
+                err=True,
+            )
+
+    results = runner.run_batch(
+        run_paths,
+        jobs=jobs,
+        timeout=timeout,
+        on_progress=progress_cb,
+        sandbox_dir=shared_sandbox,
+    )
 
     # Map results back to original paths + record tampering
     for r in results:

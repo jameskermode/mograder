@@ -224,14 +224,13 @@ def test_app_assignments_table_has_std_column():
     assert '"Max"' not in source
 
 
-def test_app_assignments_table_has_actions_column():
-    """Assignments table should combine action buttons into a single Actions column."""
+def test_app_assignments_table_has_no_actions_column():
+    """Action buttons should be inlined in their respective columns, not a separate Actions column."""
     from pathlib import Path
 
     app_path = Path(__file__).parent.parent / "src" / "mograder" / "formgrader_app.py"
     source = app_path.read_text()
-    assert '"Actions"' in source
-    # Old separate columns should be gone
+    assert '"Actions"' not in source
     assert '"Export FB"' not in source
 
 
@@ -247,19 +246,19 @@ def test_app_no_svg_histogram():
 # --- formgrader app action commands ---
 
 
-def test_app_run_cli_captures_output():
-    """_run_cli uses subprocess.run to capture output, not Popen."""
+def test_app_cli_executor_captures_output():
+    """The CLI executor cell uses sp.run for non-autograde and sp.Popen for autograde."""
     from pathlib import Path
 
     app_path = Path(__file__).parent.parent / "src" / "mograder" / "formgrader_app.py"
     source = app_path.read_text()
-    # _run_cli should use sp.run (blocking with capture), not sp.Popen
     assert "sp.run(" in source
     assert "capture_output=True" in source
+    assert "sp.Popen(" in source
 
 
-def test_app_run_cli_does_not_use_python_m_mograder():
-    """_run_cli must not use 'python -m mograder' — there is no __main__.py."""
+def test_app_cli_executor_does_not_use_python_m_mograder():
+    """The CLI executor must not use 'python -m mograder' — there is no __main__.py."""
     from pathlib import Path
 
     app_path = Path(__file__).parent.parent / "src" / "mograder" / "formgrader_app.py"
@@ -267,11 +266,10 @@ def test_app_run_cli_does_not_use_python_m_mograder():
     assert '"-m", "mograder"' not in source
 
 
-def test_app_run_cli_invokes_entry_point():
-    """_run_cli should invoke the mograder CLI via its entry-point script."""
+def test_app_cli_executor_invokes_entry_point():
+    """The mograder entry-point script must be installed."""
     import shutil
 
-    # The mograder entry point must be on PATH (installed in dev mode)
     assert shutil.which("mograder") is not None
 
 
@@ -412,6 +410,54 @@ def test_app_no_value_access_in_creator_cell():
             )
 
 
+def test_app_students_cell_does_not_depend_on_ui_elements():
+    """Students content cell must not take show_names/moodle_file as parameters.
+
+    If the cell both displays and depends on a UI element, interacting with
+    that element re-runs the cell which re-renders it, causing marimo to
+    drop the cell output.  The cell should depend only on derived data
+    (name_lookup, students_controls) — not the raw UI elements.
+    """
+    import re
+    from pathlib import Path
+
+    app_path = Path(__file__).parent.parent / "src" / "mograder" / "formgrader_app.py"
+    source = app_path.read_text()
+
+    # Find the cell that builds students_content
+    cells = re.split(r"@app\.cell", source)
+    students_cell = [c for c in cells if "students_content" in c and "collect_student_marks" in c]
+    assert len(students_cell) == 1, "Expected exactly one students content cell"
+
+    # Extract the function signature (parameter list)
+    sig_match = re.search(r"def _\((.*?)\):", students_cell[0], re.DOTALL)
+    assert sig_match, "Could not find cell function signature"
+    params = sig_match.group(1)
+
+    assert "show_names" not in params, (
+        "students content cell should not depend on show_names directly"
+    )
+    assert "moodle_file" not in params, (
+        "students content cell should not depend on moodle_file directly"
+    )
+
+
+def test_app_on_change_callbacks_do_not_block():
+    """on_change callbacks must not call sp.run or _run_cli — use state to trigger a reactive cell."""
+    from pathlib import Path
+
+    app_path = Path(__file__).parent.parent / "src" / "mograder" / "formgrader_app.py"
+    source = app_path.read_text()
+    # No spinner in callbacks (doesn't work)
+    assert "mo.status.spinner" not in source
+    # on_change lambdas should set state, not call _run_cli
+    assert "on_change=lambda" in source  # buttons still exist
+    assert "_run_cli" not in source  # no blocking helper in callbacks
+    # subprocess runs in a reactive cell triggered by pending_action state
+    assert "set_pending_action" in source
+    assert "get_pending_action" in source
+
+
 def test_app_open_marimo_passes_sandbox():
     """Source/release/edit buttons should pass --sandbox to marimo."""
     from pathlib import Path
@@ -420,3 +466,14 @@ def test_app_open_marimo_passes_sandbox():
     source = app_path.read_text()
     # _open_marimo and _open_editor should use --sandbox
     assert source.count('"--sandbox"') >= 2
+
+
+def test_app_executor_uses_popen_for_autograde():
+    """The executor cell uses sp.Popen + --progress for autograde commands."""
+    from pathlib import Path
+
+    app_path = Path(__file__).parent.parent / "src" / "mograder" / "formgrader_app.py"
+    source = app_path.read_text()
+    assert "sp.Popen(" in source
+    assert '"--progress"' in source
+    assert "progress_bar" in source

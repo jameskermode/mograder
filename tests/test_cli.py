@@ -3,6 +3,8 @@ from unittest.mock import MagicMock, patch
 
 from click.testing import CliRunner
 
+import json
+
 from mograder.cli import _find_source, _infer_output_dir, cli
 from mograder.models import CheckResult, NotebookResult
 
@@ -194,10 +196,11 @@ def test_formgrader_app_has_no_script_header():
     assert "/// script" not in header
 
 
+@patch("mograder.runner.create_shared_sandbox", return_value=None)
 @patch("mograder.runner.run_notebook")
 @patch("mograder.cells.inject_grading_cells")
 @patch("mograder.runner.run_batch")
-def test_autograde_with_source(mock_batch, mock_inject, mock_run_nb, tmp_path):
+def test_autograde_with_source(mock_batch, mock_inject, mock_run_nb, mock_sandbox, tmp_path):
     """autograde --source runs the source notebook and uses integrity check."""
     nb = tmp_path / "student.py"
     nb.write_text(
@@ -230,3 +233,175 @@ def test_autograde_with_source(mock_batch, mock_inject, mock_run_nb, tmp_path):
     assert result.exit_code == 0
     mock_run_nb.assert_called_once()
     assert "Running source notebook" in result.output
+
+
+@patch("mograder.cells.inject_grading_cells")
+@patch("mograder.runner.run_batch")
+def test_autograde_progress_flag(mock_batch, mock_inject, tmp_path):
+    """--progress emits JSON start + progress events to stderr."""
+    nb = tmp_path / "student.py"
+    nb.write_text(
+        "import marimo\napp = marimo.App()\n\nif __name__ == '__main__':\n    app.run()\n"
+    )
+
+    mock_batch.return_value = [
+        NotebookResult(
+            path=nb,
+            checks=[CheckResult("Q1: Foo", "success")],
+            cell_errors=0,
+        )
+    ]
+    mock_inject.return_value = nb.read_text().splitlines(keepends=True)
+
+    out_dir = tmp_path / "grading"
+    runner = CliRunner()
+    result = runner.invoke(
+        cli, ["autograde", str(nb), "-o", str(out_dir), "--progress"]
+    )
+    assert result.exit_code == 0
+
+    # Parse JSON lines from combined output (CliRunner merges stdout/stderr)
+    json_msgs = []
+    for line in result.output.splitlines():
+        line = line.strip()
+        if line.startswith("{"):
+            try:
+                json_msgs.append(json.loads(line))
+            except json.JSONDecodeError:
+                pass
+
+    # Should have a start event
+    start_msgs = [m for m in json_msgs if m.get("event") == "start"]
+    assert len(start_msgs) == 1
+    assert start_msgs[0]["total"] == 1
+
+    # run_batch should have been called with on_progress callback
+    call_kwargs = mock_batch.call_args[1]
+    assert call_kwargs.get("on_progress") is not None
+
+
+@patch("mograder.runner.create_shared_sandbox")
+@patch("mograder.runner.run_notebook")
+@patch("mograder.cells.inject_grading_cells")
+@patch("mograder.runner.run_batch")
+def test_autograde_creates_shared_sandbox(
+    mock_batch, mock_inject, mock_run_nb, mock_sandbox, tmp_path
+):
+    """autograde creates a shared sandbox from source and cleans it up."""
+    nb = tmp_path / "student.py"
+    nb.write_text(
+        "import marimo\napp = marimo.App()\n\nif __name__ == '__main__':\n    app.run()\n"
+    )
+    source = tmp_path / "source.py"
+    source.write_text(
+        "import marimo\napp = marimo.App()\n\nif __name__ == '__main__':\n    app.run()\n"
+    )
+
+    # Simulate create_shared_sandbox returning a persistent .venv dir
+    sandbox_dir = tmp_path / ".venv"
+    sandbox_dir.mkdir()
+    mock_sandbox.return_value = sandbox_dir
+
+    mock_run_nb.return_value = NotebookResult(
+        path=source,
+        checks=[CheckResult("Q1: Foo", "success")],
+        cell_errors=0,
+    )
+    mock_batch.return_value = [
+        NotebookResult(
+            path=nb,
+            checks=[CheckResult("Q1: Foo", "success")],
+            cell_errors=0,
+        )
+    ]
+    mock_inject.return_value = nb.read_text().splitlines(keepends=True)
+
+    out_dir = tmp_path / "grading"
+    cli_runner = CliRunner()
+    result = cli_runner.invoke(
+        cli, ["autograde", str(nb), "--source", str(source), "-o", str(out_dir)]
+    )
+    assert result.exit_code == 0
+
+    # Sandbox was created from source notebook
+    mock_sandbox.assert_called_once_with(source)
+
+    # Sandbox was passed to run_notebook (source) and run_batch
+    assert mock_run_nb.call_args[1].get("sandbox_dir") == sandbox_dir
+    assert mock_batch.call_args[1].get("sandbox_dir") == sandbox_dir
+
+    # Sandbox dir is persistent — not cleaned up
+    assert sandbox_dir.exists()
+
+
+@patch("mograder.runner.create_shared_sandbox")
+@patch("mograder.runner.run_notebook")
+@patch("mograder.cells.inject_grading_cells")
+@patch("mograder.runner.run_batch")
+def test_autograde_progress_sandbox_events(
+    mock_batch, mock_inject, mock_run_nb, mock_sandbox, tmp_path
+):
+    """--progress emits sandbox_start and sandbox_done events when source has deps."""
+    nb = tmp_path / "student.py"
+    nb.write_text(
+        "import marimo\napp = marimo.App()\n\nif __name__ == '__main__':\n    app.run()\n"
+    )
+    source = tmp_path / "source.py"
+    source.write_text(
+        "import marimo\napp = marimo.App()\n\nif __name__ == '__main__':\n    app.run()\n"
+    )
+
+    sandbox_dir = tmp_path / "sandbox"
+    sandbox_dir.mkdir()
+    mock_sandbox.return_value = sandbox_dir
+
+    mock_run_nb.return_value = NotebookResult(
+        path=source,
+        checks=[CheckResult("Q1: Foo", "success")],
+        cell_errors=0,
+    )
+    mock_batch.return_value = [
+        NotebookResult(
+            path=nb,
+            checks=[CheckResult("Q1: Foo", "success")],
+            cell_errors=0,
+        )
+    ]
+    mock_inject.return_value = nb.read_text().splitlines(keepends=True)
+
+    out_dir = tmp_path / "grading"
+    cli_runner = CliRunner()
+    result = cli_runner.invoke(
+        cli,
+        [
+            "autograde",
+            str(nb),
+            "--source",
+            str(source),
+            "-o",
+            str(out_dir),
+            "--progress",
+        ],
+    )
+    assert result.exit_code == 0
+
+    # Parse JSON lines from output
+    json_msgs = []
+    for line in result.output.splitlines():
+        line = line.strip()
+        if line.startswith("{"):
+            try:
+                json_msgs.append(json.loads(line))
+            except json.JSONDecodeError:
+                pass
+
+    events = [m["event"] for m in json_msgs]
+    assert "sandbox_start" in events
+    assert "sandbox_done" in events
+
+    # sandbox_start comes before sandbox_done
+    assert events.index("sandbox_start") < events.index("sandbox_done")
+
+    # sandbox_done should indicate created=True
+    done_msg = next(m for m in json_msgs if m["event"] == "sandbox_done")
+    assert done_msg["created"] is True
