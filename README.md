@@ -63,6 +63,21 @@ uv venv && uv pip install -e ".[dev]"
 
 ## Usage
 
+### Formgrader dashboard
+
+Launch an interactive grading management dashboard:
+
+```bash
+mograder formgrader course/
+```
+
+This opens a marimo app with two tabs:
+
+- **Assignments** — overview table with per-assignment pipeline status, grade statistics (mean/min/max), and action buttons to run generate, autograde, and feedback export directly from the UI. Source and release columns link to `marimo edit` and `marimo run` respectively.
+- **Submissions** — drill-down for a selected assignment showing per-student status, marks breakdown, edit buttons to open autograded notebooks in `marimo edit` for GTA grading, and a mark distribution histogram.
+
+Options: `--port PORT` to set the server port, `--headless` to suppress the browser.
+
 ### Generate release notebooks
 
 Strip solution blocks from source notebooks:

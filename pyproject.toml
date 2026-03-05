@@ -18,6 +18,10 @@ dev = [
     "pytest-cov",
     "ruff",
 ]
+grader = [
+    "seaborn",
+    "matplotlib",
+]
 
 [project.scripts]
 mograder = "mograder.cli:cli"

@@ -1,8 +1,17 @@
 """Marker validation and solution stripping for marimo notebooks."""
 
+import os
 import re
 import sys
 from pathlib import Path
+
+
+def _rel(p: Path) -> str:
+    """Return a short relative path string for display."""
+    try:
+        return os.path.relpath(p)
+    except ValueError:
+        return str(p)
 
 SOLUTION_BEGIN = "### BEGIN SOLUTION"
 SOLUTION_END = "### END SOLUTION"
@@ -155,7 +164,7 @@ def process_file(
     if dry_run:
         n_removed = len(lines) - len(student_lines)
         print(
-            f"DRY-RUN: {source} → "
+            f"DRY-RUN: {_rel(source)} → "
             f"{n_solutions} solution blocks stripped, "
             f"{n_removed} lines removed"
         )
@@ -166,5 +175,5 @@ def process_file(
     output_dir.mkdir(parents=True, exist_ok=True)
     dest = output_dir / source.name
     dest.write_text("".join(student_lines))
-    print(f"OK: {source} → {dest} ({n_solutions} solution blocks stripped)")
+    print(f"OK: {_rel(source)} → {_rel(dest)} ({n_solutions} solution blocks stripped)")
     return True

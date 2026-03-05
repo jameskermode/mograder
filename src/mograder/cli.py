@@ -1,9 +1,18 @@
 """Click CLI for mograder: generate, autograde, feedback."""
 
+import os
 import shutil
 import sys
 import tempfile
 from pathlib import Path
+
+
+def _rel(p: Path) -> str:
+    """Return a short relative path string for display."""
+    try:
+        return os.path.relpath(p)
+    except ValueError:
+        return str(p)
 
 import click
 
@@ -104,7 +113,7 @@ def generate(files, output_dir, dry_run, validate):
                 if not dest.exists() or f.stat().st_mtime > dest.stat().st_mtime:
                     rel_dir.mkdir(parents=True, exist_ok=True)
                     shutil.copy2(f, dest)
-                    click.echo(f"COPY: {f} → {dest}")
+                    click.echo(f"COPY: {_rel(f)} → {_rel(dest)}")
 
     if not success:
         sys.exit(1)
@@ -156,14 +165,14 @@ def autograde(files, source_path, csv_path, jobs, timeout, output_dir):
         found = _find_source(notebooks[0])
         if found:
             source_path = found
-            click.echo(f"Auto-discovered source: {source_path}")
+            click.echo(f"Auto-discovered source: {_rel(source_path)}")
 
     # Optionally run source solution first
     all_labels: list[str] = []
     marks: dict[str, int | float] | None = None
     source_text: str | None = None
     if source_path:
-        click.echo(f"Running source notebook: {source_path}")
+        click.echo(f"Running source notebook: {_rel(source_path)}")
         source_result = runner.run_notebook(source_path, timeout=timeout)
         if source_result.checks:
             all_labels = [c.label for c in source_result.checks]
@@ -243,7 +252,7 @@ def autograde(files, source_path, csv_path, jobs, timeout, output_dir):
         )
         dest = output_dir / result.path.name
         dest.write_text("".join(modified))
-        click.echo(f"  Grading copy: {dest}")
+        click.echo(f"  Grading copy: {_rel(dest)}")
 
     # Write CSV if requested
     if csv_path:
@@ -297,9 +306,9 @@ def feedback_cmd(files, output_dir, grades_csv, timeout, jobs):
             html_path = feedback.export_feedback_html(
                 nb, output_dir_path, timeout=timeout
             )
-            click.echo(f"  Exported: {html_path}")
+            click.echo(f"  Exported: {_rel(html_path)}")
         except Exception as e:
-            click.echo(f"  FAILED: {nb} — {e}", err=True)
+            click.echo(f"  FAILED: {_rel(nb)} — {e}", err=True)
 
     # Write grades CSV if requested
     if grades_csv:
@@ -364,7 +373,7 @@ def moodle_cmd(worksheet, grades_csv, feedback_dir, output_dir, match_column):
     output_dir.mkdir(parents=True, exist_ok=True)
     out_csv = output_dir / worksheet.name
     moodle.write_moodle_csv(updated_rows, fieldnames, out_csv)
-    click.echo(f"Wrote: {out_csv}")
+    click.echo(f"Wrote: {_rel(out_csv)}")
 
     # Build feedback ZIP if requested
     if feedback_dir:
@@ -372,7 +381,7 @@ def moodle_cmd(worksheet, grades_csv, feedback_dir, output_dir, match_column):
         count = moodle.build_feedback_zip(
             updated_rows, feedback_dir, zip_path, match_column
         )
-        click.echo(f"Feedback ZIP: {zip_path} ({count} files)")
+        click.echo(f"Feedback ZIP: {_rel(zip_path)} ({count} files)")
 
     # Statistics
     if result.marks:
@@ -381,3 +390,33 @@ def moodle_cmd(worksheet, grades_csv, feedback_dir, output_dir, match_column):
 
 
 cli.add_command(moodle_cmd, "moodle")
+
+
+@cli.command()
+@click.argument(
+    "course_dir",
+    type=click.Path(exists=True, path_type=Path),
+    default=".",
+)
+@click.option("-p", "--port", type=int, default=None, help="Port for marimo app")
+@click.option("--headless", is_flag=True, help="Don't open browser")
+def formgrader(course_dir, port, headless):
+    """Launch the formgrader dashboard for managing grading."""
+    import os
+    import subprocess as sp
+
+    app_path = Path(__file__).parent / "formgrader_app.py"
+    os.environ["MOGRADER_COURSE_DIR"] = str(course_dir.resolve())
+
+    cmd = [sys.executable, "-m", "marimo", "run", str(app_path)]
+    if port:
+        cmd.extend(["--port", str(port)])
+    if headless:
+        cmd.append("--headless")
+
+    click.echo(f"Launching formgrader for: {course_dir.resolve()}")
+    try:
+        proc = sp.run(cmd)
+        sys.exit(proc.returncode)
+    except KeyboardInterrupt:
+        pass

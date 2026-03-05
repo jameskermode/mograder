@@ -162,6 +162,38 @@ def test_find_source_not_found(tmp_path):
     assert _find_source(nb) is None
 
 
+@patch("subprocess.run")
+def test_formgrader_launches_marimo(mock_run, tmp_path):
+    """formgrader sets env var and launches marimo run."""
+    mock_run.return_value = MagicMock(returncode=0)
+    CliRunner().invoke(cli, ["formgrader", str(tmp_path)])
+    mock_run.assert_called_once()
+    cmd = mock_run.call_args[0][0]
+    assert "marimo" in " ".join(cmd)
+    assert "run" in cmd
+    assert "formgrader_app.py" in cmd[-1]
+
+
+@patch("subprocess.run")
+def test_formgrader_does_not_sandbox(mock_run, tmp_path):
+    """formgrader must not pass --sandbox; mograder would not be importable."""
+    mock_run.return_value = MagicMock(returncode=0)
+    CliRunner().invoke(cli, ["formgrader", str(tmp_path)])
+    cmd = mock_run.call_args[0][0]
+    assert "--sandbox" not in cmd
+
+
+def test_formgrader_app_has_no_script_header():
+    """The app file must not have a PEP 723 script header (/// script).
+
+    If present, marimo prompts for sandbox install which blocks the app
+    since mograder is a local package.
+    """
+    app_path = Path(__file__).parent.parent / "src" / "mograder" / "formgrader_app.py"
+    header = app_path.read_text(encoding="utf-8")[:200]
+    assert "/// script" not in header
+
+
 @patch("mograder.runner.run_notebook")
 @patch("mograder.cells.inject_grading_cells")
 @patch("mograder.runner.run_batch")
