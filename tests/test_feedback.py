@@ -250,8 +250,8 @@ def test_inject_feedback_html_holistic(tmp_path):
     config, _ = json.JSONDecoder().raw_decode(result, start)
     assert len(config["notebook"]["cells"]) == 2
     assert len(config["session"]["cells"]) == 2
-    assert config["notebook"]["cells"][-1]["id"] == "mgFB"
-    assert config["session"]["cells"][-1]["id"] == "mgFB"
+    assert config["notebook"]["cells"][0]["id"] == "mgFB"
+    assert config["session"]["cells"][0]["id"] == "mgFB"
 
 
 def test_inject_feedback_html_with_marks(tmp_path):

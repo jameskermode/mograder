@@ -60,8 +60,13 @@ def _find_source(submitted_path: Path, source_dir: str = "source") -> Path | Non
 
 
 def _find_gradebook(path: Path, gradebook_name: str = "gradebook.db") -> Path | None:
-    """Walk up from *path* looking for a gradebook database file."""
-    for ancestor in [path.parent, path.parent.parent, path.parent.parent.parent]:
+    """Walk up from *path* looking for a gradebook database file.
+
+    Searches furthest ancestor first so the course-root DB is preferred
+    over a stale copy that may exist closer to the notebook.
+    """
+    candidates = [path.parent.parent.parent, path.parent.parent, path.parent]
+    for ancestor in candidates:
         candidate = ancestor / gradebook_name
         if candidate.is_file():
             return candidate
@@ -367,8 +372,14 @@ def autograde(ctx, files, source_path, csv_path, jobs, timeout, output_dir, prog
         dest.write_text("".join(modified))
         click.echo(f"  Grading copy: {_rel(dest)}")
 
-    # Write results to gradebook
-    db_path = output_dir.parent / config.gradebook
+    # Write results to gradebook at course root.
+    # output_dir is typically <course>/<autograded>/<assignment>/
+    # so course root = grandparent when parent matches autograded_dir.
+    if output_dir.parent.name == config.autograded_dir:
+        _course_root = output_dir.parent.parent
+    else:
+        _course_root = output_dir.parent
+    db_path = _course_root / config.gradebook
     with Gradebook(db_path) as gb:
         # Auto-import existing grades if this is a fresh DB
         if gb.is_new:
@@ -451,11 +462,12 @@ def feedback_cmd(ctx, files, output_dir, grades_csv, timeout, jobs):
         with Gradebook(db_path) as gb:
             grades = gb.collect_grades(assignment_name)
             grades_by_student = {g["student"]: g for g in grades}
+            n_graded = gb.count_graded(assignment_name)
         click.echo(f"Reading grades from {_rel(db_path)}")
     else:
         grades = feedback.collect_grades(notebooks)
         grades_by_student = {g["student"]: g for g in grades}
-    n_graded = sum(1 for g in grades if g["mark"] is not None)
+        n_graded = sum(1 for g in grades if g["mark"] is not None)
     click.echo(f"{n_graded}/{len(notebooks)} notebooks have been graded")
 
     # Export each to HTML

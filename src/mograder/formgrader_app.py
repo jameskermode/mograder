@@ -89,9 +89,12 @@ def _(COURSE_DIR, DIR_NAMES, GRADEBOOK, get_data_version, refresh_btn):
 
 
 @app.cell
-def _(assignments, mo, set_selected):
+def _(assignments, get_selected, mo, set_selected):
+    _options = {a.name: a.name for a in assignments}
+    _current = get_selected()
     assignment_dropdown = mo.ui.dropdown(
-        options={a.name: a.name for a in assignments},
+        options=_options,
+        value=_current if _current in _options else None,
         label="Assignment",
         on_change=lambda val: set_selected(val or ""),
     )
@@ -188,33 +191,34 @@ def _(
                 mo.ui.button(label="\u2192", disabled=True, tooltip="Autograde")
             )
 
-        # Export Moodle (feedback + moodle merge)
+        # Export Moodle (feedback + optional moodle merge)
         _auto_dir = COURSE_DIR / DIR_NAMES.autograded / _a.name
         _worksheet_path = COURSE_DIR / DIR_NAMES.import_dir / f"{_a.name}.csv"
-        if (
-            _auto_dir.is_dir()
-            and any(_auto_dir.glob("*.py"))
-            and _worksheet_path.is_file()
-        ):
+        if _auto_dir.is_dir() and any(_auto_dir.glob("*.py")):
             _ffiles = [str(f) for f in sorted(_auto_dir.glob("*.py"))]
             _fb_dir = str(COURSE_DIR / DIR_NAMES.feedback / _a.name)
             _cmd_fb = ["feedback"] + _ffiles
-            _cmd_moodle = [
-                "moodle",
-                str(_worksheet_path),
-                "--feedback-dir",
-                _fb_dir,
-            ]
+            _sub_cmds = [_cmd_fb]
+            if _worksheet_path.is_file():
+                _sub_cmds.append(
+                    [
+                        "moodle",
+                        str(_worksheet_path),
+                        "--feedback-dir",
+                        _fb_dir,
+                    ]
+                )
             _n5 = _a.name
+            _tooltip = (
+                "Export Moodle" if _worksheet_path.is_file() else "Export feedback"
+            )
             _fb.append(
                 mo.ui.button(
                     label="\u2192",
-                    on_change=lambda _, c1=_cmd_fb, c2=_cmd_moodle, n=_n5: (
-                        set_pending_action(
-                            {"cmd": [c1, c2], "label": f"export moodle {n}"}
-                        )
+                    on_change=lambda _, c=_sub_cmds, n=_n5: set_pending_action(
+                        {"cmd": c, "label": f"export {n}"}
                     ),
-                    tooltip="Export Moodle",
+                    tooltip=_tooltip,
                 )
             )
         else:
@@ -281,7 +285,7 @@ def _(
                 "Graded": f"{_a.num_graded}/{_a.num_autograded}"
                 if _a.num_autograded
                 else "\u2013",
-                "Export Moodle": fb_btns[_i],
+                "Export": fb_btns[_i],
                 "Feedback": mo.md(_fb_text),
             }
         )
@@ -623,18 +627,10 @@ def _(GRADEBOOK, grading_assignment_name, grading_current_sub, mo, set_grading_i
         grading_feedback_input = mo.ui.text_area(value="", label="Feedback")
         grading_auto_info = ""
     set_grading_inputs({"mark": grading_mark_input, "feedback": grading_feedback_input})
-    return grading_auto_info, grading_feedback_input, grading_mark_input
 
-
-@app.cell
-def _(
-    grading_auto_info,
-    grading_current_sub,
-    grading_feedback_input,
-    grading_mark_input,
-    mo,
-):
-    # Build form layout — must NOT access .value here to avoid re-renders
+    # Build form layout in the same cell that creates the inputs.
+    # The creating cell does NOT re-run when the user interacts with the inputs,
+    # so downstream cells (grading_content with the iframe) stay stable.
     if grading_current_sub is not None:
         grading_form = mo.vstack(
             [
@@ -758,9 +754,6 @@ def _(
 
         grading_nav = mo.hstack(
             [
-                mo.md(f"**{grading_assignment_name}**")
-                if grading_assignment_name
-                else mo.md(""),
                 _first_btn,
                 _prev_btn,
                 mo.md(_student_info),
@@ -910,31 +903,36 @@ def _(
             if _is_compound:
                 _combined_output = []
                 _overall_ok = True
-                for _sub_cmd in _cmd:
-                    _sub_auto = _sub_cmd and _sub_cmd[0] == "autograde"
-                    if _sub_auto:
-                        _full = ["mograder"] + _sub_cmd + ["--progress"]
-                        _p = sp.Popen(
-                            _full, stdout=sp.PIPE, stderr=sp.PIPE, text=True, bufsize=1
-                        )
-                        _p.wait()
-                        _out = (
-                            (_p.stdout.read() if _p.stdout else "")
-                            + (_p.stderr.read() if _p.stderr else "")
-                        ).strip()
-                    else:
-                        _p = sp.run(
-                            ["mograder"] + _sub_cmd,
-                            capture_output=True,
-                            text=True,
-                            timeout=600,
-                        )
-                        _out = (_p.stdout + _p.stderr).strip()
-                    if _out:
-                        _combined_output.append(_out)
-                    if _p.returncode != 0:
-                        _overall_ok = False
-                        break
+                with mo.status.spinner(title=_label, remove_on_exit=True):
+                    for _sub_cmd in _cmd:
+                        _sub_auto = _sub_cmd and _sub_cmd[0] == "autograde"
+                        if _sub_auto:
+                            _full = ["mograder"] + _sub_cmd + ["--progress"]
+                            _p = sp.Popen(
+                                _full,
+                                stdout=sp.PIPE,
+                                stderr=sp.PIPE,
+                                text=True,
+                                bufsize=1,
+                            )
+                            _p.wait()
+                            _out = (
+                                (_p.stdout.read() if _p.stdout else "")
+                                + (_p.stderr.read() if _p.stderr else "")
+                            ).strip()
+                        else:
+                            _p = sp.run(
+                                ["mograder"] + _sub_cmd,
+                                capture_output=True,
+                                text=True,
+                                timeout=600,
+                            )
+                            _out = (_p.stdout + _p.stderr).strip()
+                        if _out:
+                            _combined_output.append(_out)
+                        if _p.returncode != 0:
+                            _overall_ok = False
+                            break
                 _combined = "\n".join(_combined_output)
                 _code = f"\n```\n{_combined}\n```" if _combined else ""
                 if _overall_ok:

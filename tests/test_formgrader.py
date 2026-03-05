@@ -222,7 +222,7 @@ def test_app_assignments_table_no_stats_columns():
     assert '"Mean"' not in source
     assert '"Std"' not in source
     assert "dropdown" in source
-    assert '"Export Moodle"' in source
+    assert '"Export"' in source
     assert '"Export FB"' not in source
 
 

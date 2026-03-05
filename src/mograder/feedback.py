@@ -1,6 +1,7 @@
 """HTML feedback export and grade aggregation."""
 
 import csv
+import hashlib
 import html
 import json
 import re
@@ -51,15 +52,16 @@ def _build_feedback_content(
     Returns HTML suitable for passing to ``_build_callout_html``.
     """
     parts = []
+    _total_str = str(int(total_available)) if total_available is not None else "100"
 
-    if auto_mark is not None and total_available is not None:
+    if auto_mark is not None:
         manual = mark - auto_mark
         parts.append(
-            f"<strong>Mark: {mark}/{total_available}</strong>"
-            f" (auto: {auto_mark}, manual: {manual})"
+            f"<strong>Mark: {int(mark)}/{_total_str}</strong>"
+            f" (auto: {int(auto_mark)}, manual: {int(manual)})"
         )
     else:
-        parts.append(f"<strong>Mark: {mark}/100</strong>")
+        parts.append(f"<strong>Mark: {int(mark)}/100</strong>")
 
     if feedback_text:
         paragraphs = feedback_text.split("\n\n")
@@ -125,29 +127,47 @@ def inject_feedback_html(
 
     # Build feedback content
     content = _build_feedback_content(mark, feedback_text, auto_mark, total_available)
-    callout = _build_callout_html(content, "success")
+    callout = _build_callout_html(content, "info")
+
+    # Remove grader.scores() cell to avoid duplicate score display
+    _scores_ids = {
+        c["id"]
+        for c in config["notebook"]["cells"]
+        if c["code"].strip() == "grader.scores()"
+    }
+    if _scores_ids:
+        config["notebook"]["cells"] = [
+            c for c in config["notebook"]["cells"] if c["id"] not in _scores_ids
+        ]
+        config["session"]["cells"] = [
+            c for c in config["session"]["cells"] if c["id"] not in _scores_ids
+        ]
 
     cell_id = "mgFB"
+    cell_code = "# mograder feedback"
+    code_hash = hashlib.md5(cell_code.encode()).hexdigest()
 
-    # Append to notebook.cells
-    config["notebook"]["cells"].append(
+    # Insert at the top of notebook.cells
+    config["notebook"]["cells"].insert(
+        0,
         {
-            "code": "# mograder feedback",
-            "code_hash": "",
+            "code": cell_code,
+            "code_hash": code_hash,
             "config": {"column": None, "disabled": False, "hide_code": True},
             "id": cell_id,
             "name": "_",
-        }
+        },
     )
 
-    # Append to session.cells
-    config["session"]["cells"].append(
+    # Insert at the top of session.cells
+    config["session"]["cells"].insert(
+        0,
         {
-            "code_hash": "",
+            "code_hash": code_hash,
             "console": [],
             "id": cell_id,
             "outputs": [{"data": {"text/html": callout}, "type": "data"}],
-        }
+        },
     )
 
     # Serialize back — escape < and > for script safety
