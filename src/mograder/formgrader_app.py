@@ -351,13 +351,6 @@ def _(
             )
             _rel_idx += 1
 
-        # Release download column
-        if _rel_dl_list[_i] is not None and rel_downloads is not None:
-            _rel_dl_cell = rel_downloads[_rel_dl_idx]
-            _rel_dl_idx += 1
-        else:
-            _rel_dl_cell = mo.md("\u2013")
-
         # Submitted column: count only
         _sub_cell = mo.md(str(_a.num_submitted))
 
@@ -366,18 +359,30 @@ def _(
             f"{_a.num_feedback}/{_a.num_autograded}" if _a.num_autograded else "\u2013"
         )
 
-        # Feedback download columns (CSV + ZIP)
-        if _fb_csv_dl_list[_i] is not None and fb_csv_downloads is not None:
-            _fb_csv_cell = fb_csv_downloads[_fb_csv_dl_idx]
-            _fb_csv_dl_idx += 1
-        else:
-            _fb_csv_cell = mo.md("\u2013")
+        # Release column: combine edit + download
+        _rel_items = [_rel_cell]
+        if _rel_dl_list[_i] is not None and rel_downloads is not None:
+            _rel_items.append(rel_downloads[_rel_dl_idx])
+            _rel_dl_idx += 1
+        _rel_combined = (
+            mo.hstack(_rel_items, justify="start", gap=0.25)
+            if len(_rel_items) > 1
+            else _rel_items[0]
+        )
 
+        # Export column: combine arrow + download buttons
+        _export_items = [fb_btns[_i]]
+        if _fb_csv_dl_list[_i] is not None and fb_csv_downloads is not None:
+            _export_items.append(fb_csv_downloads[_fb_csv_dl_idx])
+            _fb_csv_dl_idx += 1
         if _fb_zip_dl_list[_i] is not None and fb_zip_downloads is not None:
-            _fb_zip_cell = fb_zip_downloads[_fb_zip_dl_idx]
+            _export_items.append(fb_zip_downloads[_fb_zip_dl_idx])
             _fb_zip_dl_idx += 1
-        else:
-            _fb_zip_cell = mo.md("\u2013")
+        _export_cell = (
+            mo.hstack(_export_items, justify="start", gap=0.25)
+            if len(_export_items) > 1
+            else _export_items[0]
+        )
 
         _name = f"**{_a.name}**" if _a.name == _selected_name else _a.name
 
@@ -385,19 +390,15 @@ def _(
             {
                 "Assignment": mo.md(_name),
                 "Source": _src_cell,
-                "Generate": gen_btns[_i],
-                "Release": _rel_cell,
-                "📥 Release": _rel_dl_cell,
+                "→": gen_btns[_i],
+                "Release": _rel_combined,
                 "Import": imp_uploads[_i],
                 "Submitted": _sub_cell,
-                "Autograde": auto_btns[_i],
-                "Autograded": "\u2705" if _a.num_autograded > 0 else "\u2013",
+                "→ ": auto_btns[_i],
                 "Graded": f"{_a.num_graded}/{_a.num_autograded}"
                 if _a.num_autograded
                 else "\u2013",
-                "Export": fb_btns[_i],
-                "📋 Grades": _fb_csv_cell,
-                "📥 Feedback": _fb_zip_cell,
+                "Export": _export_cell,
                 "Feedback": mo.md(_fb_text),
             }
         )
