@@ -310,6 +310,48 @@ def write_csv(
     print(f"\nCSV written to {path}")
 
 
+def serialize_results(
+    results: list[NotebookResult],
+    all_labels: list[str],
+    marks: dict[str, int | float] | None = None,
+) -> list[dict]:
+    """Convert results to a list of dicts for JSON serialization."""
+    q_headers = [label.split(":")[0].strip() for label in all_labels]
+    rows = []
+    for result in results:
+        if not result.export_ok:
+            row = {
+                "notebook": result.path.stem,
+                "checks": {q: "EXPORT_FAILED" for q in q_headers},
+                "cell_errors": 0,
+                "export_error": result.export_error,
+                "tampered": result.tampered,
+            }
+            if marks is not None:
+                row["auto_mark"] = None
+                row["total_mark"] = sum(marks.values())
+        else:
+            check_map = {
+                c.label.split(":")[0].strip(): format_status_plain(c.status)
+                for c in result.checks
+            }
+            row = {
+                "notebook": result.path.stem,
+                "checks": {q: check_map.get(q, "---") for q in q_headers},
+                "cell_errors": result.cell_errors,
+                "export_error": result.export_error,
+                "tampered": result.tampered,
+            }
+            if marks is not None:
+                auto_mark = sum(
+                    marks[k] for k in marks if k in check_map and check_map[k] == "PASS"
+                )
+                row["auto_mark"] = auto_mark
+                row["total_mark"] = sum(marks.values())
+        rows.append(row)
+    return rows
+
+
 def build_zip(
     results: list[NotebookResult],
     all_labels: list[str],

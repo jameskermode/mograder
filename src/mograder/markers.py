@@ -13,6 +13,7 @@ def _rel(p: Path) -> str:
     except ValueError:
         return str(p)
 
+
 SOLUTION_BEGIN = "### BEGIN SOLUTION"
 SOLUTION_END = "### END SOLUTION"
 

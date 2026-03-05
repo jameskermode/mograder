@@ -11,6 +11,17 @@ from mograder.cells import (
 )
 
 
+@dataclass(frozen=True)
+class DirNames:
+    """Customisable directory names for the nbgrader-style layout."""
+
+    source: str = "source"
+    release: str = "release"
+    submitted: str = "submitted"
+    autograded: str = "autograded"
+    feedback: str = "feedback"
+
+
 @dataclass
 class SubmissionInfo:
     """Status of a single student submission."""
@@ -42,13 +53,16 @@ class AssignmentInfo:
     submissions: list[SubmissionInfo] = field(default_factory=list)
 
 
-def scan_course(course_dir: Path) -> list[AssignmentInfo]:
+def scan_course(
+    course_dir: Path, dir_names: DirNames | None = None
+) -> list[AssignmentInfo]:
     """Scan a course directory and return status for each assignment.
 
     Walks ``source/``, ``release/``, ``submitted/``, ``autograded/``,
     and ``feedback/`` subdirectories to build a per-assignment overview.
     """
     course_dir = Path(course_dir)
+    dn = dir_names or DirNames()
     assignments: dict[str, AssignmentInfo] = {}
 
     def _ensure(name: str) -> AssignmentInfo:
@@ -57,7 +71,7 @@ def scan_course(course_dir: Path) -> list[AssignmentInfo]:
         return assignments[name]
 
     # Scan source/
-    source_dir = course_dir / "source"
+    source_dir = course_dir / dn.source
     if source_dir.is_dir():
         for d in sorted(source_dir.iterdir()):
             if d.is_dir():
@@ -68,7 +82,7 @@ def scan_course(course_dir: Path) -> list[AssignmentInfo]:
                     info.source_path = py_files[0]
 
     # Scan release/
-    release_dir = course_dir / "release"
+    release_dir = course_dir / dn.release
     if release_dir.is_dir():
         for d in sorted(release_dir.iterdir()):
             if d.is_dir():
@@ -79,7 +93,7 @@ def scan_course(course_dir: Path) -> list[AssignmentInfo]:
                     info.release_path = py_files[0]
 
     # Scan submitted/
-    submitted_dir = course_dir / "submitted"
+    submitted_dir = course_dir / dn.submitted
     if submitted_dir.is_dir():
         for d in sorted(submitted_dir.iterdir()):
             if d.is_dir():
@@ -89,7 +103,7 @@ def scan_course(course_dir: Path) -> list[AssignmentInfo]:
                     info.num_submitted = len(py_files)
 
     # Scan autograded/
-    autograded_dir = course_dir / "autograded"
+    autograded_dir = course_dir / dn.autograded
     if autograded_dir.is_dir():
         for d in sorted(autograded_dir.iterdir()):
             if d.is_dir():
@@ -106,7 +120,7 @@ def scan_course(course_dir: Path) -> list[AssignmentInfo]:
                     info.num_graded = graded_count
 
     # Scan feedback/
-    feedback_dir = course_dir / "feedback"
+    feedback_dir = course_dir / dn.feedback
     if feedback_dir.is_dir():
         for d in sorted(feedback_dir.iterdir()):
             if d.is_dir():
@@ -118,13 +132,16 @@ def scan_course(course_dir: Path) -> list[AssignmentInfo]:
     return sorted(assignments.values(), key=lambda a: a.name)
 
 
-def scan_submissions(course_dir: Path, assignment: str) -> list[SubmissionInfo]:
+def scan_submissions(
+    course_dir: Path, assignment: str, dir_names: DirNames | None = None
+) -> list[SubmissionInfo]:
     """Scan per-student submission details for an assignment.
 
     Checks ``submitted/``, ``autograded/``, and ``feedback/`` directories
     to build a detailed per-student view.
     """
     course_dir = Path(course_dir)
+    dn = dir_names or DirNames()
     students: dict[str, SubmissionInfo] = {}
 
     def _ensure(name: str) -> SubmissionInfo:
@@ -133,7 +150,7 @@ def scan_submissions(course_dir: Path, assignment: str) -> list[SubmissionInfo]:
         return students[name]
 
     # Submitted
-    sub_dir = course_dir / "submitted" / assignment
+    sub_dir = course_dir / dn.submitted / assignment
     if sub_dir.is_dir():
         for f in sub_dir.iterdir():
             if f.suffix == ".py":
@@ -141,7 +158,7 @@ def scan_submissions(course_dir: Path, assignment: str) -> list[SubmissionInfo]:
                 info.submitted_path = f
 
     # Autograded
-    auto_dir = course_dir / "autograded" / assignment
+    auto_dir = course_dir / dn.autograded / assignment
     if auto_dir.is_dir():
         for f in auto_dir.iterdir():
             if f.suffix == ".py":
@@ -163,7 +180,7 @@ def scan_submissions(course_dir: Path, assignment: str) -> list[SubmissionInfo]:
                     info.graded = False
 
     # Feedback HTML
-    fb_dir = course_dir / "feedback" / assignment
+    fb_dir = course_dir / dn.feedback / assignment
     if fb_dir.is_dir():
         for f in fb_dir.iterdir():
             if f.suffix == ".html":
@@ -176,13 +193,15 @@ def scan_submissions(course_dir: Path, assignment: str) -> list[SubmissionInfo]:
 def collect_student_marks(
     course_dir: Path,
     assignments: list[AssignmentInfo],
+    dir_names: DirNames | None = None,
 ) -> dict[str, dict[str, int | None]]:
     """Build ``{student_id: {assignment_name: mark | None}}`` across all assignments."""
     course_dir = Path(course_dir)
+    dn = dir_names or DirNames()
     result: dict[str, dict[str, int | None]] = {}
 
     for a in assignments:
-        auto_dir = course_dir / "autograded" / a.name
+        auto_dir = course_dir / dn.autograded / a.name
         if not auto_dir.is_dir():
             continue
         for f in auto_dir.iterdir():
@@ -207,11 +226,13 @@ def collect_student_marks(
 def get_max_marks(
     course_dir: Path,
     assignments: list[AssignmentInfo],
+    dir_names: DirNames | None = None,
 ) -> dict[str, int | float]:
     """Return ``{assignment_name: max_mark}`` from source notebooks.
 
     Uses ``parse_marks_metadata`` when a marks cell exists, otherwise 100.
     """
+    _ = dir_names  # accepted for API consistency
     course_dir = Path(course_dir)
     result: dict[str, int | float] = {}
     for a in assignments:

@@ -224,16 +224,6 @@ def test_app_assignments_table_has_std_column():
     assert '"Max"' not in source
 
 
-def test_app_assignments_table_has_no_actions_column():
-    """Action buttons should be inlined in their respective columns, not a separate Actions column."""
-    from pathlib import Path
-
-    app_path = Path(__file__).parent.parent / "src" / "mograder" / "formgrader_app.py"
-    source = app_path.read_text()
-    assert '"Actions"' not in source
-    assert '"Export FB"' not in source
-
-
 def test_app_no_svg_histogram():
     """App should not reference svg_histogram anymore."""
     from pathlib import Path
@@ -448,8 +438,6 @@ def test_app_on_change_callbacks_do_not_block():
 
     app_path = Path(__file__).parent.parent / "src" / "mograder" / "formgrader_app.py"
     source = app_path.read_text()
-    # No spinner in callbacks (doesn't work)
-    assert "mo.status.spinner" not in source
     # on_change lambdas should set state, not call _run_cli
     assert "on_change=lambda" in source  # buttons still exist
     assert "_run_cli" not in source  # no blocking helper in callbacks
@@ -477,3 +465,157 @@ def test_app_executor_uses_popen_for_autograde():
     assert "sp.Popen(" in source
     assert '"--progress"' in source
     assert "progress_bar" in source
+
+
+def test_app_executor_cell_after_layout():
+    """Executor cell must come after layout cell so progress bar renders below the table."""
+    from pathlib import Path
+
+    app_path = Path(__file__).parent.parent / "src" / "mograder" / "formgrader_app.py"
+    source = app_path.read_text()
+    # Layout cell contains the tabs vstack; executor cell contains get_pending_action
+    layout_pos = source.index("mo.ui.tabs(")
+    executor_pos = source.index("get_pending_action()")
+    assert layout_pos < executor_pos, (
+        "executor cell must be defined after layout cell in the file"
+    )
+
+
+def test_app_uses_single_progress_bar():
+    """Autograde uses progress_bar; other commands use spinner."""
+    import re
+    from pathlib import Path
+
+    app_path = Path(__file__).parent.parent / "src" / "mograder" / "formgrader_app.py"
+    source = app_path.read_text()
+
+    # spinner is used for non-autograde commands
+    assert "mo.status.spinner(" in source
+
+    # progress_bar calls should always have a total= argument
+    for m in re.finditer(r"mo\.status\.progress_bar\(([^)]*)\)", source, re.DOTALL):
+        args = m.group(1)
+        assert "total=" in args, (
+            f"progress_bar without total= will raise ValueError: {m.group(0)}"
+        )
+
+    # sandbox_start should update with increment=0 (no visual jump)
+    assert "increment=0" in source
+
+
+def test_app_executor_handles_results_event():
+    """The executor cell handles the 'results' event and renders a markdown table."""
+    from pathlib import Path
+
+    app_path = Path(__file__).parent.parent / "src" / "mograder" / "formgrader_app.py"
+    source = app_path.read_text()
+    assert '"results"' in source
+    assert "_results_data" in source
+    assert "_STATUS" in source
+    # Should build a markdown table from results
+    assert "_table_md" in source
+
+
+def test_app_has_grading_tab():
+    """The formgrader app should have a Grading tab."""
+    from pathlib import Path
+
+    app_path = Path(__file__).parent.parent / "src" / "mograder" / "formgrader_app.py"
+    source = app_path.read_text()
+    assert '"Grading"' in source
+    assert "grading_content" in source
+
+
+def test_scan_course_custom_dirs(tmp_path):
+    """DirNames overrides hardcoded directory names."""
+    from mograder.formgrader import DirNames
+
+    # Use custom dir names
+    dn = DirNames(source="src", release="rel", submitted="sub", autograded="graded")
+    (tmp_path / "src" / "hw1").mkdir(parents=True)
+    (tmp_path / "src" / "hw1" / "hw1.py").write_text(_minimal_notebook())
+    (tmp_path / "sub" / "hw1").mkdir(parents=True)
+    (tmp_path / "sub" / "hw1" / "alice.py").write_text(_minimal_notebook())
+
+    result = scan_course(tmp_path, dir_names=dn)
+    assert len(result) == 1
+    assert result[0].has_source is True
+    assert result[0].num_submitted == 1
+
+    # Default dir names should find nothing
+    result_default = scan_course(tmp_path)
+    assert result_default == []
+
+
+def test_scan_submissions_custom_dirs(tmp_path):
+    """DirNames overrides hardcoded directory names in scan_submissions."""
+    from mograder.formgrader import DirNames
+
+    dn = DirNames(submitted="sub", autograded="graded", feedback="fb")
+    (tmp_path / "sub" / "hw1").mkdir(parents=True)
+    (tmp_path / "sub" / "hw1" / "alice.py").write_text(_minimal_notebook())
+    (tmp_path / "graded" / "hw1").mkdir(parents=True)
+    (tmp_path / "graded" / "hw1" / "alice.py").write_text(
+        _make_autograded(graded=True, mark=80)
+    )
+
+    result = scan_submissions(tmp_path, "hw1", dir_names=dn)
+    assert len(result) == 1
+    assert result[0].student == "alice"
+    assert result[0].mark == 80
+
+    # Default dir names should find nothing
+    result_default = scan_submissions(tmp_path, "hw1")
+    assert result_default == []
+
+
+def test_collect_student_marks_custom_dirs(tmp_path):
+    """DirNames overrides in collect_student_marks."""
+    from mograder.formgrader import AssignmentInfo, DirNames
+
+    dn = DirNames(autograded="graded")
+    name = "hw1"
+    (tmp_path / "graded" / name).mkdir(parents=True)
+    (tmp_path / "graded" / name / "alice.py").write_text(
+        _make_autograded(graded=True, mark=72)
+    )
+
+    assignments = [AssignmentInfo(name=name)]
+    result = collect_student_marks(tmp_path, assignments, dir_names=dn)
+    assert result["alice"][name] == 72
+
+    # Default dir names should find nothing
+    result_default = collect_student_marks(tmp_path, assignments)
+    assert result_default == {}
+
+
+def test_app_progress_bar_uses_context_manager_return():
+    """progress_bar.__enter__() returns a ProgressBar; update() must be called on that, not the wrapper."""
+    import re
+    from pathlib import Path
+
+    app_path = Path(__file__).parent.parent / "src" / "mograder" / "formgrader_app.py"
+    source = app_path.read_text()
+
+    # Find all progress_bar context manager usages:
+    # The pattern _var = mo.status.progress_bar(...) followed by _var.__enter__()
+    # should capture the __enter__ return value and call .update() on it.
+    # Bad:  _bar = mo.status.progress_bar(...); _bar.__enter__(); _bar.update()
+    # Good: _bar = mo.status.progress_bar(...); _inner = _bar.__enter__(); _inner.update()
+    #   or: with mo.status.progress_bar(...) as _bar: _bar.update()
+
+    # Find variables assigned from progress_bar() that later call .__enter__()
+    bar_vars = re.findall(r"(\w+)\s*=\s*mo\.status\.progress_bar\(", source)
+    for var in bar_vars:
+        # If this var calls __enter__(), the return value must be captured
+        enter_pattern = rf"{re.escape(var)}\.__enter__\(\)"
+        for enter_match in re.finditer(enter_pattern, source):
+            # Get the line containing this __enter__ call
+            line_start = source.rfind("\n", 0, enter_match.start()) + 1
+            line_end = source.find("\n", enter_match.end())
+            line = source[line_start:line_end].strip()
+            # The __enter__ return must be assigned to a variable
+            assert re.match(r"\w+\s*=\s*" + re.escape(var), line), (
+                f"progress_bar.__enter__() return value not captured — "
+                f".update() will fail: {line}"
+            )

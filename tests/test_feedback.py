@@ -1,9 +1,15 @@
 import csv
+import json
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 from mograder.cells import inject_grading_cells
-from mograder.feedback import collect_grades, export_feedback_html, write_grades_csv
+from mograder.feedback import (
+    collect_grades,
+    export_feedback_html,
+    inject_feedback_html,
+    write_grades_csv,
+)
 from mograder.models import CheckResult
 
 
@@ -178,3 +184,154 @@ def test_write_grades_csv_omits_auto_mark_when_none(tmp_path):
         rows = list(reader)
 
     assert "auto_mark" not in rows[0]
+
+
+# --- HTML injection ---
+
+
+def _make_marimo_html(cells=None):
+    """Build a minimal marimo static HTML page with __MARIMO_MOUNT_CONFIG__."""
+    if cells is None:
+        cells = [
+            {
+                "code": "x = 1",
+                "code_hash": "abc",
+                "config": {"column": None, "disabled": False, "hide_code": False},
+                "id": "AAAA",
+                "name": "_",
+            }
+        ]
+    session_cells = [
+        {
+            "code_hash": c["code_hash"],
+            "console": [],
+            "id": c["id"],
+            "outputs": [{"data": {"text/plain": ""}, "type": "data"}],
+        }
+        for c in cells
+    ]
+    config = {
+        "filename": "test.py",
+        "mode": "read",
+        "notebook": {"cells": cells, "metadata": {}, "version": "1"},
+        "session": {
+            "cells": session_cells,
+            "metadata": {},
+            "version": "1",
+        },
+        "runtimeConfig": None,
+    }
+    config_json = json.dumps(config)
+    # Mimic marimo's JS-style trailing comma
+    config_json = config_json[:-1] + ",}"
+    return (
+        "<html><body>\n"
+        '    <script data-marimo="true">\n'
+        f"      window.__MARIMO_MOUNT_CONFIG__ = {config_json};\n"
+        "    </script>\n"
+        "</body></html>\n"
+    )
+
+
+def test_inject_feedback_html_holistic(tmp_path):
+    html_src = _make_marimo_html()
+    dest = tmp_path / "out.html"
+
+    inject_feedback_html(html_src, dest, mark=72, feedback_text="Good work")
+
+    result = dest.read_text()
+    assert "marimo-callout-output" in result
+    assert "72/100" in result
+    assert "Good work" in result
+
+    # Verify the JSON is parseable (extract and check)
+    prefix = "window.__MARIMO_MOUNT_CONFIG__ = "
+    start = result.index(prefix) + len(prefix)
+    config, _ = json.JSONDecoder().raw_decode(result, start)
+    assert len(config["notebook"]["cells"]) == 2
+    assert len(config["session"]["cells"]) == 2
+    assert config["notebook"]["cells"][-1]["id"] == "mgFB"
+    assert config["session"]["cells"][-1]["id"] == "mgFB"
+
+
+def test_inject_feedback_html_with_marks(tmp_path):
+    html_src = _make_marimo_html()
+    dest = tmp_path / "out.html"
+
+    inject_feedback_html(
+        html_src,
+        dest,
+        mark=90,
+        feedback_text="Excellent analysis",
+        auto_mark=40,
+        total_available=100,
+    )
+
+    result = dest.read_text()
+    assert "90/100" in result
+    assert "auto: 40" in result
+    assert "manual: 50" in result
+    assert "Excellent analysis" in result
+
+
+def test_export_uses_injection_when_html_exists(tmp_path):
+    """When autograde HTML exists, export uses injection (no subprocess)."""
+    # Create graded .py notebook
+    nb = tmp_path / "student.py"
+    nb.write_text(_make_graded_notebook(72, "Good work"))
+
+    # Create matching autograde .html
+    html_file = tmp_path / "student.html"
+    html_file.write_text(_make_marimo_html())
+
+    out_dir = tmp_path / "feedback"
+
+    with patch("mograder.feedback.subprocess.run") as mock_run:
+        html_path = export_feedback_html(nb, out_dir)
+        mock_run.assert_not_called()
+
+    assert html_path.exists()
+    assert html_path.name == "student.html"
+    content = html_path.read_text()
+    assert "72/100" in content
+    assert "Good work" in content
+
+
+def test_export_falls_back_when_no_html(tmp_path):
+    """When no autograde HTML exists, falls back to marimo export."""
+    nb = tmp_path / "student.py"
+    nb.write_text("# notebook")
+    out_dir = tmp_path / "feedback"
+
+    def mock_run(cmd, **kwargs):
+        dest = Path(cmd[cmd.index("-o") + 1])
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        dest.write_text("<html>exported</html>")
+        result = MagicMock()
+        result.returncode = 0
+        result.stderr = ""
+        return result
+
+    with patch("mograder.feedback.subprocess.run", side_effect=mock_run) as mock:
+        html_path = export_feedback_html(nb, out_dir)
+        mock.assert_called_once()
+
+    assert html_path.exists()
+
+
+def test_export_copies_html_when_ungraded(tmp_path):
+    """When mark is None (ungraded), HTML is copied without injection."""
+    nb = tmp_path / "student.py"
+    nb.write_text(_make_graded_notebook(None, ""))
+
+    original_html = _make_marimo_html()
+    html_file = tmp_path / "student.html"
+    html_file.write_text(original_html)
+
+    out_dir = tmp_path / "feedback"
+    html_path = export_feedback_html(nb, out_dir)
+
+    assert html_path.exists()
+    # Should be a copy — no injection, so no "mgFB" cell
+    content = html_path.read_text()
+    assert "mgFB" not in content

@@ -12,6 +12,7 @@ from mograder.runner import (
     discover_labels,
     run_batch,
     run_notebook,
+    serialize_results,
     write_csv,
 )
 
@@ -378,3 +379,68 @@ def test_create_shared_sandbox_reuses_existing_venv(tmp_path):
     assert any("uv export" in c for c in cmd_strs)
     assert any("uv pip install" in c for c in cmd_strs)
     assert not any("uv venv" in c for c in cmd_strs)
+
+
+def test_serialize_results():
+    results = [
+        NotebookResult(
+            path=Path("alice.py"),
+            checks=[
+                CheckResult("Q1: Foo", "success"),
+                CheckResult("Q2: Bar", "danger"),
+            ],
+            cell_errors=1,
+        ),
+        NotebookResult(
+            path=Path("bob.py"),
+            export_ok=False,
+            export_error="timeout",
+        ),
+        NotebookResult(
+            path=Path("carol.py"),
+            checks=[CheckResult("Q1: Foo", "success")],
+            cell_errors=0,
+            tampered=["check(Q1)"],
+        ),
+    ]
+    labels = ["Q1: Foo", "Q2: Bar"]
+    marks = {"Q1": 10, "Q2": 20}
+
+    rows = serialize_results(results, labels, marks)
+
+    assert len(rows) == 3
+
+    # alice: Q1 pass, Q2 fail
+    assert rows[0]["notebook"] == "alice"
+    assert rows[0]["checks"] == {"Q1": "PASS", "Q2": "FAIL"}
+    assert rows[0]["auto_mark"] == 10
+    assert rows[0]["total_mark"] == 30
+    assert rows[0]["cell_errors"] == 1
+    assert rows[0]["tampered"] == []
+
+    # bob: export failure
+    assert rows[1]["notebook"] == "bob"
+    assert rows[1]["checks"] == {"Q1": "EXPORT_FAILED", "Q2": "EXPORT_FAILED"}
+    assert rows[1]["auto_mark"] is None
+    assert rows[1]["export_error"] == "timeout"
+
+    # carol: tampered
+    assert rows[2]["notebook"] == "carol"
+    assert rows[2]["tampered"] == ["check(Q1)"]
+
+
+def test_serialize_results_without_marks():
+    results = [
+        NotebookResult(
+            path=Path("alice.py"),
+            checks=[CheckResult("Q1: Foo", "success")],
+            cell_errors=0,
+        ),
+    ]
+    labels = ["Q1: Foo"]
+    rows = serialize_results(results, labels)
+
+    assert len(rows) == 1
+    assert "auto_mark" not in rows[0]
+    assert "total_mark" not in rows[0]
+    assert rows[0]["checks"] == {"Q1": "PASS"}

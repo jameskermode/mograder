@@ -95,6 +95,7 @@ def build_feedback_zip(
     feedback_dir: Path,
     zip_path: Path,
     match_column: str = "Username",
+    name_column: str = "Full name",
 ) -> int:
     """Create ZIP with Moodle feedback path convention.
 
@@ -105,7 +106,7 @@ def build_feedback_zip(
     lookup = {}
     for row in moodle_rows:
         key = row[match_column]
-        full_name = row["Full name"]
+        full_name = row[name_column]
         # "Participant 4454589" → "4454589"
         participant_id = row["Identifier"].split()[-1]
         lookup[key] = (full_name, participant_id)

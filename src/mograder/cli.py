@@ -7,6 +7,10 @@ import sys
 import tempfile
 from pathlib import Path
 
+import click
+
+from mograder import cells, feedback, integrity, markers, moodle, runner
+
 
 def _rel(p: Path) -> str:
     """Return a short relative path string for display."""
@@ -14,11 +18,6 @@ def _rel(p: Path) -> str:
         return os.path.relpath(p)
     except ValueError:
         return str(p)
-
-
-import click
-
-from mograder import cells, feedback, integrity, markers, moodle, runner
 
 
 def _infer_output_dir(
@@ -43,25 +42,41 @@ def _infer_output_dir(
     return Path(fallback)
 
 
-def _find_source(submitted_path: Path) -> Path | None:
+def _find_source(submitted_path: Path, source_dir: str = "source") -> Path | None:
     """Auto-discover the source notebook for a submitted file.
 
-    Looks for ``source/<assignment>/<name>.py`` relative to the submitted
+    Looks for ``<source_dir>/<assignment>/<name>.py`` relative to the submitted
     file's directory structure.
     """
     assignment = submitted_path.parent.name
     name = submitted_path.name
-    # Walk up to find source/ sibling
+    # Walk up to find source_dir sibling
     for ancestor in [submitted_path.parent.parent, submitted_path.parent.parent.parent]:
-        candidate = ancestor / "source" / assignment / name
+        candidate = ancestor / source_dir / assignment / name
         if candidate.exists():
             return candidate
     return None
 
 
 @click.group()
-def cli():
+@click.pass_context
+def cli(ctx):
     """mograder — Semi-automated grading for Marimo notebooks."""
+    from mograder.config import load_config
+
+    ctx.ensure_object(dict)
+    config = load_config(Path.cwd())
+    ctx.obj["config"] = config
+    ctx.default_map = ctx.default_map or {}
+    ctx.default_map.setdefault("autograde", {}).update(
+        {"jobs": config.jobs, "timeout": config.timeout}
+    )
+    ctx.default_map.setdefault("feedback", {}).update(
+        {"jobs": config.jobs, "timeout": config.timeout}
+    )
+    ctx.default_map.setdefault("moodle", {}).update(
+        {"match_column": config.moodle_match_column}
+    )
 
 
 @cli.command()
@@ -79,10 +94,14 @@ def cli():
 @click.option(
     "--validate", is_flag=True, help="Only validate markers, don't generate output"
 )
-def generate(files, output_dir, dry_run, validate):
+@click.pass_context
+def generate(ctx, files, output_dir, dry_run, validate):
     """Strip solutions from source notebooks to produce release versions."""
+    config = ctx.obj["config"]
     if output_dir is None:
-        output_dir = _infer_output_dir(files[0], "source", "release", "release")
+        output_dir = _infer_output_dir(
+            files[0], config.source_dir, config.release_dir, config.release_dir
+        )
 
     success = True
     processed_dirs: set[Path] = set()
@@ -157,8 +176,10 @@ def generate(files, output_dir, dry_run, validate):
     hidden=True,
     help="Emit JSON progress lines to stderr (machine-readable)",
 )
-def autograde(files, source_path, csv_path, jobs, timeout, output_dir, progress):
+@click.pass_context
+def autograde(ctx, files, source_path, csv_path, jobs, timeout, output_dir, progress):
     """Run notebooks and inject grading cells for GTA review."""
+    config = ctx.obj["config"]
     notebooks = [f for f in files if f.suffix == ".py"]
     if not notebooks:
         click.echo("ERROR: no valid .py files found", err=True)
@@ -166,12 +187,15 @@ def autograde(files, source_path, csv_path, jobs, timeout, output_dir, progress)
 
     if output_dir is None:
         output_dir = _infer_output_dir(
-            notebooks[0], "submitted", "autograded", "autograded"
+            notebooks[0],
+            config.submitted_dir,
+            config.autograded_dir,
+            config.autograded_dir,
         )
 
     # Auto-discover source notebook if not given
     if source_path is None:
-        found = _find_source(notebooks[0])
+        found = _find_source(notebooks[0], source_dir=config.source_dir)
         if found:
             source_path = found
             click.echo(f"Auto-discovered source: {_rel(source_path)}")
@@ -181,6 +205,11 @@ def autograde(files, source_path, csv_path, jobs, timeout, output_dir, progress)
     marks: dict[str, int | float] | None = None
     source_text: str | None = None
     shared_sandbox: Path | None = None
+    if progress:
+        click.echo(
+            json.dumps({"event": "start", "total": len(notebooks)}),
+            err=True,
+        )
     if source_path:
         click.echo(f"Running source notebook: {_rel(source_path)}")
         if progress:
@@ -246,10 +275,6 @@ def autograde(files, source_path, csv_path, jobs, timeout, output_dir, progress)
 
     progress_cb = None
     if progress:
-        click.echo(
-            json.dumps({"event": "start", "total": len(run_paths)}),
-            err=True,
-        )
 
         def progress_cb(completed, total, nb_path):
             click.echo(
@@ -264,10 +289,12 @@ def autograde(files, source_path, csv_path, jobs, timeout, output_dir, progress)
                 err=True,
             )
 
+    output_dir.mkdir(parents=True, exist_ok=True)
     results = runner.run_batch(
         run_paths,
         jobs=jobs,
         timeout=timeout,
+        html_dir=output_dir,
         on_progress=progress_cb,
         sandbox_dir=shared_sandbox,
     )
@@ -292,8 +319,16 @@ def autograde(files, source_path, csv_path, jobs, timeout, output_dir, progress)
     # Print summary
     runner.print_summary(results, all_labels, marks)
 
+    # Emit structured results for --progress consumers
+    if progress:
+        rows = runner.serialize_results(results, all_labels, marks)
+        labels = [lb.split(":")[0].strip() for lb in all_labels]
+        click.echo(
+            json.dumps({"event": "results", "labels": labels, "rows": rows}),
+            err=True,
+        )
+
     # Inject grading cells and write to output dir
-    output_dir.mkdir(parents=True, exist_ok=True)
     for result in results:
         if not result.export_ok:
             continue
@@ -331,8 +366,10 @@ def autograde(files, source_path, csv_path, jobs, timeout, output_dir, progress)
     "--timeout", type=int, default=300, help="Timeout per notebook in seconds"
 )
 @click.option("-j", "--jobs", type=int, default=4, help="Number of parallel workers")
-def feedback_cmd(files, output_dir, grades_csv, timeout, jobs):
+@click.pass_context
+def feedback_cmd(ctx, files, output_dir, grades_csv, timeout, jobs):
     """Export graded notebooks to HTML and aggregate grades."""
+    config = ctx.obj["config"]
     notebooks = [f for f in files if f.suffix == ".py"]
     if not notebooks:
         click.echo("ERROR: no valid .py files found", err=True)
@@ -340,7 +377,10 @@ def feedback_cmd(files, output_dir, grades_csv, timeout, jobs):
 
     if output_dir is None:
         output_dir = _infer_output_dir(
-            notebooks[0], "autograded", "feedback", "feedback"
+            notebooks[0],
+            config.autograded_dir,
+            config.feedback_dir,
+            config.feedback_dir,
         )
 
     # Collect grades from graded notebooks
@@ -396,8 +436,10 @@ cli.add_command(feedback_cmd, "feedback")
     default="Username",
     help="Moodle CSV column to match student against (default: Username)",
 )
-def moodle_cmd(worksheet, grades_csv, feedback_dir, output_dir, match_column):
+@click.pass_context
+def moodle_cmd(ctx, worksheet, grades_csv, feedback_dir, output_dir, match_column):
     """Merge grades into a Moodle offline grading worksheet."""
+    config = ctx.obj["config"]
     # Read inputs
     fieldnames, moodle_rows = moodle.read_moodle_worksheet(worksheet)
 
@@ -430,7 +472,11 @@ def moodle_cmd(worksheet, grades_csv, feedback_dir, output_dir, match_column):
     if feedback_dir:
         zip_path = output_dir / f"feedback_{worksheet.stem}.zip"
         count = moodle.build_feedback_zip(
-            updated_rows, feedback_dir, zip_path, match_column
+            updated_rows,
+            feedback_dir,
+            zip_path,
+            match_column,
+            name_column=config.moodle_name_column,
         )
         click.echo(f"Feedback ZIP: {_rel(zip_path)} ({count} files)")
 

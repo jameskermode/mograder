@@ -2,6 +2,7 @@
 
 import ast
 import re
+from pathlib import Path
 
 from mograder.models import CheckResult
 
@@ -290,12 +291,61 @@ def parse_gta_feedback(source_lines: list[str]) -> tuple[int | None, str]:
     if mark_match and mark_match.group(1) != "None":
         mark = int(mark_match.group(1))
 
-    # Parse _feedback - handle both single and double quoted strings
+    # Parse _feedback - try triple-quoted first, then single-line
     feedback = ""
-    fb_match = re.search(r'_feedback\s*=\s*"((?:[^"\\]|\\.)*)"', section)
+    fb_match = re.search(r'_feedback\s*=\s*"""(.*?)"""', section, re.DOTALL)
+    if not fb_match:
+        fb_match = re.search(r"_feedback\s*=\s*'''(.*?)'''", section, re.DOTALL)
+    if not fb_match:
+        fb_match = re.search(r'_feedback\s*=\s*"((?:[^"\\]|\\.)*)"', section)
     if not fb_match:
         fb_match = re.search(r"_feedback\s*=\s*'((?:[^'\\]|\\.)*)'", section)
     if fb_match:
         feedback = fb_match.group(1)
 
     return (mark, feedback)
+
+
+def write_gta_feedback(file_path: Path, mark: int | None, feedback: str) -> None:
+    """Write ``_mark`` and ``_feedback`` values into a graded notebook.
+
+    The file must contain a MOGRADER: GTA FEEDBACK marker cell.
+    Always writes ``_feedback`` as a triple-quoted string.
+
+    Raises ValueError if the feedback marker is not found.
+    """
+    text = file_path.read_text()
+    if FEEDBACK_MARKER not in text:
+        raise ValueError(f"No {FEEDBACK_MARKER} found in {file_path}")
+
+    # Replace _mark value
+    mark_str = str(mark) if mark is not None else "None"
+    text = re.sub(r"_mark\s*=\s*(\d+|None)", f"_mark = {mark_str}", text)
+
+    # Escape triple quotes in feedback
+    safe_feedback = feedback.replace('"""', r"\"\"\"")
+
+    # Replace _feedback value — try triple-quoted patterns first, then single-line
+    replacement = f'_feedback = """{safe_feedback}"""'
+
+    # Try triple-double-quoted
+    new_text, count = re.subn(
+        r'_feedback\s*=\s*""".*?"""', replacement, text, count=1, flags=re.DOTALL
+    )
+    if count == 0:
+        # Try triple-single-quoted
+        new_text, count = re.subn(
+            r"_feedback\s*=\s*'''.*?'''", replacement, text, count=1, flags=re.DOTALL
+        )
+    if count == 0:
+        # Try double-quoted single-line
+        new_text, count = re.subn(
+            r'_feedback\s*=\s*"(?:[^"\\]|\\.)*"', replacement, text, count=1
+        )
+    if count == 0:
+        # Try single-quoted single-line
+        new_text, count = re.subn(
+            r"_feedback\s*=\s*'(?:[^'\\]|\\.)*'", replacement, text, count=1
+        )
+
+    file_path.write_text(new_text)

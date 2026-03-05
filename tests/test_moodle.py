@@ -255,6 +255,33 @@ def test_build_feedback_zip_custom_match_column(tmp_path):
         assert names[0] == "Alice Example_9900001_assignsubmission_file_/1234567.html"
 
 
+def test_build_feedback_zip_custom_name_column(tmp_path):
+    """name_column overrides which column is used for the folder name."""
+    feedback_dir = tmp_path / "feedback"
+    feedback_dir.mkdir()
+    (feedback_dir / "u1234567.html").write_text("<html>feedback</html>")
+
+    moodle_rows = [
+        {
+            **_moodle_row(
+                username="u1234567",
+                full_name="Alice Example",
+                identifier="Participant 9900001",
+            ),
+            "Display name": "Alice E.",
+        }
+    ]
+    zip_path = tmp_path / "feedback.zip"
+    count = build_feedback_zip(
+        moodle_rows, feedback_dir, zip_path, name_column="Display name"
+    )
+    assert count == 1
+
+    with zipfile.ZipFile(zip_path) as zf:
+        names = zf.namelist()
+        assert "Alice E._9900001_assignsubmission_file_/u1234567.html" in names
+
+
 # --- compute_statistics ---
 
 

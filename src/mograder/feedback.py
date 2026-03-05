@@ -1,24 +1,171 @@
 """HTML feedback export and grade aggregation."""
 
 import csv
+import html
+import json
+import re
+import shutil
 import subprocess
 import sys
 from pathlib import Path
 
-from mograder.cells import parse_auto_marks, parse_gta_feedback
+from mograder.cells import parse_auto_marks, parse_gta_feedback, parse_marks_metadata
 
 
-def export_feedback_html(
+def _build_callout_html(content_html: str, kind: str) -> str:
+    """Build a ``<marimo-callout-output>`` element string.
+
+    Applies the layered escaping marimo expects:
+    1. JSON-encode the inner HTML string
+    2. HTML-entity-encode the JSON for use as an attribute value
+    3. Wrap in the custom element
+    """
+    json_str = json.dumps(content_html)
+    # Entity-encode for attribute value: &, <, >, ", backslash
+    encoded = (
+        json_str.replace("&", "&amp;")
+        .replace("<", "&lt;")
+        .replace(">", "&gt;")
+        .replace('"', "&quot;")
+        .replace("\\", "&#92;")
+    )
+    kind_encoded = (
+        json.dumps(kind)
+        .replace("&", "&amp;")
+        .replace("<", "&lt;")
+        .replace(">", "&gt;")
+        .replace('"', "&quot;")
+        .replace("\\", "&#92;")
+    )
+    return f"<marimo-callout-output data-html='{encoded}' data-kind='{kind_encoded}'></marimo-callout-output>"
+
+
+def _build_feedback_content(
+    mark: int | float,
+    feedback_text: str,
+    auto_mark: int | float | None = None,
+    total_available: int | float | None = None,
+) -> str:
+    """Build the inner HTML content for a feedback callout.
+
+    Returns HTML suitable for passing to ``_build_callout_html``.
+    """
+    parts = []
+
+    if auto_mark is not None and total_available is not None:
+        manual = mark - auto_mark
+        parts.append(
+            f"<strong>Mark: {mark}/{total_available}</strong>"
+            f" (auto: {auto_mark}, manual: {manual})"
+        )
+    else:
+        parts.append(f"<strong>Mark: {mark}/100</strong>")
+
+    if feedback_text:
+        paragraphs = feedback_text.split("\n\n")
+        for para in paragraphs:
+            escaped = html.escape(para.strip())
+            if escaped:
+                parts.append(f'<span class="paragraph">{escaped}</span>')
+
+    inner = "\n".join(parts)
+    return f'<span class="markdown prose dark:prose-invert contents">{inner}</span>'
+
+
+def inject_feedback_html(
+    html_source: str,
+    dest: Path,
+    mark: int | float,
+    feedback_text: str,
+    auto_mark: int | float | None = None,
+    total_available: int | float | None = None,
+) -> None:
+    """Inject a feedback callout cell into an existing marimo HTML export.
+
+    Modifies the embedded ``__MARIMO_MOUNT_CONFIG__`` JSON to append a
+    feedback cell to both ``notebook.cells`` and ``session.cells``.
+    """
+    prefix = "window.__MARIMO_MOUNT_CONFIG__ = "
+    idx = html_source.index(prefix)
+    json_start = idx + len(prefix)
+
+    # Remove trailing commas before } or ] for valid JSON
+    # Find the end of the JS object (ends with `};`)
+    # Use brace counting to find the matching }
+    depth = 0
+    json_end = None
+    for i in range(json_start, len(html_source)):
+        ch = html_source[i]
+        if ch == "{":
+            depth += 1
+        elif ch == "}":
+            depth -= 1
+            if depth == 0:
+                json_end = i + 1
+                break
+        elif ch == '"':
+            # Skip string contents
+            i2 = i + 1
+            while i2 < len(html_source):
+                c2 = html_source[i2]
+                if c2 == "\\":
+                    i2 += 2
+                    continue
+                if c2 == '"':
+                    break
+                i2 += 1
+
+    if json_end is None:
+        raise ValueError("Could not find end of __MARIMO_MOUNT_CONFIG__")
+
+    raw_json = html_source[json_start:json_end]
+    # Strip trailing commas (valid JS but not JSON)
+    clean_json = re.sub(r",(\s*[}\]])", r"\1", raw_json)
+    config = json.loads(clean_json)
+
+    # Build feedback content
+    content = _build_feedback_content(mark, feedback_text, auto_mark, total_available)
+    callout = _build_callout_html(content, "success")
+
+    cell_id = "mgFB"
+
+    # Append to notebook.cells
+    config["notebook"]["cells"].append(
+        {
+            "code": "# mograder feedback",
+            "code_hash": "",
+            "config": {"column": None, "disabled": False, "hide_code": True},
+            "id": cell_id,
+            "name": "_",
+        }
+    )
+
+    # Append to session.cells
+    config["session"]["cells"].append(
+        {
+            "code_hash": "",
+            "console": [],
+            "id": cell_id,
+            "outputs": [{"data": {"text/html": callout}, "type": "data"}],
+        }
+    )
+
+    # Serialize back — escape < and > for script safety
+    new_json = json.dumps(config)
+    new_json = new_json.replace("<", "\\u003c").replace(">", "\\u003e")
+
+    new_html = html_source[:json_start] + new_json + ";" + html_source[json_end + 1 :]
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    dest.write_text(new_html)
+
+
+def _export_via_marimo(
     notebook_path: Path,
-    output_dir: Path,
+    dest: Path,
     timeout: int = 300,
 ) -> Path:
-    """Export a graded notebook to standalone HTML via ``marimo export html``.
-
-    Returns the path to the exported HTML file.
-    """
-    output_dir.mkdir(parents=True, exist_ok=True)
-    dest = output_dir / f"{notebook_path.stem}.html"
+    """Export a notebook to HTML by running ``marimo export html``."""
+    dest.parent.mkdir(parents=True, exist_ok=True)
 
     proc = subprocess.run(
         [
@@ -40,6 +187,58 @@ def export_feedback_html(
         raise RuntimeError(f"Failed to export {notebook_path}: {proc.stderr[:500]}")
 
     return dest
+
+
+def export_feedback_html(
+    notebook_path: Path,
+    output_dir: Path,
+    timeout: int = 300,
+) -> Path:
+    """Export a graded notebook to standalone HTML feedback.
+
+    If an autograde HTML file exists alongside the notebook, injects the
+    GTA feedback directly into it (fast, no subprocess). Otherwise falls
+    back to running ``marimo export html``.
+
+    Returns the path to the exported HTML file.
+    """
+    output_dir.mkdir(parents=True, exist_ok=True)
+    dest = output_dir / f"{notebook_path.stem}.html"
+
+    autograde_html = notebook_path.with_suffix(".html")
+
+    if autograde_html.exists():
+        # Read grades from the .py file
+        lines = notebook_path.read_text().splitlines(keepends=True)
+        manual_mark, feedback_text = parse_gta_feedback(lines)
+        auto_mark = parse_auto_marks(lines)
+        marks_meta = parse_marks_metadata(lines)
+
+        if manual_mark is not None:
+            # Compute total mark
+            if auto_mark is not None:
+                total_mark = auto_mark + manual_mark
+            else:
+                total_mark = manual_mark
+
+            total_available = sum(marks_meta.values()) if marks_meta else None
+
+            inject_feedback_html(
+                autograde_html.read_text(),
+                dest,
+                mark=total_mark,
+                feedback_text=feedback_text,
+                auto_mark=auto_mark,
+                total_available=total_available,
+            )
+        else:
+            # Not yet graded — just copy the HTML as-is
+            shutil.copy2(autograde_html, dest)
+
+        return dest
+
+    # Fallback: run marimo export
+    return _export_via_marimo(notebook_path, dest, timeout)
 
 
 def collect_grades(graded_notebooks: list[Path]) -> list[dict]:

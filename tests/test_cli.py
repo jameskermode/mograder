@@ -398,12 +398,63 @@ def test_autograde_progress_sandbox_events(
                 pass
 
     events = [m["event"] for m in json_msgs]
+    assert "start" in events
     assert "sandbox_start" in events
     assert "sandbox_done" in events
 
-    # sandbox_start comes before sandbox_done
+    # start comes first, then sandbox_start, then sandbox_done
+    assert events.index("start") < events.index("sandbox_start")
     assert events.index("sandbox_start") < events.index("sandbox_done")
 
     # sandbox_done should indicate created=True
     done_msg = next(m for m in json_msgs if m["event"] == "sandbox_done")
     assert done_msg["created"] is True
+
+
+@patch("mograder.cells.inject_grading_cells")
+@patch("mograder.runner.run_batch")
+def test_autograde_progress_emits_results(mock_batch, mock_inject, tmp_path):
+    """--progress emits a results event with labels and rows."""
+    nb = tmp_path / "student.py"
+    nb.write_text(
+        "import marimo\napp = marimo.App()\n\nif __name__ == '__main__':\n    app.run()\n"
+    )
+
+    mock_batch.return_value = [
+        NotebookResult(
+            path=nb,
+            checks=[
+                CheckResult("Q1: Foo", "success"),
+                CheckResult("Q2: Bar", "danger"),
+            ],
+            cell_errors=1,
+        )
+    ]
+    mock_inject.return_value = nb.read_text().splitlines(keepends=True)
+
+    out_dir = tmp_path / "grading"
+    runner = CliRunner()
+    result = runner.invoke(
+        cli, ["autograde", str(nb), "-o", str(out_dir), "--progress"]
+    )
+    assert result.exit_code == 0
+
+    # Parse JSON lines from combined output
+    json_msgs = []
+    for line in result.output.splitlines():
+        line = line.strip()
+        if line.startswith("{"):
+            try:
+                json_msgs.append(json.loads(line))
+            except json.JSONDecodeError:
+                pass
+
+    results_msgs = [m for m in json_msgs if m.get("event") == "results"]
+    assert len(results_msgs) == 1
+
+    results_data = results_msgs[0]
+    assert results_data["labels"] == ["Q1", "Q2"]
+    assert len(results_data["rows"]) == 1
+    assert results_data["rows"][0]["notebook"] == "student"
+    assert results_data["rows"][0]["checks"]["Q1"] == "PASS"
+    assert results_data["rows"][0]["checks"]["Q2"] == "FAIL"

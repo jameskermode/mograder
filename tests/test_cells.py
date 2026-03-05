@@ -7,6 +7,7 @@ from mograder.cells import (
     parse_auto_marks,
     parse_gta_feedback,
     parse_marks_metadata,
+    write_gta_feedback,
 )
 from mograder.models import CheckResult
 
@@ -272,3 +273,108 @@ def test_parse_gta_feedback_with_marks():
     mark, feedback = parse_gta_feedback(modified)
     assert mark == 70
     assert feedback == "Solid analysis"
+
+
+# --- triple-quoted feedback parsing ---
+
+
+def test_parse_gta_feedback_triple_quoted():
+    """Triple-quoted multiline feedback parses correctly."""
+    lines = _make_notebook_lines()
+    checks = _make_checks()
+    injected = inject_grading_cells(lines, checks)
+    text = "".join(injected)
+    text = text.replace("_mark = None", "_mark = 80")
+    text = text.replace(
+        '_feedback = ""',
+        '_feedback = """Line one.\nLine two.\nLine three."""',
+    )
+    modified = text.splitlines(keepends=True)
+    mark, feedback = parse_gta_feedback(modified)
+    assert mark == 80
+    assert "Line one." in feedback
+    assert "Line two." in feedback
+    assert "Line three." in feedback
+
+
+def test_parse_gta_feedback_single_line_still_works():
+    """Backward compat: single-line strings still parse correctly."""
+    lines = _make_notebook_lines()
+    checks = _make_checks()
+    injected = inject_grading_cells(lines, checks)
+    text = "".join(injected)
+    text = text.replace("_mark = None", "_mark = 50")
+    text = text.replace('_feedback = ""', '_feedback = "Simple feedback"')
+    modified = text.splitlines(keepends=True)
+    mark, feedback = parse_gta_feedback(modified)
+    assert mark == 50
+    assert feedback == "Simple feedback"
+
+
+# --- write_gta_feedback ---
+
+
+def test_write_gta_feedback(tmp_path):
+    """write_gta_feedback writes mark + multiline feedback correctly."""
+    lines = _make_notebook_lines()
+    checks = _make_checks()
+    injected = inject_grading_cells(lines, checks)
+    nb_path = tmp_path / "test.py"
+    nb_path.write_text("".join(injected))
+
+    write_gta_feedback(nb_path, 75, "Good work.\nNeeds improvement on Q2.")
+
+    modified = nb_path.read_text().splitlines(keepends=True)
+    mark, feedback = parse_gta_feedback(modified)
+    assert mark == 75
+    assert "Good work." in feedback
+    assert "Needs improvement on Q2." in feedback
+
+
+def test_write_gta_feedback_roundtrip(tmp_path):
+    """Write, read, overwrite, read again — single-line upgrades to triple-quote."""
+    lines = _make_notebook_lines()
+    checks = _make_checks()
+    injected = inject_grading_cells(lines, checks)
+    nb_path = tmp_path / "test.py"
+    nb_path.write_text("".join(injected))
+
+    # First write
+    write_gta_feedback(nb_path, 60, "Initial feedback")
+    mark, feedback = parse_gta_feedback(nb_path.read_text().splitlines(keepends=True))
+    assert mark == 60
+    assert feedback == "Initial feedback"
+
+    # Overwrite with multiline
+    write_gta_feedback(nb_path, 85, "Updated.\nMultiline now.")
+    mark, feedback = parse_gta_feedback(nb_path.read_text().splitlines(keepends=True))
+    assert mark == 85
+    assert "Updated." in feedback
+    assert "Multiline now." in feedback
+
+
+def test_write_gta_feedback_no_marker(tmp_path):
+    """Raises ValueError on a file without the feedback marker."""
+    import pytest
+
+    nb_path = tmp_path / "plain.py"
+    nb_path.write_text("x = 1\n")
+
+    with pytest.raises(ValueError, match="MOGRADER"):
+        write_gta_feedback(nb_path, 50, "feedback")
+
+
+def test_write_gta_feedback_none_mark(tmp_path):
+    """Writing None mark resets to ungraded state."""
+    lines = _make_notebook_lines()
+    checks = _make_checks()
+    injected = inject_grading_cells(lines, checks)
+    nb_path = tmp_path / "test.py"
+    nb_path.write_text("".join(injected))
+
+    # First set a mark
+    write_gta_feedback(nb_path, 70, "Some feedback")
+    # Then reset
+    write_gta_feedback(nb_path, None, "")
+    mark, feedback = parse_gta_feedback(nb_path.read_text().splitlines(keepends=True))
+    assert mark is None
