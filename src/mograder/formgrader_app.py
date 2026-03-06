@@ -102,7 +102,14 @@ def _(assignments, get_selected, mo, set_selected):
         label="Assignment",
         on_change=lambda val: set_selected(val or ""),
     )
-    return (assignment_dropdown,)
+    # Second independent dropdown bound to the same state for the Grading tab
+    assignment_dropdown_grading = mo.ui.dropdown(
+        options=_options,
+        value=_current if _current in _options else None,
+        label="Assignment",
+        on_change=lambda val: set_selected(val or ""),
+    )
+    return assignment_dropdown, assignment_dropdown_grading
 
 
 @app.cell
@@ -110,7 +117,6 @@ def _(
     COURSE_DIR,
     DIR_NAMES,
     assignments,
-    get_selected,
     io,
     mo,
     set_action_log,
@@ -327,7 +333,6 @@ def _(
 
     # --- build merged assignments + grades table ---
     _rows = []
-    _selected_name = get_selected()
     for _i, _a in enumerate(assignments):
         # Source column: ✅ + edit button only
         if isinstance(_src_btns_list[_i], mo.Html):
@@ -384,7 +389,7 @@ def _(
             else _export_items[0]
         )
 
-        _name = f"**{_a.name}**" if _a.name == _selected_name else _a.name
+        _name = _a.name
 
         _rows.append(
             {
@@ -485,6 +490,7 @@ def _(
             _zip_tmp.write_bytes(_zip_file.contents)
             _sub_dir = COURSE_DIR / DIR_NAMES.submitted / _a.name
             _sub_dir.mkdir(parents=True, exist_ok=True)
+            _existing = set(f.name for f in _sub_dir.glob("*.py"))
             _result = extract_submissions(
                 _zip_tmp,
                 _csv_dest,
@@ -492,6 +498,10 @@ def _(
                 match_column=MOGRADER_CONFIG.moodle_match_column,
             )
             _msgs.append(f"Extracted {_result.extracted} submissions")
+            if _existing and _result.extracted:
+                _overwritten = _existing & set(f.name for f in _sub_dir.glob("*.py"))
+                if _overwritten:
+                    _msgs.append(f"⚠️ Overwrote {len(_overwritten)} existing file(s)")
             if _result.warnings:
                 _msgs.extend(_result.warnings)
         elif _zip_file and not _csv_file:
@@ -508,6 +518,7 @@ def _(
     COURSE_DIR,
     DIR_NAMES,
     GRADEBOOK,
+    assignment_dropdown,
     get_data_version,
     get_selected,
     mo,
@@ -595,6 +606,7 @@ def _(
 
         submissions_content = mo.vstack(
             [
+                assignment_dropdown,
                 mo.ui.table(_rows, selection=None)
                 if _rows
                 else mo.md("_No submissions found._"),
@@ -603,8 +615,11 @@ def _(
         )
     else:
         edit_btns = mo.ui.array([])
-        submissions_content = mo.md(
-            "_Select an assignment from the Assignment dropdown above._"
+        submissions_content = mo.vstack(
+            [
+                assignment_dropdown,
+                mo.md("_Select an assignment above._"),
+            ]
         )
     return edit_btns, scan_submissions, submissions_content
 
@@ -995,6 +1010,7 @@ def _(grading_current_sub, mo):
 
 @app.cell
 def _(
+    assignment_dropdown_grading,
     grading_form,
     grading_nav,
     grading_preview,
@@ -1004,14 +1020,18 @@ def _(
     grading_content = (
         mo.vstack(
             [
+                assignment_dropdown_grading,
                 grading_nav,
                 grading_form,
                 grading_preview,
             ]
         )
         if grading_subs
-        else mo.md(
-            "_Select an assignment with autograded submissions from the Assignment dropdown above._"
+        else mo.vstack(
+            [
+                assignment_dropdown_grading,
+                mo.md("_Select an assignment with autograded submissions above._"),
+            ]
         )
     )
     return (grading_content,)
@@ -1040,13 +1060,31 @@ def _(clear_btn, get_action_log, mo):
 
 
 @app.cell
+def _(COURSE_DIR, DIR_NAMES, mo, set_pending_action):
+    new_name_input = mo.ui.text(placeholder="new-assignment-name")
+    new_btn = mo.ui.button(
+        label="+ New",
+        on_change=lambda _: set_pending_action(
+            {
+                "action": "new_assignment",
+                "name": new_name_input.value,
+                "source_dir": str(COURSE_DIR / DIR_NAMES.source),
+            }
+        ),
+        tooltip="Create new assignment from template",
+    )
+    return new_btn, new_name_input
+
+
+@app.cell
 def _(
     COURSE_DIR,
     action_log_content,
-    assignment_dropdown,
     assignments_content,
     grading_content,
     mo,
+    new_btn,
+    new_name_input,
     refresh_btn,
     students_content,
     submissions_content,
@@ -1057,7 +1095,9 @@ def _(
                 [
                     mo.md("# mograder"),
                     mo.md(f"`{COURSE_DIR}`"),
-                    assignment_dropdown,
+                    mo.md("**New Assignment**"),
+                    new_name_input,
+                    new_btn,
                     refresh_btn,
                 ],
                 justify="start",
@@ -1092,7 +1132,38 @@ def _(
     import traceback as _tb
 
     _action = get_pending_action()
-    if _action is not None:
+    if _action is not None and _action.get("action") == "new_assignment":
+        import re as _re2
+        from pathlib import Path as _Path
+
+        _name = (_action.get("name") or "").strip()
+        _source_dir = _Path(_action["source_dir"])
+        if not _name:
+            set_action_log("**New assignment** — name cannot be empty.")
+        elif not _re2.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_-]*", _name):
+            set_action_log(
+                f"**New assignment** — invalid name `{_name}`. "
+                "Use only letters, digits, hyphens, and underscores."
+            )
+        elif (_source_dir / _name).exists():
+            set_action_log(
+                f"**New assignment** — `{_name}` already exists in source directory."
+            )
+        else:
+            import mograder as _mograder_pkg
+
+            _template = (
+                _Path(_mograder_pkg.__file__).parent / "templates" / "assignment.py"
+            )
+            _dest_dir = _source_dir / _name
+            _dest_dir.mkdir(parents=True, exist_ok=True)
+            _content = _template.read_text()
+            _content = _content.replace("{assignment_name}", _name)
+            (_dest_dir / f"{_name}.py").write_text(_content)
+            set_action_log(f"**New assignment** — created `{_name}`.")
+        set_data_version(lambda v: v + 1)
+        set_pending_action(None)
+    elif _action is not None:
         _cmd, _label = _action["cmd"], _action["label"]
         # Compound action: list of sub-commands to run sequentially
         _is_compound = _cmd and isinstance(_cmd[0], list)
