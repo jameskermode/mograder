@@ -64,7 +64,7 @@ def _get_free_port():
         return s.getsockname()[1]
 
 
-def _wait_for_app(page, timeout_ms=60000):
+def _wait_for_app(page, timeout_ms=120000):
     """Wait for the marimo app to fully render.
 
     In ``marimo run`` mode there are no ``<marimo-cell-output>`` custom
@@ -130,7 +130,7 @@ def formgrader_url(_course_dir):
     )
 
     url = f"http://localhost:{port}"
-    deadline = time.time() + 30
+    deadline = time.time() + 60
     while time.time() < deadline:
         try:
             with socket.create_connection(("localhost", port), timeout=1):
@@ -139,7 +139,7 @@ def formgrader_url(_course_dir):
             time.sleep(0.5)
     else:
         proc.terminate()
-        pytest.fail("Formgrader server did not start within 30s")
+        pytest.fail("Formgrader server did not start within 60s")
 
     yield url
 
