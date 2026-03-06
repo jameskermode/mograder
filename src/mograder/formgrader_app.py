@@ -116,6 +116,7 @@ def _(assignments, get_selected, mo, set_selected):
 def _(
     COURSE_DIR,
     DIR_NAMES,
+    MOGRADER_CONFIG,
     assignments,
     io,
     mo,
@@ -144,29 +145,35 @@ def _(
     for _a in assignments:
         # Source — edit source notebook
         if _a.source_path:
-            _p = _a.source_path
-            _n = _a.name
-            _src_btns_list.append(
-                mo.ui.button(
-                    label="\u270f\ufe0f",
-                    on_change=lambda _, p=_p, n=_n: _open_marimo("edit", p, n),
-                    tooltip=f"Edit {_a.source_path}",
+            if MOGRADER_CONFIG.headless:
+                _src_btns_list.append(mo.md(""))
+            else:
+                _p = _a.source_path
+                _n = _a.name
+                _src_btns_list.append(
+                    mo.ui.button(
+                        label="\u270f\ufe0f",
+                        on_change=lambda _, p=_p, n=_n: _open_marimo("edit", p, n),
+                        tooltip=f"Edit {_a.source_path}",
+                    )
                 )
-            )
         else:
             _src_btns_list.append(mo.md("\u2013"))
 
         # Release — preview release notebook
         if _a.release_path:
-            _p2 = _a.release_path
-            _n2 = _a.name
-            _rel_btns_list.append(
-                mo.ui.button(
-                    label="\u270f\ufe0f",
-                    on_change=lambda _, p=_p2, n=_n2: _open_marimo("edit", p, n),
-                    tooltip=f"Edit {_a.release_path}",
+            if MOGRADER_CONFIG.headless:
+                _rel_btns_list.append(mo.md(""))
+            else:
+                _p2 = _a.release_path
+                _n2 = _a.name
+                _rel_btns_list.append(
+                    mo.ui.button(
+                        label="\u270f\ufe0f",
+                        on_change=lambda _, p=_p2, n=_n2: _open_marimo("edit", p, n),
+                        tooltip=f"Edit {_a.release_path}",
+                    )
                 )
-            )
             _rel_dir = _a.release_path.parent
             _zip_name = f"{_a.name}.zip"
 
@@ -214,7 +221,11 @@ def _(
 
         # Autograde
         _sub_dir = COURSE_DIR / DIR_NAMES.submitted / _a.name
-        if _sub_dir.is_dir() and any(_sub_dir.glob("*.py")):
+        if (
+            not MOGRADER_CONFIG.headless
+            and _sub_dir.is_dir()
+            and any(_sub_dir.glob("*.py"))
+        ):
             _files = [str(f) for f in sorted(_sub_dir.glob("*.py"))]
             _src_flag = ["--source", str(_a.source_path)] if _a.source_path else []
             _cmd = ["autograde"] + _files + _src_flag
@@ -592,6 +603,7 @@ def _(
     COURSE_DIR,
     DIR_NAMES,
     GRADEBOOK,
+    MOGRADER_CONFIG,
     assignment_dropdown,
     get_data_version,
     get_selected,
@@ -619,7 +631,9 @@ def _(
 
         _edit_list = []
         for _s in _subs:
-            if _s.autograded_path:
+            if MOGRADER_CONFIG.headless:
+                _edit_list.append(mo.ui.button(label="✏️", disabled=True))
+            elif _s.autograded_path:
                 _p = _s.autograded_path
                 _edit_list.append(
                     mo.ui.button(
@@ -1163,24 +1177,27 @@ def _(
     students_content,
     submissions_content,
 ):
+    _assignments_tab = mo.vstack(
+        [
+            assignments_content,
+            mo.hstack(
+                [mo.md("**New Assignment**"), new_name_input, new_btn],
+                justify="start",
+                align="center",
+                gap=0.5,
+            ),
+        ]
+    )
     mo.vstack(
         [
             mo.hstack(
-                [
-                    mo.md("# mograder"),
-                    mo.md(f"`{COURSE_DIR}`"),
-                    mo.md("**New Assignment**"),
-                    new_name_input,
-                    new_btn,
-                    refresh_btn,
-                ],
-                justify="start",
+                [mo.md("# mograder"), refresh_btn, mo.md(f"`{COURSE_DIR}`")],
+                justify="space-between",
                 align="center",
-                gap=1,
             ),
             mo.ui.tabs(
                 {
-                    "Assignments": assignments_content,
+                    "Assignments": _assignments_tab,
                     "Submissions": submissions_content,
                     "Grading": grading_content,
                     "Students": students_content,
