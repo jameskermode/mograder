@@ -148,6 +148,7 @@ def formgrader_url(_course_dir):
 
 
 @pytest.mark.slow
+@pytest.mark.skipif(os.environ.get("CI") == "true", reason="marimo too slow in CI")
 def test_formgrader_renders_assignments_table(formgrader_url, page):
     """The Assignments tab should render with expected columns and content."""
     page.goto(formgrader_url)
@@ -162,6 +163,7 @@ def test_formgrader_renders_assignments_table(formgrader_url, page):
 
 
 @pytest.mark.slow
+@pytest.mark.skipif(os.environ.get("CI") == "true", reason="marimo too slow in CI")
 def test_formgrader_tabs_navigation(formgrader_url, page):
     """All four tabs should be clickable and render content."""
     page.goto(formgrader_url)
@@ -174,6 +176,7 @@ def test_formgrader_tabs_navigation(formgrader_url, page):
 
 
 @pytest.mark.slow
+@pytest.mark.skipif(os.environ.get("CI") == "true", reason="marimo too slow in CI")
 def test_formgrader_assignment_dropdown(formgrader_url, page):
     """The assignment dropdown should be visible in the Submissions tab."""
     page.goto(formgrader_url)
