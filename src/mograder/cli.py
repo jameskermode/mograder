@@ -174,7 +174,7 @@ def generate(ctx, files, output_dir, dry_run, validate):
 
 @cli.command()
 @click.argument(
-    "files", nargs=-1, required=True, type=click.Path(exists=True, path_type=Path)
+    "files", nargs=-1, required=False, type=click.Path(exists=True, path_type=Path)
 )
 @click.option(
     "--source",
@@ -189,6 +189,20 @@ def generate(ctx, files, output_dir, dry_run, validate):
     type=click.Path(path_type=Path),
     default=None,
     help="Write verification results to CSV file",
+)
+@click.option(
+    "--moodle-csv",
+    "moodle_csv_path",
+    type=click.Path(exists=True, path_type=Path),
+    default=None,
+    help="Moodle offline grading CSV (use with --moodle-zip)",
+)
+@click.option(
+    "--moodle-zip",
+    "moodle_zip_path",
+    type=click.Path(exists=True, path_type=Path),
+    default=None,
+    help="Moodle submission ZIP (use with --moodle-csv)",
 )
 @click.option("-j", "--jobs", type=int, default=4, help="Number of parallel workers")
 @click.option(
@@ -209,9 +223,60 @@ def generate(ctx, files, output_dir, dry_run, validate):
     help="Emit JSON progress lines to stderr (machine-readable)",
 )
 @click.pass_context
-def autograde(ctx, files, source_path, csv_path, jobs, timeout, output_dir, progress):
+def autograde(
+    ctx,
+    files,
+    source_path,
+    csv_path,
+    moodle_csv_path,
+    moodle_zip_path,
+    jobs,
+    timeout,
+    output_dir,
+    progress,
+):
     """Run notebooks and inject grading cells for GTA review."""
     config = ctx.obj["config"]
+
+    # Moodle extraction mode: extract submissions from ZIP + CSV
+    _moodle_submitted_dir = None
+    if moodle_csv_path and moodle_zip_path:
+        if not source_path:
+            click.echo(
+                "ERROR: --source is required when using --moodle-csv/--moodle-zip",
+                err=True,
+            )
+            sys.exit(1)
+        assignment_name = source_path.parent.name
+        if output_dir is None:
+            output_dir = (
+                source_path.parent.parent.parent
+                / config.autograded_dir
+                / assignment_name
+            )
+        _moodle_submitted_dir = Path(tempfile.mkdtemp())
+        click.echo(
+            f"Extracting submissions from Moodle ZIP to {_rel(_moodle_submitted_dir)}"
+        )
+        extract_result = moodle.extract_submissions(
+            moodle_zip_path,
+            moodle_csv_path,
+            _moodle_submitted_dir,
+            match_column=config.moodle_match_column,
+        )
+        click.echo(
+            f"  Extracted {extract_result.extracted} submissions "
+            f"({extract_result.skipped} skipped)"
+        )
+        for w in extract_result.warnings:
+            click.echo(f"  {w}")
+        files = tuple(sorted(_moodle_submitted_dir.glob("*.py")))
+    elif moodle_csv_path or moodle_zip_path:
+        click.echo(
+            "ERROR: --moodle-csv and --moodle-zip must be used together", err=True
+        )
+        sys.exit(1)
+
     notebooks = [f for f in files if f.suffix == ".py"]
     if not notebooks:
         click.echo("ERROR: no valid .py files found", err=True)
@@ -395,7 +460,11 @@ def autograde(ctx, files, source_path, csv_path, jobs, timeout, output_dir, prog
                                     f"  Auto-imported {imported} grades from {_rel(sub_d)}"
                                 )
 
-        assignment_name = notebooks[0].parent.name
+        assignment_name = (
+            source_path.parent.name
+            if _moodle_submitted_dir and source_path
+            else notebooks[0].parent.name
+        )
         max_mark = sum(marks.values()) if marks else 100
         gb.upsert_assignment(assignment_name, max_mark=max_mark, marks_metadata=marks)
         for result in results:
@@ -414,6 +483,10 @@ def autograde(ctx, files, source_path, csv_path, jobs, timeout, output_dir, prog
     # Write CSV if requested
     if csv_path:
         runner.write_csv(results, all_labels, csv_path, marks)
+
+    # Clean up temp Moodle extraction dir
+    if _moodle_submitted_dir:
+        shutil.rmtree(_moodle_submitted_dir, ignore_errors=True)
 
 
 @cli.command()
@@ -646,6 +719,102 @@ def import_students(ctx, worksheet, match_column):
     with Gradebook(db_path) as gb:
         gb.upsert_students(mapping)
     click.echo(f"Imported {len(mapping)} students into {_rel(db_path)}")
+
+
+@cli.command()
+@click.argument(
+    "autograded_dir",
+    type=click.Path(exists=True, path_type=Path),
+)
+@click.option(
+    "--remote",
+    default=None,
+    help="SSH host alias (default: from mograder.toml [sync] remote)",
+)
+@click.option(
+    "--course-dir",
+    "remote_course_dir",
+    default=None,
+    help="Course directory on remote (default: from mograder.toml [sync] remote_course_dir)",
+)
+@click.option(
+    "--venv-dir",
+    "remote_venv_dir",
+    default=None,
+    help="Directory with uv venv on remote (default: from mograder.toml [sync] remote_venv_dir)",
+)
+@click.pass_context
+def sync(ctx, autograded_dir, remote, remote_course_dir, remote_venv_dir):
+    """Sync autograded results to a remote server via rsync + SSH."""
+    import subprocess as sp
+
+    config = ctx.obj["config"]
+    remote = remote or config.sync_remote
+    remote_course_dir = remote_course_dir or config.sync_remote_course_dir
+    remote_venv_dir = remote_venv_dir or config.sync_remote_venv_dir
+
+    if not remote:
+        click.echo(
+            "ERROR: --remote is required (or set [sync] remote in mograder.toml)",
+            err=True,
+        )
+        sys.exit(1)
+    if not remote_course_dir:
+        click.echo(
+            "ERROR: --course-dir is required "
+            "(or set [sync] remote_course_dir in mograder.toml)",
+            err=True,
+        )
+        sys.exit(1)
+
+    # Infer assignment name from directory
+    assignment = autograded_dir.name
+
+    # 1. rsync autograded files to remote
+    remote_path = f"{remote}:{remote_course_dir}/{config.autograded_dir}/{assignment}/"
+    local_path = str(autograded_dir) + "/"
+    click.echo(f"Syncing {_rel(autograded_dir)} → {remote_path}")
+
+    rsync_cmd = [
+        "rsync",
+        "-avz",
+        "--include=*.py",
+        "--include=*.html",
+        "--exclude=*",
+        local_path,
+        remote_path,
+    ]
+    result = sp.run(rsync_cmd)
+    if result.returncode != 0:
+        click.echo("ERROR: rsync failed", err=True)
+        sys.exit(1)
+    click.echo("  rsync complete")
+
+    # 2. Run gradebook import on remote via SSH
+    python_cmd = "uv run python" if remote_venv_dir else "python"
+    cd_venv = f"cd {remote_venv_dir} && " if remote_venv_dir else ""
+    import_script = (
+        f"{cd_venv}"
+        f'{python_cmd} -c "'
+        f"import sys; sys.path.insert(0, '.'); "
+        f"from mograder.gradebook import Gradebook; "
+        f"gb = Gradebook('{remote_course_dir}/{config.gradebook}'); "
+        f"gb.upsert_assignment('{assignment}'); "
+        f"n = gb.import_from_py('{assignment}', "
+        f"'{remote_course_dir}/{config.autograded_dir}/{assignment}'); "
+        f"gb.close(); "
+        f"print(f'Imported {{n}} grades into gradebook')"
+        f'"'
+    )
+    click.echo(f"Importing grades on {remote}...")
+    ssh_result = sp.run(["ssh", remote, import_script])
+    if ssh_result.returncode != 0:
+        click.echo(
+            "WARNING: remote gradebook import failed — grades may need manual import",
+            err=True,
+        )
+    else:
+        click.echo("  Remote import complete")
 
 
 @cli.command()

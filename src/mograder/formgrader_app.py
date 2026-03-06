@@ -139,6 +139,7 @@ def _(
     _fb = []
     _fb_csv_dl_list = []
     _fb_zip_dl_list = []
+    _auto_upload_list = []
 
     for _a in assignments:
         # Source — edit source notebook
@@ -299,6 +300,16 @@ def _(
         else:
             _fb_zip_dl_list.append(None)
 
+        # Autograded upload — ZIP file upload per assignment
+        _auto_upload_list.append(
+            mo.ui.file(
+                filetypes=[".zip"],
+                multiple=False,
+                label="📤",
+                kind="button",
+            )
+        )
+
     # Wrap interactive buttons in mo.ui.array for marimo state tracking
     _src_ui = [e for e in _src_btns_list if not isinstance(e, mo.Html)]
     _rel_ui = [e for e in _rel_btns_list if not isinstance(e, mo.Html)]
@@ -323,6 +334,7 @@ def _(
     gen_btns = mo.ui.array(_gen)
     auto_btns = mo.ui.array(_auto)
     fb_btns = mo.ui.array(_fb)
+    auto_uploads = mo.ui.array(_auto_upload_list)
 
     # Map array indices back to row positions for mixed button/md lists
     _src_idx = 0
@@ -400,9 +412,18 @@ def _(
                 "Import": imp_uploads[_i],
                 "Submitted": _sub_cell,
                 "→ ": auto_btns[_i],
-                "Graded": f"{_a.num_graded}/{_a.num_autograded}"
-                if _a.num_autograded
-                else "\u2013",
+                "Graded": mo.hstack(
+                    [
+                        mo.md(
+                            f"{_a.num_graded}/{_a.num_autograded}"
+                            if _a.num_autograded
+                            else "\u2013"
+                        ),
+                        auto_uploads[_i],
+                    ],
+                    justify="start",
+                    gap=0.25,
+                ),
                 "Export": _export_cell,
                 "Feedback": mo.md(_fb_text),
             }
@@ -418,6 +439,7 @@ def _(
     )
     return (
         assignments_content,
+        auto_uploads,
         src_btns,
         rel_btns,
         rel_downloads,
@@ -510,6 +532,58 @@ def _(
         if _msgs:
             set_action_log(f"**Import {_a.name}:** " + "; ".join(_msgs))
             set_data_version(lambda v: v + 1)
+    return
+
+
+@app.cell
+def _(
+    auto_uploads,
+    assignments,
+    COURSE_DIR,
+    DIR_NAMES,
+    MOGRADER_CONFIG,
+    Gradebook,
+    set_action_log,
+    set_data_version,
+    zipfile,
+):
+    for _i, _a in enumerate(assignments):
+        _files = auto_uploads[_i].value
+        if not _files:
+            continue
+
+        _file = _files[0] if isinstance(_files, list) else _files
+        if not _file.name.endswith(".zip"):
+            continue
+
+        _auto_dir = COURSE_DIR / DIR_NAMES.autograded / _a.name
+        _auto_dir.mkdir(parents=True, exist_ok=True)
+
+        _msgs = []
+        _count = 0
+        with zipfile.ZipFile(__import__("io").BytesIO(_file.contents)) as _zf:
+            for _entry in _zf.namelist():
+                if _entry.endswith(".py") or _entry.endswith(".html"):
+                    _data = _zf.read(_entry)
+                    # Use just the filename (strip any directory prefix)
+                    _fname = _entry.split("/")[-1]
+                    (_auto_dir / _fname).write_bytes(_data)
+                    _count += 1
+
+        _msgs.append(f"Extracted {_count} files to `{DIR_NAMES.autograded}/{_a.name}/`")
+
+        # Import into gradebook
+        _db_path = COURSE_DIR / MOGRADER_CONFIG.gradebook
+        try:
+            with Gradebook(_db_path) as _gb:
+                _gb.upsert_assignment(_a.name)
+                _imported = _gb.import_from_py(_a.name, _auto_dir)
+                _msgs.append(f"Imported {_imported} grades into gradebook")
+        except Exception as _e:
+            _msgs.append(f"⚠️ Gradebook import failed: {_e}")
+
+        set_action_log(f"**Upload autograded {_a.name}:** " + "; ".join(_msgs))
+        set_data_version(lambda v: v + 1)
     return
 
 

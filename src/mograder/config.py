@@ -25,6 +25,10 @@ class MograderConfig:
     import_dir: str = "import"
     # [gradebook]
     gradebook: str = "gradebook.db"
+    # [sync]
+    sync_remote: str | None = None
+    sync_remote_course_dir: str | None = None
+    sync_remote_venv_dir: str | None = None
 
 
 DEFAULT_CONFIG = MograderConfig()
@@ -41,6 +45,7 @@ def load_config(course_dir: Path) -> MograderConfig:
     defaults = data.get("defaults", {})
     dirs = data.get("dirs", {})
     gradebook = data.get("gradebook", {})
+    sync = data.get("sync", {})
     return MograderConfig(
         moodle_csv=moodle.get("csv"),
         moodle_match_column=moodle.get("match_column", "Username"),
@@ -54,4 +59,7 @@ def load_config(course_dir: Path) -> MograderConfig:
         feedback_dir=dirs.get("feedback", "feedback"),
         import_dir=dirs.get("import", "import"),
         gradebook=gradebook.get("path", "gradebook.db"),
+        sync_remote=sync.get("remote"),
+        sync_remote_course_dir=sync.get("remote_course_dir"),
+        sync_remote_venv_dir=sync.get("remote_venv_dir"),
     )

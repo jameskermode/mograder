@@ -117,6 +117,16 @@ mograder autograde submitted/hw1/*.py -j 8 --timeout 600
 
 When `--source` is provided (or auto-discovered from a sibling `source/` directory), mograder performs an integrity check — tampered check cells or marks definitions are reinjected from the source before execution. Default values for `-j` and `--timeout` can be set in `mograder.toml` (see [Configuration](#configuration)).
 
+#### Autograde directly from Moodle downloads
+
+Instead of manually extracting submissions, you can pass the Moodle offline grading CSV and submission ZIP directly:
+
+```bash
+mograder autograde --moodle-csv grades.csv --moodle-zip submissions.zip --source source/hw1/hw1.py
+```
+
+This extracts submissions from the ZIP (mapping participant IDs to usernames via the CSV), then runs the normal autograde flow. The output directory and assignment name are inferred from the source notebook path.
+
 ### Export feedback
 
 Export graded notebooks to HTML and aggregate marks:
@@ -133,6 +143,24 @@ Import student names from a Moodle CSV into the gradebook (used for name display
 ```bash
 mograder import-students worksheet.csv
 ```
+
+### Sync to remote server
+
+Sync autograded results to a remote server (e.g. a shared formgrader instance) via rsync + SSH:
+
+```bash
+mograder sync autograded/hw1/ --remote sciml --course-dir /home/svc_user/courses/es98e
+```
+
+This rsyncs `.py` and `.html` files to the remote `autograded/` directory, then runs `Gradebook.import_from_py()` on the server via SSH to update the remote gradebook. If the remote uses a uv-managed venv, pass `--venv-dir`:
+
+```bash
+mograder sync autograded/hw1/ --remote sciml --course-dir /home/svc_user/courses/es98e --venv-dir '~/marimo-server'
+```
+
+All three flags can be set in `mograder.toml` (see [Configuration](#configuration)) so you can just run `mograder sync autograded/hw1/`.
+
+Autograded results can also be uploaded via the formgrader UI using the upload button in the Graded column of the Assignments table.
 
 ### Upload to Moodle
 
@@ -166,6 +194,11 @@ timeout = 300
 
 [gradebook]
 path = "gradebook.db"
+
+[sync]
+remote = "sciml"                                    # SSH host alias
+remote_course_dir = "/home/svc_user/courses/es98e"  # course dir on remote
+remote_venv_dir = "~/marimo-server"                 # uv venv dir on remote (optional)
 ```
 
 ## Development
