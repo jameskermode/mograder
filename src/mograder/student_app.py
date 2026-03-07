@@ -246,10 +246,14 @@ def _(
 
         def do_validate(_, path=None, name=None):
             set_validating(name)
-            set_action_log(f"Validating **{name}**... this may take a few minutes")
             try:
-                sandbox = create_shared_sandbox(path)
-                result = run_notebook(path, sandbox_dir=sandbox)
+                with mo.status.spinner(
+                    title=f"Validating {name}", remove_on_exit=True
+                ) as spinner:
+                    spinner.update(subtitle="Installing dependencies...")
+                    sandbox = create_shared_sandbox(path)
+                    spinner.update(subtitle="Running notebook...")
+                    result = run_notebook(path, sandbox_dir=sandbox)
                 mtime = path.stat().st_mtime
                 save_cached_results(COURSE_DIR, path.name, result, mtime)
                 passed = sum(1 for c in result.checks if c.status == "success")
