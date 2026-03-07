@@ -418,15 +418,20 @@ def _(get_validating, mo):
     return ()
 
 
-# --- Activity log ---
+# --- Dismiss button (own cell so it's stable across log changes) ---
 @app.cell
-def _(get_action_log, mo, set_action_log):
-    log_text = get_action_log()
-
+def _(mo, set_action_log):
     dismiss_btn = mo.ui.button(
         label="Dismiss",
         on_change=lambda _: set_action_log(""),
     )
+    return (dismiss_btn,)
+
+
+# --- Activity log ---
+@app.cell
+def _(dismiss_btn, get_action_log, mo):
+    log_text = get_action_log()
 
     if log_text:
         kind = (
@@ -434,12 +439,12 @@ def _(get_action_log, mo, set_action_log):
             if "failed" in log_text.lower() or "error" in log_text.lower()
             else "info"
         )
-        mo.output.replace(
-            mo.vstack([mo.callout(mo.md(log_text), kind=kind), dismiss_btn])
+        action_log_content = mo.vstack(
+            [mo.callout(mo.md(log_text), kind=kind), dismiss_btn]
         )
     else:
-        mo.output.replace(mo.md(""))
-    return (dismiss_btn,)
+        action_log_content = mo.md("")
+    return (action_log_content,)
 
 
 if __name__ == "__main__":
