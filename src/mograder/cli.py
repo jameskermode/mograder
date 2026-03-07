@@ -1180,3 +1180,32 @@ def formgrader(course_dir, port, headless):
         sys.exit(proc.returncode)
     except KeyboardInterrupt:
         pass
+
+
+@cli.command()
+@click.argument(
+    "course_dir",
+    type=click.Path(exists=True, path_type=Path),
+    default=".",
+)
+@click.option("-p", "--port", type=int, default=None, help="Port for marimo app")
+@click.option("--headless", is_flag=True, help="Don't open browser")
+def student(course_dir, port, headless):
+    """Launch the student course browser for fetching and submitting assignments."""
+    import subprocess as sp
+
+    app_path = Path(__file__).parent / "student_app.py"
+    os.environ["MOGRADER_COURSE_DIR"] = str(course_dir.resolve())
+
+    cmd = [sys.executable, "-m", "marimo", "run", str(app_path)]
+    if port:
+        cmd.extend(["--port", str(port)])
+    if headless:
+        cmd.append("--headless")
+
+    click.echo(f"Launching student dashboard for: {course_dir.resolve()}")
+    try:
+        proc = sp.run(cmd)
+        sys.exit(proc.returncode)
+    except KeyboardInterrupt:
+        pass

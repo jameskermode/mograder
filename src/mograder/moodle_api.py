@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 from pathlib import Path
 
@@ -43,6 +44,19 @@ class MoodleAPIClient:
                 error_code=result.get("errorcode"),
             )
         return result
+
+    def get_site_info(self) -> dict:
+        """Get site info for the authenticated user.
+
+        Returns dict with: userid, username, fullname, sitename.
+        """
+        result = self._call("core_webservice_get_site_info")
+        return {
+            "userid": result["userid"],
+            "username": result["username"],
+            "fullname": result["fullname"],
+            "sitename": result["sitename"],
+        }
 
     def get_assignments(self, course_id: int) -> list[dict]:
         """Get assignments for a course.
@@ -282,3 +296,64 @@ def find_assignment(
 
     names = "\n  ".join(a["name"] for a in assignments)
     raise click.UsageError(f"No assignment matching '{name}'. Available:\n  {names}")
+
+
+# ---------------------------------------------------------------------------
+# Token authentication and caching
+# ---------------------------------------------------------------------------
+
+TOKEN_CACHE = Path.home() / ".config" / "mograder" / "token.json"
+
+
+def request_token(
+    url: str,
+    username: str,
+    password: str,
+    service: str = "moodle_mobile_app",
+) -> str:
+    """Exchange username/password for a web service token via /login/token.php.
+
+    Returns the token string.  Raises ``MoodleAPIError`` on failure.
+    """
+    resp = requests.post(
+        f"{url.rstrip('/')}/login/token.php",
+        data={"username": username, "password": password, "service": service},
+        timeout=30,
+    )
+    resp.raise_for_status()
+    data = resp.json()
+    if "token" not in data:
+        raise MoodleAPIError(
+            data.get("error", "Login failed"),
+            error_code=data.get("errorcode"),
+        )
+    return data["token"]
+
+
+def load_cached_token(url: str) -> dict | None:
+    """Load a cached token for *url* from ``~/.config/mograder/token.json``.
+
+    Returns ``{"url", "token", "fullname"}`` if the URL matches, else ``None``.
+    """
+    if not TOKEN_CACHE.is_file():
+        return None
+    try:
+        data = json.loads(TOKEN_CACHE.read_text())
+    except (json.JSONDecodeError, OSError):
+        return None
+    if data.get("url") == url.rstrip("/"):
+        return data
+    return None
+
+
+def save_cached_token(url: str, token: str, fullname: str) -> None:
+    """Persist a token to ``~/.config/mograder/token.json``."""
+    TOKEN_CACHE.parent.mkdir(parents=True, exist_ok=True)
+    TOKEN_CACHE.write_text(
+        json.dumps({"url": url.rstrip("/"), "token": token, "fullname": fullname})
+    )
+
+
+def clear_cached_token() -> None:
+    """Remove the cached token file."""
+    TOKEN_CACHE.unlink(missing_ok=True)

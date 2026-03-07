@@ -12,8 +12,12 @@ from mograder.cli import cli
 from mograder.moodle_api import (
     MoodleAPIClient,
     MoodleAPIError,
+    clear_cached_token,
     find_assignment,
+    load_cached_token,
+    request_token,
     resolve_credentials,
+    save_cached_token,
 )
 
 
@@ -695,3 +699,120 @@ class TestMoodleExportCLI:
         )
         assert result.exit_code == 0, result.output
         assert (out_dir / "worksheet.csv").exists()
+
+
+# ---------------------------------------------------------------------------
+# Auth and token cache tests
+# ---------------------------------------------------------------------------
+
+
+class TestGetSiteInfo:
+    def test_get_site_info(self):
+        client = MoodleAPIClient("https://moodle.example.com", "tok")
+        moodle_response = {
+            "userid": 42,
+            "username": "alice",
+            "fullname": "Alice Smith",
+            "sitename": "Test Moodle",
+        }
+        with patch.object(client, "_call", return_value=moodle_response):
+            info = client.get_site_info()
+        assert info["userid"] == 42
+        assert info["username"] == "alice"
+        assert info["fullname"] == "Alice Smith"
+        assert info["sitename"] == "Test Moodle"
+
+
+class TestRequestToken:
+    def test_request_token_success(self):
+        mock_resp = MagicMock()
+        mock_resp.json.return_value = {"token": "abc123", "privatetoken": "xyz"}
+        mock_resp.raise_for_status = MagicMock()
+        with patch("requests.post", return_value=mock_resp) as mock_post:
+            token = request_token("https://moodle.example.com", "alice", "pass123")
+        assert token == "abc123"
+        call_data = mock_post.call_args
+        assert "login/token.php" in call_data.args[0]
+        assert call_data.kwargs["data"]["service"] == "moodle_mobile_app"
+
+    def test_request_token_invalid_credentials(self):
+        mock_resp = MagicMock()
+        mock_resp.json.return_value = {
+            "error": "Invalid login",
+            "errorcode": "invalidlogin",
+        }
+        mock_resp.raise_for_status = MagicMock()
+        with patch("requests.post", return_value=mock_resp):
+            with pytest.raises(MoodleAPIError, match="Invalid login"):
+                request_token("https://moodle.example.com", "alice", "wrong")
+
+    def test_request_token_custom_service(self):
+        mock_resp = MagicMock()
+        mock_resp.json.return_value = {"token": "tok999"}
+        mock_resp.raise_for_status = MagicMock()
+        with patch("requests.post", return_value=mock_resp) as mock_post:
+            token = request_token(
+                "https://moodle.example.com", "alice", "pass", service="custom_svc"
+            )
+        assert token == "tok999"
+        assert mock_post.call_args.kwargs["data"]["service"] == "custom_svc"
+
+
+class TestTokenCache:
+    def test_save_and_load(self, tmp_path, monkeypatch):
+        cache_file = tmp_path / "token.json"
+        monkeypatch.setattr("mograder.moodle_api.TOKEN_CACHE", cache_file)
+
+        save_cached_token("https://moodle.example.com", "tok123", "Alice Smith")
+
+        result = load_cached_token("https://moodle.example.com")
+        assert result is not None
+        assert result["token"] == "tok123"
+        assert result["fullname"] == "Alice Smith"
+        assert result["url"] == "https://moodle.example.com"
+
+    def test_load_wrong_url(self, tmp_path, monkeypatch):
+        cache_file = tmp_path / "token.json"
+        monkeypatch.setattr("mograder.moodle_api.TOKEN_CACHE", cache_file)
+
+        save_cached_token("https://moodle.example.com", "tok123", "Alice")
+        result = load_cached_token("https://other.example.com")
+        assert result is None
+
+    def test_load_missing_file(self, tmp_path, monkeypatch):
+        cache_file = tmp_path / "nonexistent" / "token.json"
+        monkeypatch.setattr("mograder.moodle_api.TOKEN_CACHE", cache_file)
+
+        result = load_cached_token("https://moodle.example.com")
+        assert result is None
+
+    def test_load_corrupt_file(self, tmp_path, monkeypatch):
+        cache_file = tmp_path / "token.json"
+        cache_file.write_text("not json!")
+        monkeypatch.setattr("mograder.moodle_api.TOKEN_CACHE", cache_file)
+
+        result = load_cached_token("https://moodle.example.com")
+        assert result is None
+
+    def test_clear(self, tmp_path, monkeypatch):
+        cache_file = tmp_path / "token.json"
+        monkeypatch.setattr("mograder.moodle_api.TOKEN_CACHE", cache_file)
+
+        save_cached_token("https://moodle.example.com", "tok123", "Alice")
+        assert cache_file.exists()
+        clear_cached_token()
+        assert not cache_file.exists()
+
+    def test_clear_missing_ok(self, tmp_path, monkeypatch):
+        cache_file = tmp_path / "nonexistent.json"
+        monkeypatch.setattr("mograder.moodle_api.TOKEN_CACHE", cache_file)
+        clear_cached_token()  # Should not raise
+
+    def test_url_trailing_slash(self, tmp_path, monkeypatch):
+        cache_file = tmp_path / "token.json"
+        monkeypatch.setattr("mograder.moodle_api.TOKEN_CACHE", cache_file)
+
+        save_cached_token("https://moodle.example.com/", "tok123", "Alice")
+        result = load_cached_token("https://moodle.example.com")
+        assert result is not None
+        assert result["token"] == "tok123"
