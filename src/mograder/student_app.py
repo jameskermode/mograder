@@ -60,6 +60,7 @@ def _():
 @app.cell
 def _(CONFIG, load_cached_token, mo):
     get_action_log, set_action_log = mo.state("")
+    get_report_path, set_report_path = mo.state("")
     get_refresh, set_refresh = mo.state(0)
     get_pending, set_pending = mo.state(None)
 
@@ -76,10 +77,12 @@ def _(CONFIG, load_cached_token, mo):
         get_action_log,
         get_pending,
         get_refresh,
+        get_report_path,
         get_token,
         set_action_log,
         set_pending,
         set_refresh,
+        set_report_path,
         set_token,
     )
 
@@ -314,6 +317,7 @@ def _(
     set_action_log,
     set_pending,
     set_refresh,
+    set_report_path,
     sp,
     sys,
 ):
@@ -383,10 +387,9 @@ def _(
                         )
                     if _result.cell_errors > 0:
                         _msg += f" ({_result.cell_errors} cell error(s))"
-                    if _result.html_path:
-                        _html_uri = _result.html_path.resolve().as_posix()
-                        _msg += f" — [View report](file://{_html_uri})"
                     set_action_log(_msg)
+                    if _result.html_path:
+                        set_report_path(str(_result.html_path.resolve()))
                 except Exception as _exc:
                     set_action_log(f"Validation failed for **{_name}**: {_exc}")
             set_refresh(lambda v: v + 1)
@@ -424,18 +427,20 @@ def _(
 
 # --- Dismiss button (own cell so it's stable across log changes) ---
 @app.cell
-def _(mo, set_action_log):
-    dismiss_btn = mo.ui.button(
-        label="Dismiss",
-        on_change=lambda _: set_action_log(""),
-    )
+def _(mo, set_action_log, set_report_path):
+    def _dismiss(_):
+        set_action_log("")
+        set_report_path("")
+
+    dismiss_btn = mo.ui.button(label="Dismiss", on_change=_dismiss)
     return (dismiss_btn,)
 
 
 # --- Activity log ---
 @app.cell
-def _(dismiss_btn, get_action_log, mo):
+def _(Path, dismiss_btn, get_action_log, get_report_path, mo):
     log_text = get_action_log()
+    report_path = get_report_path()
 
     if log_text:
         kind = (
@@ -443,9 +448,12 @@ def _(dismiss_btn, get_action_log, mo):
             if "failed" in log_text.lower() or "error" in log_text.lower()
             else "info"
         )
-        mo.output.replace(
-            mo.vstack([mo.callout(mo.md(log_text), kind=kind), dismiss_btn])
-        )
+        _parts = [mo.callout(mo.md(log_text), kind=kind)]
+        if report_path:
+            _html_content = Path(report_path).read_text()
+            _parts.append(mo.accordion({"View report": mo.Html(_html_content)}))
+        _parts.append(dismiss_btn)
+        mo.output.replace(mo.vstack(_parts))
     else:
         mo.output.replace(mo.md(""))
     return ()
