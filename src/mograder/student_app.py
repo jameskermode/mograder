@@ -363,7 +363,9 @@ def _(
                 _sandbox = create_shared_sandbox(_path)
                 _spinner.update(subtitle="Running notebook...")
                 try:
-                    _result = run_notebook(_path, sandbox_dir=_sandbox)
+                    _result = run_notebook(
+                        _path, sandbox_dir=_sandbox, html_dir=_path.parent
+                    )
                     _mtime = _path.stat().st_mtime
                     save_cached_results(COURSE_DIR, _path.name, _result, _mtime)
                     _passed = sum(1 for c in _result.checks if c.status == "success")
@@ -381,6 +383,9 @@ def _(
                         )
                     if _result.cell_errors > 0:
                         _msg += f" ({_result.cell_errors} cell error(s))"
+                    if _result.html_path:
+                        _html_uri = _result.html_path.resolve().as_posix()
+                        _msg += f" — [View report](file://{_html_uri})"
                     set_action_log(_msg)
                 except Exception as _exc:
                     set_action_log(f"Validation failed for **{_name}**: {_exc}")
