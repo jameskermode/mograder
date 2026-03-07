@@ -246,10 +246,8 @@ def _(
 
         def do_validate(_, path=None, name=None):
             set_validating(name)
-            set_action_log(f"Validating **{name}** — installing dependencies...")
-            sandbox = create_shared_sandbox(path)
-            set_action_log(f"Validating **{name}** — running notebook...")
             try:
+                sandbox = create_shared_sandbox(path)
                 result = run_notebook(path, sandbox_dir=sandbox)
                 mtime = path.stat().st_mtime
                 save_cached_results(COURSE_DIR, path.name, result, mtime)
@@ -397,11 +395,38 @@ def _(
     return (buttons,)
 
 
+# --- Validation spinner (visible only while validating) ---
+@app.cell
+def _(get_validating, mo):
+    validating_name = get_validating()
+    if validating_name:
+        mo.output.replace(
+            mo.callout(
+                mo.hstack(
+                    [
+                        mo.md(f"**Validating {validating_name}**..."),
+                        mo.status.spinner(),
+                    ],
+                    align="center",
+                    gap=1,
+                ),
+                kind="info",
+            )
+        )
+    else:
+        mo.output.replace(mo.md(""))
+    return ()
+
+
 # --- Activity log ---
 @app.cell
-def _(get_action_log, mo):
+def _(get_action_log, mo, set_action_log):
     log_text = get_action_log()
-    dismiss_btn = mo.ui.button(label="Dismiss")
+
+    dismiss_btn = mo.ui.button(
+        label="Dismiss",
+        on_change=lambda _: set_action_log(""),
+    )
 
     if log_text:
         kind = (
@@ -409,20 +434,12 @@ def _(get_action_log, mo):
             if "failed" in log_text.lower() or "error" in log_text.lower()
             else "info"
         )
-        activity_log = mo.vstack([mo.callout(mo.md(log_text), kind=kind), dismiss_btn])
+        mo.output.replace(
+            mo.vstack([mo.callout(mo.md(log_text), kind=kind), dismiss_btn])
+        )
     else:
-        activity_log = mo.md("")
-
-    mo.output.replace(activity_log)
-    return (activity_log, dismiss_btn)
-
-
-@app.cell
-def _(dismiss_btn, set_action_log):
-    # When dismiss button is clicked (value increments), clear the log
-    if dismiss_btn.value:
-        set_action_log("")
-    return ()
+        mo.output.replace(mo.md(""))
+    return (dismiss_btn,)
 
 
 if __name__ == "__main__":
