@@ -61,7 +61,7 @@ def _():
 def _(CONFIG, load_cached_token, mo):
     get_action_log, set_action_log = mo.state("")
     get_refresh, set_refresh = mo.state(0)
-    get_validating, set_validating = mo.state("")
+    get_pending, set_pending = mo.state(None)
 
     # Initialize token from cache if available
     _initial_token = ""
@@ -74,13 +74,13 @@ def _(CONFIG, load_cached_token, mo):
 
     return (
         get_action_log,
+        get_pending,
         get_refresh,
         get_token,
-        get_validating,
         set_action_log,
+        set_pending,
         set_refresh,
         set_token,
-        set_validating,
     )
 
 
@@ -112,19 +112,15 @@ def _(
             )
         )
     elif get_token():
-        # Already logged in — show header only
         mo.output.replace(
             mo.hstack(
-                [
-                    mo.md("# mograder student"),
-                    mo.md(f"`{COURSE_DIR}`"),
-                ],
+                [mo.md("# mograder student"), mo.md(f"`{COURSE_DIR}`")],
                 justify="space-between",
                 align="center",
             )
         )
     else:
-        # Need login
+
         def handle_login(token_str):
             token_str = token_str.strip()
             if not token_str:
@@ -165,137 +161,44 @@ def _(
 
 
 # --- Assignments table ---
+# Buttons only call set_pending({...}) — actual work is in the execution cell.
 @app.cell
 def _(
     COURSE_DIR,
     CONFIG,
-    MoodleAPIClient,
-    create_shared_sandbox,
     datetime,
     format_check_summary,
     get_refresh,
     get_token,
-    get_validating,
     is_cache_stale,
     load_cached_results,
     mo,
     moodle_url,
     re,
-    run_notebook,
-    save_cached_results,
-    set_action_log,
-    set_refresh,
-    set_validating,
-    sp,
-    sys,
+    set_pending,
     timezone,
 ):
     assignments_cfg = CONFIG.moodle_assignments
     token = get_token()
-    _ = get_refresh()  # reactive dependency
+    _ = get_refresh()
 
     buttons = mo.ui.dictionary({})
 
     if not moodle_url or not assignments_cfg or not token:
         mo.output.replace(mo.md(""))
     else:
-        client = MoodleAPIClient(moodle_url, token)
 
         def assignment_slug(name):
-            """Derive a directory slug from assignment name, e.g. 'A1'."""
             m = re.match(r"(A\d+)", name)
             if m:
                 return m.group(1)
             return re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-")[:30]
 
-        def assignment_dir(slug):
-            d = COURSE_DIR / slug
-            d.mkdir(exist_ok=True)
-            return d
-
         def find_local_notebook(adir):
             pys = list(adir.glob("*.py"))
             return pys[0] if pys else None
 
-        # --- Action handlers ---
-
-        def do_download(_, assign=None, slug=None):
-            adir = assignment_dir(slug)
-            name = assign["name"]
-            files = assign.get("files", [])
-            py_files = [f for f in files if f["name"].endswith(".py")]
-            if not py_files:
-                set_action_log(f"No `.py` file attached to **{name}**")
-                return
-            for finfo in py_files:
-                dest = adir / finfo["name"]
-                try:
-                    file_url = finfo["url"].replace(
-                        "/pluginfile.php/", "/webservice/pluginfile.php/"
-                    )
-                    client.download_file(file_url, dest)
-                except Exception as exc:
-                    set_action_log(f"Download failed for **{name}**: {exc}")
-                    return
-            set_action_log(f"Downloaded **{name}** to `{slug}/`")
-            set_refresh(lambda v: v + 1)
-
-        def do_edit(_, path=None, name=None):
-            sp.Popen([sys.executable, "-m", "marimo", "edit", "--sandbox", str(path)])
-            set_action_log(f"Opened **{name}** for editing")
-
-        def do_validate(_, path=None, name=None):
-            set_validating(name)
-            try:
-                sandbox = create_shared_sandbox(path)
-                result = run_notebook(path, sandbox_dir=sandbox)
-                mtime = path.stat().st_mtime
-                save_cached_results(COURSE_DIR, path.name, result, mtime)
-                passed = sum(1 for c in result.checks if c.status == "success")
-                total = len(result.checks)
-                if not result.export_ok:
-                    msg = f"Validation of **{name}** failed: {result.export_error}"
-                elif total == 0:
-                    msg = f"Validation of **{name}** complete (no checks found)"
-                else:
-                    msg = (
-                        f"Validation of **{name}** complete: "
-                        f"{passed}/{total} checks passed"
-                    )
-                if result.cell_errors > 0:
-                    msg += f" ({result.cell_errors} cell error(s))"
-                set_action_log(msg)
-            except Exception as exc:
-                set_action_log(f"Validation failed for **{name}**: {exc}")
-            finally:
-                set_validating("")
-                set_refresh(lambda v: v + 1)
-
-        def do_submit(_, path=None, assign=None, name=None):
-            try:
-                item_id = client.upload_file(path)
-                client.save_submission(assign["id"], item_id)
-                set_action_log(f"Submitted **{name}** (`{path.name}`)")
-                set_refresh(lambda v: v + 1)
-            except Exception as exc:
-                set_action_log(f"Submit failed for **{name}**: {exc}")
-
-        def do_feedback(_, assign=None, name=None):
-            try:
-                status = client.get_submission_status(assign["id"])
-                if status["graded"]:
-                    msg = f"**{name}** — Grade: **{status['grade']}**"
-                    if status["feedback"]:
-                        msg += f"\n\nFeedback: {status['feedback']}"
-                else:
-                    msg = f"**{name}** — Status: {status['status']} (not yet graded)"
-                set_action_log(msg)
-            except Exception as exc:
-                set_action_log(f"Could not fetch feedback for **{name}**: {exc}")
-
-        # --- Build table ---
         all_buttons = {}
-        is_validating = get_validating()
         rows = []
 
         for i, a in enumerate(assignments_cfg):
@@ -313,7 +216,6 @@ def _(
 
             status = f"Downloaded ({local_nb.name})" if local_nb else "\u2014"
 
-            # Validation cache
             if local_nb is not None:
                 cached = load_cached_results(COURSE_DIR, local_nb.name)
                 stale = is_cache_stale(cached, local_nb) if cached else False
@@ -327,7 +229,9 @@ def _(
                 key = f"{i}_download"
                 all_buttons[key] = mo.ui.button(
                     label="Download",
-                    on_change=lambda _, a=a, s=slug: do_download(_, assign=a, slug=s),
+                    on_change=lambda _, a=a, s=slug: set_pending(
+                        {"action": "download", "assign": a, "slug": s}
+                    ),
                 )
                 btn_keys.append(key)
 
@@ -335,29 +239,26 @@ def _(
                 key = f"{i}_edit"
                 all_buttons[key] = mo.ui.button(
                     label="Edit",
-                    on_change=lambda _, p=local_nb, n=a["name"]: do_edit(
-                        _, path=p, name=n
+                    on_change=lambda _, p=str(local_nb), n=a["name"]: set_pending(
+                        {"action": "edit", "path": p, "name": n}
                     ),
                 )
                 btn_keys.append(key)
 
                 key = f"{i}_validate"
                 all_buttons[key] = mo.ui.button(
-                    label=(
-                        "Validating..." if is_validating == a["name"] else "Validate"
+                    label="Validate",
+                    on_change=lambda _, p=str(local_nb), n=a["name"]: set_pending(
+                        {"action": "validate", "path": p, "name": n}
                     ),
-                    on_change=lambda _, p=local_nb, n=a["name"]: do_validate(
-                        _, path=p, name=n
-                    ),
-                    disabled=bool(is_validating),
                 )
                 btn_keys.append(key)
 
                 key = f"{i}_submit"
                 all_buttons[key] = mo.ui.button(
                     label="Submit",
-                    on_change=lambda _, p=local_nb, a=a, n=a["name"]: do_submit(
-                        _, path=p, assign=a, name=n
+                    on_change=lambda _, p=str(local_nb), a=a, n=a["name"]: set_pending(
+                        {"action": "submit", "path": p, "assign": a, "name": n}
                     ),
                 )
                 btn_keys.append(key)
@@ -365,7 +266,9 @@ def _(
             key = f"{i}_feedback"
             all_buttons[key] = mo.ui.button(
                 label="Feedback",
-                on_change=lambda _, a=a, n=a["name"]: do_feedback(_, assign=a, name=n),
+                on_change=lambda _, a=a, n=a["name"]: set_pending(
+                    {"action": "feedback", "assign": a, "name": n}
+                ),
             )
             btn_keys.append(key)
 
@@ -395,26 +298,122 @@ def _(
     return (buttons,)
 
 
-# --- Validation spinner (visible only while validating) ---
+# --- Execution cell: reads get_pending() and does the actual work ---
 @app.cell
-def _(get_validating, mo):
-    validating_name = get_validating()
-    if validating_name:
-        mo.output.replace(
-            mo.callout(
-                mo.hstack(
-                    [
-                        mo.md(f"**Validating {validating_name}**..."),
-                        mo.status.spinner(),
-                    ],
-                    align="center",
-                    gap=1,
-                ),
-                kind="info",
-            )
-        )
-    else:
-        mo.output.replace(mo.md(""))
+def _(
+    COURSE_DIR,
+    MoodleAPIClient,
+    Path,
+    create_shared_sandbox,
+    get_pending,
+    get_token,
+    mo,
+    moodle_url,
+    run_notebook,
+    save_cached_results,
+    set_action_log,
+    set_pending,
+    set_refresh,
+    sp,
+    sys,
+):
+    pending = get_pending()
+    if pending is not None:
+        _act = pending["action"]
+        _token = get_token()
+        _client = MoodleAPIClient(moodle_url, _token) if _token else None
+
+        if _act == "download" and _client:
+            _assign = pending["assign"]
+            _slug = pending["slug"]
+            _adir = COURSE_DIR / _slug
+            _adir.mkdir(exist_ok=True)
+            _name = _assign["name"]
+            _py_files = [
+                f for f in _assign.get("files", []) if f["name"].endswith(".py")
+            ]
+            if not _py_files:
+                set_action_log(f"No `.py` file attached to **{_name}**")
+            else:
+                try:
+                    for _finfo in _py_files:
+                        _dest = _adir / _finfo["name"]
+                        _file_url = _finfo["url"].replace(
+                            "/pluginfile.php/", "/webservice/pluginfile.php/"
+                        )
+                        _client.download_file(_file_url, _dest)
+                    set_action_log(f"Downloaded **{_name}** to `{_slug}/`")
+                except Exception as _exc:
+                    set_action_log(f"Download failed for **{_name}**: {_exc}")
+            set_refresh(lambda v: v + 1)
+
+        elif _act == "edit":
+            _path = pending["path"]
+            _name = pending["name"]
+            sp.Popen([sys.executable, "-m", "marimo", "edit", "--sandbox", _path])
+            set_action_log(f"Opened **{_name}** for editing")
+
+        elif _act == "validate":
+            _path = Path(pending["path"])
+            _name = pending["name"]
+            with mo.status.spinner(
+                title=f"Validating {_name}", remove_on_exit=True
+            ) as _spinner:
+                _spinner.update(subtitle="Installing dependencies...")
+                _sandbox = create_shared_sandbox(_path)
+                _spinner.update(subtitle="Running notebook...")
+                try:
+                    _result = run_notebook(_path, sandbox_dir=_sandbox)
+                    _mtime = _path.stat().st_mtime
+                    save_cached_results(COURSE_DIR, _path.name, _result, _mtime)
+                    _passed = sum(1 for c in _result.checks if c.status == "success")
+                    _total = len(_result.checks)
+                    if not _result.export_ok:
+                        _msg = (
+                            f"Validation of **{_name}** failed: {_result.export_error}"
+                        )
+                    elif _total == 0:
+                        _msg = f"Validation of **{_name}** complete (no checks found)"
+                    else:
+                        _msg = (
+                            f"Validation of **{_name}** complete: "
+                            f"{_passed}/{_total} checks passed"
+                        )
+                    if _result.cell_errors > 0:
+                        _msg += f" ({_result.cell_errors} cell error(s))"
+                    set_action_log(_msg)
+                except Exception as _exc:
+                    set_action_log(f"Validation failed for **{_name}**: {_exc}")
+            set_refresh(lambda v: v + 1)
+
+        elif _act == "submit" and _client:
+            _path = Path(pending["path"])
+            _assign = pending["assign"]
+            _name = pending["name"]
+            try:
+                _item_id = _client.upload_file(_path)
+                _client.save_submission(_assign["id"], _item_id)
+                set_action_log(f"Submitted **{_name}** (`{_path.name}`)")
+            except Exception as _exc:
+                set_action_log(f"Submit failed for **{_name}**: {_exc}")
+            set_refresh(lambda v: v + 1)
+
+        elif _act == "feedback" and _client:
+            _assign = pending["assign"]
+            _name = pending["name"]
+            try:
+                _status = _client.get_submission_status(_assign["id"])
+                if _status["graded"]:
+                    _msg = f"**{_name}** — Grade: **{_status['grade']}**"
+                    if _status["feedback"]:
+                        _msg += f"\n\nFeedback: {_status['feedback']}"
+                else:
+                    _msg = f"**{_name}** — Status: {_status['status']} (not yet graded)"
+                set_action_log(_msg)
+            except Exception as _exc:
+                set_action_log(f"Could not fetch feedback for **{_name}**: {_exc}")
+
+        set_pending(None)
     return ()
 
 
