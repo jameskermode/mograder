@@ -468,15 +468,17 @@ def _(Path, get_report_path, mo):
         _html_path = Path(_report)
         if _html_path.exists():
             _encoded = _b64.b64encode(_html_path.read_bytes()).decode("ascii")
-            report_preview = mo.Html(
-                f'<iframe src="data:text/html;base64,{_encoded}" '
-                f'style="width:100%; height:80vh; border:1px solid #ccc;"></iframe>'
+            mo.output.replace(
+                mo.Html(
+                    f'<iframe src="data:text/html;base64,{_encoded}" '
+                    f'style="width:100%; height:80vh; border:1px solid #ccc;"></iframe>'
+                )
             )
         else:
-            report_preview = mo.md("")
+            mo.output.replace(mo.md(""))
     else:
-        report_preview = mo.md("")
-    return (report_preview,)
+        mo.output.replace(mo.md(""))
+    return ()
 
 
 if __name__ == "__main__":
