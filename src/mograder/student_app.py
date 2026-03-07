@@ -56,12 +56,22 @@ def _():
     )
 
 
+# --- State ---
 @app.cell
-def _(mo):
+def _(CONFIG, load_cached_token, mo):
     get_action_log, set_action_log = mo.state("")
     get_refresh, set_refresh = mo.state(0)
     get_validating, set_validating = mo.state("")
-    get_token, set_token = mo.state("")
+
+    # Initialize token from cache if available
+    _initial_token = ""
+    _url = CONFIG.moodle_url
+    if _url:
+        _cached_tok = load_cached_token(_url)
+        if _cached_tok:
+            _initial_token = _cached_tok["token"]
+    get_token, set_token = mo.state(_initial_token)
+
     return (
         get_action_log,
         get_refresh,
@@ -78,9 +88,10 @@ def _(mo):
 @app.cell
 def _(
     CONFIG,
+    COURSE_DIR,
     MoodleAPIClient,
     MoodleAPIError,
-    load_cached_token,
+    get_token,
     mo,
     save_cached_token,
     set_action_log,
@@ -89,38 +100,44 @@ def _(
     moodle_url = CONFIG.moodle_url
     token_input = mo.ui.text(label="", value="")
 
-    if not moodle_url:
+    if not moodle_url or not CONFIG.moodle_assignments:
         mo.output.replace(
             mo.callout(
                 mo.md(
-                    "No Moodle URL configured. "
+                    "No Moodle assignments configured. "
                     "Ask your instructor to run `mograder moodle sync` and "
                     "share the updated `mograder.toml`."
                 ),
                 kind="warn",
             )
         )
+    elif get_token():
+        # Already logged in — show header only
+        mo.output.replace(
+            mo.hstack(
+                [
+                    mo.md("# mograder student"),
+                    mo.md(f"`{COURSE_DIR}`"),
+                ],
+                justify="space-between",
+                align="center",
+            )
+        )
     else:
-        # Check for cached token
-        _cached_tok = load_cached_token(moodle_url)
-        if _cached_tok:
-            set_token(_cached_tok["token"])
-
+        # Need login
         def handle_login(token_str):
             token_str = token_str.strip()
             if not token_str:
                 return
             try:
-                client = MoodleAPIClient(moodle_url, token_str)
-                info = client.get_site_info()
-                save_cached_token(moodle_url, token_str, info["fullname"])
+                _client = MoodleAPIClient(moodle_url, token_str)
+                _info = _client.get_site_info()
+                save_cached_token(moodle_url, token_str, _info["fullname"])
                 set_token(token_str)
                 set_action_log(
-                    f"Logged in as **{info['fullname']}** ({info['username']})"
+                    f"Logged in as **{_info['fullname']}** ({_info['username']})"
                 )
-            except MoodleAPIError as exc:
-                set_action_log(f"Login failed: {exc}")
-            except Exception as exc:
+            except (MoodleAPIError, Exception) as exc:
                 set_action_log(f"Login failed: {exc}")
 
         token_input = mo.ui.text(
@@ -130,14 +147,14 @@ def _(
             on_change=handle_login,
         )
 
-        token_page = f"{moodle_url.rstrip('/')}/user/managetoken.php"
+        _token_page = f"{moodle_url.rstrip('/')}/user/managetoken.php"
         mo.output.replace(
             mo.vstack(
                 [
+                    mo.md("# mograder student"),
                     mo.md(
-                        f"### Moodle login\n\n"
                         f"Paste your token from "
-                        f"[Moodle Security Keys]({token_page}) "
+                        f"[Moodle Security Keys]({_token_page}) "
                         f"(look for **Moodle mobile web service**)."
                     ),
                     token_input,
@@ -153,7 +170,6 @@ def _(
     COURSE_DIR,
     CONFIG,
     MoodleAPIClient,
-    Path,
     create_shared_sandbox,
     datetime,
     format_check_summary,
@@ -180,14 +196,8 @@ def _(
 
     buttons = mo.ui.dictionary({})
 
-    if not moodle_url or not assignments_cfg:
+    if not moodle_url or not assignments_cfg or not token:
         mo.output.replace(mo.md(""))
-    elif not token:
-        mo.output.replace(
-            mo.callout(
-                mo.md("Enter your Moodle token above to get started."), kind="info"
-            )
-        )
     else:
         client = MoodleAPIClient(moodle_url, token)
 
@@ -196,17 +206,14 @@ def _(
             m = re.match(r"(A\d+)", name)
             if m:
                 return m.group(1)
-            # Fallback: lowercase, replace spaces/punctuation
             return re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-")[:30]
 
         def assignment_dir(slug):
-            """Get/create the assignment subdirectory."""
             d = COURSE_DIR / slug
             d.mkdir(exist_ok=True)
             return d
 
         def find_local_notebook(adir):
-            """Find a .py notebook in the assignment directory."""
             pys = list(adir.glob("*.py"))
             return pys[0] if pys else None
 
@@ -223,7 +230,6 @@ def _(
             for finfo in py_files:
                 dest = adir / finfo["name"]
                 try:
-                    # Use webservice URL (token-authed) not the browser URL
                     file_url = finfo["url"].replace(
                         "/pluginfile.php/", "/webservice/pluginfile.php/"
                     )
@@ -318,7 +324,6 @@ def _(
 
             btn_keys = []
 
-            # Download (always show if no local file)
             if local_nb is None:
                 key = f"{i}_download"
                 all_buttons[key] = mo.ui.button(
@@ -327,7 +332,6 @@ def _(
                 )
                 btn_keys.append(key)
 
-            # Edit + Validate (if downloaded)
             if local_nb is not None:
                 key = f"{i}_edit"
                 all_buttons[key] = mo.ui.button(
@@ -350,7 +354,6 @@ def _(
                 )
                 btn_keys.append(key)
 
-                # Submit
                 key = f"{i}_submit"
                 all_buttons[key] = mo.ui.button(
                     label="Submit",
@@ -360,7 +363,6 @@ def _(
                 )
                 btn_keys.append(key)
 
-            # Feedback (always available)
             key = f"{i}_feedback"
             all_buttons[key] = mo.ui.button(
                 label="Feedback",
@@ -378,7 +380,6 @@ def _(
                 }
             )
 
-        # Wrap buttons in mo.ui.dictionary (global var) so on_change fires
         buttons = mo.ui.dictionary(all_buttons)
 
         display_rows = []
@@ -400,21 +401,25 @@ def _(
 def _(get_action_log, mo, set_action_log):
     log_text = get_action_log()
 
+    # Dismiss button wrapped in mo.ui.dictionary for on_change to fire
+    dismiss = mo.ui.dictionary(
+        {"btn": mo.ui.button(label="Dismiss", on_change=lambda _: set_action_log(""))}
+    )
+
     if log_text:
         kind = (
             "danger"
             if "failed" in log_text.lower() or "error" in log_text.lower()
             else "info"
         )
-        dismiss_btn = mo.ui.button(
-            label="Dismiss", on_change=lambda _: set_action_log("")
+        activity_log = mo.vstack(
+            [mo.callout(mo.md(log_text), kind=kind), dismiss["btn"]]
         )
-        activity_log = mo.vstack([mo.callout(mo.md(log_text), kind=kind), dismiss_btn])
     else:
         activity_log = mo.md("")
 
     mo.output.replace(activity_log)
-    return (activity_log,)
+    return (activity_log, dismiss)
 
 
 if __name__ == "__main__":
