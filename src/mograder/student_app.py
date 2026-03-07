@@ -246,14 +246,11 @@ def _(
 
         def do_validate(_, path=None, name=None):
             set_validating(name)
+            set_action_log(f"Validating **{name}** — installing dependencies...")
+            sandbox = create_shared_sandbox(path)
+            set_action_log(f"Validating **{name}** — running notebook...")
             try:
-                with mo.status.spinner(
-                    title=f"Validating {name}", remove_on_exit=True
-                ) as spinner:
-                    spinner.update(subtitle="Installing dependencies...")
-                    sandbox = create_shared_sandbox(path)
-                    spinner.update(subtitle="Running notebook...")
-                    result = run_notebook(path, sandbox_dir=sandbox)
+                result = run_notebook(path, sandbox_dir=sandbox)
                 mtime = path.stat().st_mtime
                 save_cached_results(COURSE_DIR, path.name, result, mtime)
                 passed = sum(1 for c in result.checks if c.status == "success")
@@ -402,13 +399,9 @@ def _(
 
 # --- Activity log ---
 @app.cell
-def _(get_action_log, mo, set_action_log):
+def _(get_action_log, mo):
     log_text = get_action_log()
-
-    # Dismiss button wrapped in mo.ui.dictionary for on_change to fire
-    dismiss = mo.ui.dictionary(
-        {"btn": mo.ui.button(label="Dismiss", on_change=lambda _: set_action_log(""))}
-    )
+    dismiss_btn = mo.ui.button(label="Dismiss")
 
     if log_text:
         kind = (
@@ -416,14 +409,20 @@ def _(get_action_log, mo, set_action_log):
             if "failed" in log_text.lower() or "error" in log_text.lower()
             else "info"
         )
-        activity_log = mo.vstack(
-            [mo.callout(mo.md(log_text), kind=kind), dismiss["btn"]]
-        )
+        activity_log = mo.vstack([mo.callout(mo.md(log_text), kind=kind), dismiss_btn])
     else:
         activity_log = mo.md("")
 
     mo.output.replace(activity_log)
-    return (activity_log, dismiss)
+    return (activity_log, dismiss_btn)
+
+
+@app.cell
+def _(dismiss_btn, set_action_log):
+    # When dismiss button is clicked (value increments), clear the log
+    if dismiss_btn.value:
+        set_action_log("")
+    return ()
 
 
 if __name__ == "__main__":
