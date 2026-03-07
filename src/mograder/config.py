@@ -13,6 +13,8 @@ class MograderConfig:
     moodle_csv: str | None = None
     moodle_match_column: str = "Username"
     moodle_name_column: str = "Full name"
+    moodle_url: str | None = None
+    moodle_course_id: int | None = None
     # [defaults]
     jobs: int = 4
     timeout: int = 300
@@ -51,6 +53,8 @@ def load_config(course_dir: Path) -> MograderConfig:
         moodle_csv=moodle.get("csv"),
         moodle_match_column=moodle.get("match_column", "Username"),
         moodle_name_column=moodle.get("name_column", "Full name"),
+        moodle_url=moodle.get("url"),
+        moodle_course_id=moodle.get("course_id"),
         jobs=defaults.get("jobs", 4),
         timeout=defaults.get("timeout", 300),
         headless=defaults.get("headless", False),

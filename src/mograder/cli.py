@@ -106,7 +106,7 @@ def cli(ctx):
     ctx.default_map.setdefault("feedback", {}).update(
         {"jobs": config.jobs, "timeout": config.timeout}
     )
-    ctx.default_map.setdefault("moodle", {}).update(
+    ctx.default_map.setdefault("moodle", {}).setdefault("export", {}).update(
         {"match_column": config.moodle_match_column}
     )
 
@@ -572,7 +572,49 @@ def feedback_cmd(ctx, files, output_dir, grades_csv, timeout, jobs):
 cli.add_command(feedback_cmd, "feedback")
 
 
-@cli.command()
+@cli.group()
+@click.pass_context
+def moodle_group(ctx):
+    """Moodle integration: fetch, submit, export grades, upload feedback."""
+    pass
+
+
+cli.add_command(moodle_group, "moodle")
+
+
+# --- Common Moodle API options ---
+
+_moodle_api_options = [
+    click.option(
+        "--course-id",
+        "-c",
+        type=int,
+        default=None,
+        help="Moodle course ID (overrides config)",
+    ),
+    click.option("--url", default=None, help="Moodle URL (overrides config/env)"),
+    click.option("--token", default=None, help="Moodle token (overrides env)"),
+]
+
+
+def _add_moodle_api_options(func):
+    for option in reversed(_moodle_api_options):
+        func = option(func)
+    return func
+
+
+def _get_course_id(cli_course_id, config):
+    """Resolve course ID from CLI flag or config."""
+    course_id = cli_course_id or getattr(config, "moodle_course_id", None)
+    if not course_id:
+        raise click.UsageError(
+            "Course ID not set. Provide --course-id / -c, "
+            "or add course_id to [moodle] in mograder.toml"
+        )
+    return course_id
+
+
+@moodle_group.command("export")
 @click.argument("worksheet", type=click.Path(exists=True, path_type=Path))
 @click.option(
     "--grades-csv",
@@ -600,7 +642,7 @@ cli.add_command(feedback_cmd, "feedback")
     help="Moodle CSV column to match student against (default: Username)",
 )
 @click.pass_context
-def moodle_cmd(ctx, worksheet, grades_csv, feedback_dir, output_dir, match_column):
+def moodle_export(ctx, worksheet, grades_csv, feedback_dir, output_dir, match_column):
     """Merge grades into a Moodle offline grading worksheet."""
     config = ctx.obj["config"]
     # Read inputs
@@ -676,7 +718,300 @@ def moodle_cmd(ctx, worksheet, grades_csv, feedback_dir, output_dir, match_colum
         click.echo(moodle.compute_statistics(result.marks))
 
 
-cli.add_command(moodle_cmd, "moodle")
+@moodle_group.command("fetch")
+@click.argument("assignment", required=False, default=None)
+@click.option(
+    "--list", "list_assignments", is_flag=True, help="List available assignments"
+)
+@_add_moodle_api_options
+@click.option(
+    "-o",
+    "--output-dir",
+    type=click.Path(path_type=Path),
+    default=".",
+    help="Output directory (default: current dir)",
+)
+@click.pass_context
+def moodle_fetch(ctx, assignment, list_assignments, course_id, url, token, output_dir):
+    """Download assignment files from Moodle."""
+    import zipfile
+
+    from mograder.moodle_api import (
+        MoodleAPIClient,
+        find_assignment,
+        resolve_credentials,
+    )
+
+    config = ctx.obj["config"]
+    url, token = resolve_credentials(url, token, config)
+    cid = _get_course_id(course_id, config)
+    client = MoodleAPIClient(url, token)
+
+    assignments = client.get_assignments(cid)
+
+    if list_assignments:
+        from datetime import datetime, timezone
+
+        click.echo(f"{'ID':<8} {'Name':<40} {'Due date':<20} {'Files':>5}")
+        click.echo("-" * 75)
+        for a in assignments:
+            due = (
+                datetime.fromtimestamp(a["duedate"], tz=timezone.utc).strftime(
+                    "%Y-%m-%d %H:%M"
+                )
+                if a["duedate"]
+                else "No deadline"
+            )
+            n_files = len(a.get("introattachments", []))
+            click.echo(f"{a['id']:<8} {a['name']:<40} {due:<20} {n_files:>5}")
+        return
+
+    if not assignment:
+        raise click.UsageError(
+            "Provide an assignment name, or use --list to see available assignments"
+        )
+
+    match = find_assignment(client, cid, assignment)
+    files = match.get("introattachments", [])
+    if not files:
+        click.echo(f"No files attached to assignment '{match['name']}'")
+        return
+
+    output_dir = Path(output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    downloaded = []
+    for f in files:
+        dest = output_dir / f["filename"]
+        client.download_file(f["fileurl"], dest)
+        downloaded.append(dest)
+        click.echo(f"  Downloaded: {_rel(dest)}")
+
+    # Auto-extract ZIP files
+    for dest in downloaded:
+        if dest.suffix.lower() == ".zip":
+            with zipfile.ZipFile(dest) as zf:
+                zf.extractall(output_dir)
+                click.echo(f"  Extracted: {dest.name} ({len(zf.namelist())} files)")
+
+    click.echo(f"Fetched {len(downloaded)} file(s) for '{match['name']}'")
+
+
+@moodle_group.command("submit")
+@click.argument("file", type=click.Path(exists=True, path_type=Path))
+@click.option(
+    "-a",
+    "--assignment",
+    required=True,
+    help="Assignment name or ID",
+)
+@_add_moodle_api_options
+@click.option(
+    "--no-finalize",
+    is_flag=True,
+    help="Save draft without submitting for grading",
+)
+@click.option(
+    "--dry-run", is_flag=True, help="Show what would happen without uploading"
+)
+@click.pass_context
+def moodle_submit(ctx, file, assignment, course_id, url, token, no_finalize, dry_run):
+    """Upload a .py notebook as a Moodle assignment submission."""
+    from mograder.moodle_api import (
+        MoodleAPIClient,
+        find_assignment,
+        resolve_credentials,
+    )
+
+    config = ctx.obj["config"]
+
+    if file.suffix != ".py":
+        click.echo("ERROR: only .py files can be submitted", err=True)
+        sys.exit(1)
+
+    url, token = resolve_credentials(url, token, config)
+    cid = _get_course_id(course_id, config)
+    client = MoodleAPIClient(url, token)
+
+    match = find_assignment(client, cid, assignment)
+
+    if dry_run:
+        click.echo(f"Would submit: {_rel(file)}")
+        click.echo(f"  Assignment: {match['name']} (id={match['id']})")
+        click.echo(f"  Finalize: {'no' if no_finalize else 'yes'}")
+        return
+
+    click.echo(f"Uploading {_rel(file)}...")
+    item_id = client.upload_file(file)
+    click.echo(f"  Uploaded to draft area (itemid={item_id})")
+
+    client.save_submission(match["id"], item_id)
+    click.echo(f"  Saved submission for '{match['name']}'")
+
+    if not no_finalize:
+        client.submit_for_grading(match["id"])
+        click.echo("  Submitted for grading")
+
+    click.echo("Done.")
+
+
+@moodle_group.command("fetch-submissions")
+@click.argument("assignment")
+@_add_moodle_api_options
+@click.option(
+    "-o",
+    "--output-dir",
+    type=click.Path(path_type=Path),
+    default=None,
+    help="Output directory (default: submitted/<assignment>/)",
+)
+@click.pass_context
+def moodle_fetch_submissions(ctx, assignment, course_id, url, token, output_dir):
+    """Bulk download all student submissions for an assignment (instructor)."""
+    from mograder.moodle_api import (
+        MoodleAPIClient,
+        find_assignment,
+        resolve_credentials,
+    )
+
+    config = ctx.obj["config"]
+    url, token = resolve_credentials(url, token, config)
+    cid = _get_course_id(course_id, config)
+    client = MoodleAPIClient(url, token)
+
+    match = find_assignment(client, cid, assignment)
+    assignment_id = match["id"]
+
+    # Build userid → username mapping
+    participants = client.list_participants(assignment_id)
+    user_map = {p["id"]: p["username"] for p in participants}
+
+    # Get all submissions
+    submissions = client.get_submissions(assignment_id)
+
+    if output_dir is None:
+        output_dir = Path(config.submitted_dir) / match["name"]
+    output_dir = Path(output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    count = 0
+    for sub in submissions:
+        if sub["status"] != "submitted":
+            continue
+        py_files = [f for f in sub["files"] if f["filename"].endswith(".py")]
+        if not py_files:
+            continue
+        username = user_map.get(sub["userid"], f"user_{sub['userid']}")
+        # Download the first .py file
+        dest = output_dir / f"{username}.py"
+        client.download_file(py_files[0]["fileurl"], dest)
+        click.echo(f"  {username}.py")
+        count += 1
+
+    click.echo(f"Downloaded {count} submission(s) to {_rel(output_dir)}")
+
+
+@moodle_group.command("upload-feedback")
+@click.argument("assignment")
+@_add_moodle_api_options
+@click.option(
+    "--feedback-dir",
+    type=click.Path(exists=True, path_type=Path),
+    default=None,
+    help="Directory with {student}.html feedback files",
+)
+@click.option(
+    "--grades-csv",
+    type=click.Path(exists=True, path_type=Path),
+    default=None,
+    help="Grades CSV (auto-discovered from gradebook.db if omitted)",
+)
+@click.option("--dry-run", is_flag=True, help="Show what would be uploaded")
+@click.pass_context
+def moodle_upload_feedback(
+    ctx, assignment, course_id, url, token, feedback_dir, grades_csv, dry_run
+):
+    """Upload grades and feedback to Moodle via API (instructor)."""
+    from mograder.moodle_api import (
+        MoodleAPIClient,
+        find_assignment,
+        resolve_credentials,
+    )
+
+    config = ctx.obj["config"]
+    url, token = resolve_credentials(url, token, config)
+    cid = _get_course_id(course_id, config)
+    client = MoodleAPIClient(url, token)
+
+    match = find_assignment(client, cid, assignment)
+    assignment_id = match["id"]
+
+    # Read grades
+    if grades_csv:
+        grades = moodle.read_grades_csv(grades_csv)
+    else:
+        db_path = Path.cwd() / config.gradebook
+        if db_path.is_file():
+            grades = moodle.grades_from_gradebook(db_path)
+            click.echo(f"Reading grades from {_rel(db_path)}")
+        else:
+            click.echo(
+                "ERROR: no --grades-csv provided and no gradebook.db found",
+                err=True,
+            )
+            sys.exit(1)
+
+    # Map usernames → Moodle user IDs
+    participants = client.list_participants(assignment_id)
+    username_to_uid = {p["username"]: p["id"] for p in participants}
+
+    # Build grade payloads
+    grade_payloads = []
+    for username, gdata in grades.items():
+        uid = username_to_uid.get(username)
+        if uid is None:
+            click.echo(f"  WARNING: no Moodle user for '{username}', skipping")
+            continue
+        mark = gdata.get("mark")
+        if mark is None:
+            continue
+        fb_text = gdata.get("feedback", "")
+
+        # Read HTML feedback if feedback_dir provided
+        if feedback_dir:
+            html_file = Path(feedback_dir) / f"{username}.html"
+            if html_file.is_file():
+                fb_text = html_file.read_text()
+
+        grade_payloads.append(
+            {
+                "userid": uid,
+                "grade": mark,
+                "feedback": fb_text,
+            }
+        )
+
+    if dry_run:
+        click.echo(
+            f"Would upload {len(grade_payloads)} grade(s) "
+            f"to '{match['name']}' (id={assignment_id})"
+        )
+        click.echo(f"{'Username':<20} {'Grade':>6}")
+        click.echo("-" * 28)
+        for gp in grade_payloads:
+            uname = next(
+                (u for u, uid in username_to_uid.items() if uid == gp["userid"]),
+                str(gp["userid"]),
+            )
+            click.echo(f"{uname:<20} {gp['grade']:>6}")
+        return
+
+    if not grade_payloads:
+        click.echo("No grades to upload")
+        return
+
+    client.save_grades(assignment_id, grade_payloads)
+    click.echo(f"Uploaded {len(grade_payloads)} grade(s) to '{match['name']}'")
 
 
 @cli.command("import-students")

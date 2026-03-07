@@ -48,7 +48,8 @@ course/
 - **`integrity.py`** — Integrity checking: compares check/marks cells between source and submitted notebooks via marimo's `MarimoConvert` parser. Detects tampering and reinjects source cells. Returns `IntegrityResult` with tampered info and fixed source.
 - **`feedback.py`** — Exports graded notebooks to HTML, collects grades (auto + manual marks), writes grades CSV.
 - **`moodle.py`** — Merges grades into Moodle offline grading worksheets (UTF-8-SIG CSV), builds feedback ZIP with Moodle path conventions.
-- **`cli.py`** — Click CLI wiring. Four commands: `generate`, `autograde`, `feedback`, `moodle`. Smart output directory defaults infer from nbgrader convention. `--source` auto-discovery. Integrity checking integrated into autograde.
+- **`moodle_api.py`** — Moodle REST Web Services API client. `MoodleAPIClient` class for fetching assignments, downloading/uploading files, saving submissions, and pushing grades. Credential resolution (CLI flag > env var > config). Assignment name matching.
+- **`cli.py`** — Click CLI wiring. Commands: `generate`, `autograde`, `feedback`, `moodle` (group). The `moodle` group has subcommands: `export` (merge grades into Moodle CSV), `fetch` (student downloads assignment), `submit` (student uploads submission), `fetch-submissions` (instructor bulk download), `upload-feedback` (instructor bulk grade push). Smart output directory defaults infer from nbgrader convention. `--source` auto-discovery. Integrity checking integrated into autograde.
 
 ### Key data flow
 

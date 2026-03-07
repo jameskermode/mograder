@@ -10,6 +10,7 @@ requires-python = ">=3.11"
 dependencies = [
     "click>=8.0",
     "marimo>=0.19",
+    "requests>=2.28",
 ]
 
 [project.optional-dependencies]

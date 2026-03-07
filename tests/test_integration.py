@@ -139,6 +139,7 @@ def test_full_workflow(course, monkeypatch):
         cli,
         [
             "moodle",
+            "export",
             str(csv_path),
             "--feedback-dir",
             str(fb_dir),
