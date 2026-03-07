@@ -438,7 +438,7 @@ def _(mo, set_action_log, set_report_path):
 
 # --- Activity log ---
 @app.cell
-def _(Path, dismiss_btn, get_action_log, get_report_path, mo):
+def _(dismiss_btn, get_action_log, get_report_path, mo):
     log_text = get_action_log()
     report_path = get_report_path()
 
@@ -450,13 +450,33 @@ def _(Path, dismiss_btn, get_action_log, get_report_path, mo):
         )
         _parts = [mo.callout(mo.md(log_text), kind=kind)]
         if report_path:
-            _html_content = Path(report_path).read_text()
-            _parts.append(mo.accordion({"View report": mo.Html(_html_content)}))
+            _parts.append(mo.md("*See report below.*"))
         _parts.append(dismiss_btn)
         mo.output.replace(mo.vstack(_parts))
     else:
         mo.output.replace(mo.md(""))
     return ()
+
+
+# --- Report preview (iframe, like formgrader grading tab) ---
+@app.cell
+def _(Path, get_report_path, mo):
+    import base64 as _b64
+
+    _report = get_report_path()
+    if _report:
+        _html_path = Path(_report)
+        if _html_path.exists():
+            _encoded = _b64.b64encode(_html_path.read_bytes()).decode("ascii")
+            report_preview = mo.Html(
+                f'<iframe src="data:text/html;base64,{_encoded}" '
+                f'style="width:100%; height:80vh; border:1px solid #ccc;"></iframe>'
+            )
+        else:
+            report_preview = mo.md("")
+    else:
+        report_preview = mo.md("")
+    return (report_preview,)
 
 
 if __name__ == "__main__":
