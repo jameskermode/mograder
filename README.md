@@ -53,10 +53,13 @@ course/
 5. **`mograder feedback`** — `autograded/*.py` → `feedback/*.html`
    - Injects mark + feedback callout into existing autograde HTML
    - Removes self-assessment scores cell
-6. **`mograder moodle`** — `gradebook.db` + `worksheet.csv` → `export/`
+6. **`mograder moodle export`** — `gradebook.db` + `worksheet.csv` → `export/`
    - Merges grades into Moodle offline grading worksheets
    - Bundles HTML feedback into a Moodle-compatible ZIP
    - Auto-imports student names into gradebook
+7. **`mograder moodle fetch`** / **`mograder moodle submit`** — students fetch assignments and submit work via Moodle API
+8. **`mograder moodle fetch-submissions`** / **`mograder moodle upload-feedback`** — instructors bulk-download submissions and push grades/feedback via Moodle API
+9. **`mograder student`** — launches an interactive student dashboard (Marimo app) for browsing assignments, fetching files, editing notebooks, and submitting work
 
 ## Installation
 
@@ -162,17 +165,89 @@ All three flags can be set in `mograder.toml` (see [Configuration](#configuratio
 
 Autograded results can also be uploaded via the formgrader UI using the upload button in the Graded column of the Assignments table.
 
-### Upload to Moodle
+### Moodle integration
+
+The `mograder moodle` command group provides both offline CSV-based workflows and live Moodle API access.
+
+#### Export grades (offline)
 
 Merge grades into a Moodle offline grading worksheet and bundle feedback:
 
 ```bash
-mograder moodle worksheet.csv -o export/
-mograder moodle worksheet.csv --feedback-dir feedback/ -o export/
-mograder moodle worksheet.csv --grades-csv grades.csv -o export/   # manual CSV instead of gradebook
+mograder moodle export worksheet.csv -o export/
+mograder moodle export worksheet.csv --feedback-dir feedback/ -o export/
+mograder moodle export worksheet.csv --grades-csv grades.csv -o export/
 ```
 
 Grades are read from `gradebook.db` by default. The match column and name column can be configured in `mograder.toml` (see [Configuration](#configuration)). Student names are auto-imported into the gradebook when the moodle command runs.
+
+#### Fetch assignment (student)
+
+Download assignment files from Moodle:
+
+```bash
+mograder moodle fetch "HW1"                     # download by name
+mograder moodle fetch "HW1" -o ~/coursework/     # custom output directory
+mograder moodle fetch --list                     # list available assignments
+```
+
+Downloads all attached files (`.py` notebooks and `.zip` archives with input data). ZIP files are automatically extracted. Assignment matching is flexible: exact name, numeric ID, or case-insensitive substring.
+
+#### Submit assignment (student)
+
+Upload a completed notebook to Moodle:
+
+```bash
+mograder moodle submit "HW1" hw1.py              # upload and finalize
+mograder moodle submit "HW1" hw1.py --dry-run    # check without uploading
+mograder moodle submit "HW1" hw1.py --no-finalize  # upload draft only
+```
+
+Only `.py` files are accepted. By default, submissions are finalized (visible to graders). Use `--no-finalize` to save as draft.
+
+#### Fetch submissions (instructor)
+
+Bulk-download all student submissions for an assignment:
+
+```bash
+mograder moodle fetch-submissions "HW1" -o submitted/hw1/
+```
+
+Downloads each student's latest `.py` submission, named by username.
+
+#### Upload feedback (instructor)
+
+Push grades and feedback to Moodle via the API:
+
+```bash
+mograder moodle upload-feedback "HW1"                # from gradebook.db
+mograder moodle upload-feedback "HW1" --dry-run      # preview without pushing
+mograder moodle upload-feedback "HW1" --grades-csv grades.csv  # from CSV
+```
+
+All Moodle API commands accept `--url` and `--token` flags, or read from `MOGRADER_MOODLE_URL` / `MOGRADER_MOODLE_TOKEN` environment variables, or from the `[moodle]` section in `mograder.toml`.
+
+### Student dashboard
+
+Launch an interactive course browser as a local Marimo web app:
+
+```bash
+mograder student                    # current directory
+mograder student ~/coursework/      # specific course directory
+mograder student --port 8080        # custom port
+mograder student --headless         # no browser auto-open
+```
+
+The dashboard provides:
+
+- **Moodle login** — username/password authentication with token caching (`~/.config/mograder/token.json`). The Moodle URL is pre-filled from `mograder.toml`.
+- **Assignment table** — lists all course assignments with due dates, local status (fetched/not fetched), and action buttons.
+- **Fetch** — downloads assignment files and extracts ZIP archives.
+- **Edit** — opens the notebook in a new `marimo edit --sandbox` session.
+- **Submit** — uploads the `.py` file and finalizes the submission.
+- **Activity log** — shows status messages for recent actions.
+
+Set `MOGRADER_MOODLE_TOKEN` to skip interactive login (useful for automation).
 
 ## Configuration
 
@@ -184,7 +259,9 @@ source = "source"       # default directory names
 import = "import"       # Moodle worksheets for export
 
 [moodle]
-csv = "moodle.csv"      # default Moodle worksheet
+url = "https://moodle.uni.ac.uk"  # Moodle site URL (for API commands)
+course_id = 12345                  # Moodle course ID (for API commands)
+csv = "moodle.csv"                 # default Moodle worksheet (for export)
 match_column = "Username"
 name_column = "Full name"
 
