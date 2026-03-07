@@ -143,6 +143,47 @@ class MoodleAPIClient:
             acceptsubmissionstatement=1,
         )
 
+    def get_submission_status(self, assignment_id: int) -> dict:
+        """Get the current user's submission status, grade, and feedback.
+
+        Returns dict with keys: status, graded, grade, feedback.
+        """
+        result = self._call(
+            "mod_assign_get_submission_status", assignmentid=assignment_id
+        )
+        sub_status = "new"
+        if "lastattempt" in result:
+            sub = result["lastattempt"].get("submission", {})
+            sub_status = sub.get("status", "new")
+
+        graded = False
+        grade = None
+        feedback_text = ""
+        if "feedback" in result:
+            fb = result["feedback"]
+            grade_info = fb.get("grade")
+            if grade_info is not None:
+                graded = True
+                grade = str(grade_info.get("grade", ""))
+            for plugin in fb.get("plugins", []):
+                if plugin.get("type") == "comments":
+                    for field in plugin.get("editorfields", []):
+                        if field.get("text"):
+                            feedback_text = field["text"]
+                            break
+                    if not feedback_text:
+                        for filearea in plugin.get("fileareas", []):
+                            if filearea.get("text"):
+                                feedback_text = filearea["text"]
+                                break
+
+        return {
+            "status": sub_status,
+            "graded": graded,
+            "grade": grade,
+            "feedback": feedback_text,
+        }
+
     def get_submissions(self, assignment_id: int) -> list[dict]:
         """Get all submissions for an assignment.
 

@@ -334,6 +334,8 @@ def test_moodle_cli_full_roundtrip(tmp_path):
         [
             "moodle",
             "export",
+            "hw1",
+            "--worksheet",
             str(worksheet),
             "--grades-csv",
             str(grades),
@@ -368,6 +370,8 @@ def test_moodle_cli_no_feedback(tmp_path):
         [
             "moodle",
             "export",
+            "hw1",
+            "--worksheet",
             str(worksheet),
             "--grades-csv",
             str(grades),
@@ -497,6 +501,8 @@ def test_moodle_cli_bad_match_column(tmp_path):
         [
             "moodle",
             "export",
+            "hw1",
+            "--worksheet",
             str(worksheet),
             "--grades-csv",
             str(grades),

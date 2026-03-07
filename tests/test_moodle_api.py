@@ -668,11 +668,15 @@ class TestMoodleUploadFeedbackCLI:
 
 
 class TestMoodleExportCLI:
-    """Verify the existing moodle export (formerly top-level moodle) still works."""
+    """Verify moodle export with assignment-based signature."""
 
-    def test_export_basic(self, tmp_path):
-        # Create a minimal Moodle worksheet
-        worksheet = tmp_path / "worksheet.csv"
+    def test_export_basic(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+
+        # Place worksheet at import/<assignment>.csv
+        import_dir = tmp_path / "import"
+        import_dir.mkdir()
+        worksheet = import_dir / "hw1.csv"
         worksheet.write_text(
             "\ufeff"
             "Identifier,Full name,Username,Grade,Maximum grade,"
@@ -690,6 +694,39 @@ class TestMoodleExportCLI:
             [
                 "moodle",
                 "export",
+                "hw1",
+                "--grades-csv",
+                str(grades),
+                "-o",
+                str(out_dir),
+            ],
+        )
+        assert result.exit_code == 0, result.output
+        assert (out_dir / "hw1.csv").exists()
+
+    def test_export_with_explicit_worksheet(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+
+        worksheet = tmp_path / "custom.csv"
+        worksheet.write_text(
+            "\ufeff"
+            "Identifier,Full name,Username,Grade,Maximum grade,"
+            "Last modified (submission),Last modified (grade)\n"
+            '"Participant 1","Alice","alice","","100","",""\n',
+            encoding="utf-8-sig",
+        )
+        grades = tmp_path / "grades.csv"
+        grades.write_text("student,mark,feedback\nalice,85,Good\n")
+
+        out_dir = tmp_path / "export"
+        runner = CliRunner()
+        result = runner.invoke(
+            cli,
+            [
+                "moodle",
+                "export",
+                "hw1",
+                "--worksheet",
                 str(worksheet),
                 "--grades-csv",
                 str(grades),
@@ -698,7 +735,6 @@ class TestMoodleExportCLI:
             ],
         )
         assert result.exit_code == 0, result.output
-        assert (out_dir / "worksheet.csv").exists()
 
 
 # ---------------------------------------------------------------------------
@@ -816,3 +852,140 @@ class TestTokenCache:
         result = load_cached_token("https://moodle.example.com")
         assert result is not None
         assert result["token"] == "tok123"
+
+
+# ---------------------------------------------------------------------------
+# get_submission_status tests
+# ---------------------------------------------------------------------------
+
+
+class TestGetSubmissionStatus:
+    def test_submitted_no_grade(self):
+        client = MoodleAPIClient("https://moodle.example.com", "tok")
+        moodle_response = {
+            "lastattempt": {
+                "submission": {"status": "submitted"},
+            },
+        }
+        with patch.object(client, "_call", return_value=moodle_response):
+            status = client.get_submission_status(10)
+        assert status["status"] == "submitted"
+        assert status["graded"] is False
+        assert status["grade"] is None
+        assert status["feedback"] == ""
+
+    def test_graded_with_feedback(self):
+        client = MoodleAPIClient("https://moodle.example.com", "tok")
+        moodle_response = {
+            "lastattempt": {
+                "submission": {"status": "submitted"},
+            },
+            "feedback": {
+                "grade": {"grade": "85.00"},
+                "plugins": [
+                    {
+                        "type": "comments",
+                        "editorfields": [
+                            {"name": "comments", "text": "Good work!"},
+                        ],
+                    },
+                ],
+            },
+        }
+        with patch.object(client, "_call", return_value=moodle_response):
+            status = client.get_submission_status(10)
+        assert status["status"] == "submitted"
+        assert status["graded"] is True
+        assert status["grade"] == "85.00"
+        assert status["feedback"] == "Good work!"
+
+    def test_new_submission(self):
+        client = MoodleAPIClient("https://moodle.example.com", "tok")
+        moodle_response = {}
+        with patch.object(client, "_call", return_value=moodle_response):
+            status = client.get_submission_status(10)
+        assert status["status"] == "new"
+        assert status["graded"] is False
+
+    def test_feedback_from_fileareas(self):
+        client = MoodleAPIClient("https://moodle.example.com", "tok")
+        moodle_response = {
+            "lastattempt": {"submission": {"status": "submitted"}},
+            "feedback": {
+                "grade": {"grade": "70.00"},
+                "plugins": [
+                    {
+                        "type": "comments",
+                        "editorfields": [],
+                        "fileareas": [{"text": "Needs improvement"}],
+                    },
+                ],
+            },
+        }
+        with patch.object(client, "_call", return_value=moodle_response):
+            status = client.get_submission_status(10)
+        assert status["feedback"] == "Needs improvement"
+
+
+# ---------------------------------------------------------------------------
+# moodle feedback CLI test
+# ---------------------------------------------------------------------------
+
+
+class TestMoodleFeedbackCLI:
+    def test_feedback_graded(self, monkeypatch):
+        _mock_config(monkeypatch)
+        with (
+            patch(
+                "mograder.moodle_api.MoodleAPIClient.get_assignments",
+                return_value=[
+                    {"id": 10, "name": "HW1", "duedate": 0, "introattachments": []},
+                ],
+            ),
+            patch(
+                "mograder.moodle_api.MoodleAPIClient.get_submission_status",
+                return_value={
+                    "status": "submitted",
+                    "graded": True,
+                    "grade": "90.00",
+                    "feedback": "Excellent work!",
+                },
+            ),
+        ):
+            runner = CliRunner()
+            result = runner.invoke(
+                cli,
+                ["moodle", "feedback", "HW1", "-c", "1"],
+                catch_exceptions=False,
+            )
+        assert result.exit_code == 0, result.output
+        assert "HW1" in result.output
+        assert "90.00" in result.output
+        assert "Excellent work!" in result.output
+
+    def test_feedback_not_graded(self, monkeypatch):
+        _mock_config(monkeypatch)
+        with (
+            patch(
+                "mograder.moodle_api.MoodleAPIClient.get_assignments",
+                return_value=[
+                    {"id": 10, "name": "HW1", "duedate": 0, "introattachments": []},
+                ],
+            ),
+            patch(
+                "mograder.moodle_api.MoodleAPIClient.get_submission_status",
+                return_value={
+                    "status": "submitted",
+                    "graded": False,
+                    "grade": None,
+                    "feedback": "",
+                },
+            ),
+        ):
+            runner = CliRunner()
+            result = runner.invoke(
+                cli,
+                ["moodle", "feedback", "HW1", "-c", "1"],
+            )
+        assert result.exit_code == 0, result.output
+        assert "Not yet graded" in result.output

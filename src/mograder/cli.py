@@ -615,7 +615,13 @@ def _get_course_id(cli_course_id, config):
 
 
 @moodle_group.command("export")
-@click.argument("worksheet", type=click.Path(exists=True, path_type=Path))
+@click.argument("assignment")
+@click.option(
+    "--worksheet",
+    type=click.Path(exists=True, path_type=Path),
+    default=None,
+    help="Moodle offline grading CSV (default: import/<assignment>.csv)",
+)
 @click.option(
     "--grades-csv",
     required=False,
@@ -642,9 +648,21 @@ def _get_course_id(cli_course_id, config):
     help="Moodle CSV column to match student against (default: Username)",
 )
 @click.pass_context
-def moodle_export(ctx, worksheet, grades_csv, feedback_dir, output_dir, match_column):
+def moodle_export(
+    ctx, assignment, worksheet, grades_csv, feedback_dir, output_dir, match_column
+):
     """Merge grades into a Moodle offline grading worksheet."""
     config = ctx.obj["config"]
+
+    # Auto-discover worksheet from import/<assignment>.csv
+    if worksheet is None:
+        worksheet = Path(config.import_dir) / f"{assignment}.csv"
+        if not worksheet.exists():
+            raise click.UsageError(
+                f"No worksheet found at {worksheet}. "
+                f"Provide --worksheet or place the Moodle CSV at {worksheet}"
+            )
+
     # Read inputs
     fieldnames, moodle_rows = moodle.read_moodle_worksheet(worksheet)
 
@@ -1012,6 +1030,39 @@ def moodle_upload_feedback(
 
     client.save_grades(assignment_id, grade_payloads)
     click.echo(f"Uploaded {len(grade_payloads)} grade(s) to '{match['name']}'")
+
+
+@moodle_group.command("feedback")
+@click.argument("assignment")
+@_add_moodle_api_options
+@click.pass_context
+def moodle_feedback(ctx, assignment, course_id, url, token):
+    """Check submission status and view grade/feedback for an assignment."""
+    from mograder.moodle_api import (
+        MoodleAPIClient,
+        find_assignment,
+        resolve_credentials,
+    )
+
+    config = ctx.obj["config"]
+    url, token = resolve_credentials(url, token, config)
+    cid = _get_course_id(course_id, config)
+    client = MoodleAPIClient(url, token)
+
+    match = find_assignment(client, cid, assignment)
+    click.echo(f"Assignment: {match['name']} (id={match['id']})")
+
+    status = client.get_submission_status(match["id"])
+    click.echo(f"Status: {status['status']}")
+
+    if status["graded"]:
+        click.echo(f"Grade: {status['grade']}")
+        if status["feedback"]:
+            click.echo(f"Feedback:\n  {status['feedback']}")
+    elif status["status"] == "new":
+        click.echo("No submission yet.")
+    else:
+        click.echo("Not yet graded.")
 
 
 @cli.command("import-students")
