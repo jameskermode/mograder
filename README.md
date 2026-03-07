@@ -8,6 +8,16 @@ mograder is the Marimo equivalent of [nbgrader](https://nbgrader.readthedocs.io/
 
 [![Open in marimo](https://marimo.io/shield.svg)](https://molab.marimo.io/github/jameskermode/mograder/blob/main/examples/release/demo-assignment/demo-assignment.py)
 
+## For students
+
+See the [Student Setup Guide](docs/student-setup.md) for full instructions.
+
+**Quick start** (macOS/Linux — just 2 commands):
+```bash
+curl -LsSf https://astral.sh/uv/install.sh | sh
+uvx mograder student <CONFIG_URL>
+```
+
 ## Directory convention
 
 mograder follows [nbgrader's terminology](https://nbgrader.readthedocs.io/en/latest/user_guide/philosophy.html): **source** → **release** → **submitted** → **autograded** → **feedback**.

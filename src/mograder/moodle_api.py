@@ -62,7 +62,7 @@ class MoodleAPIClient:
         """Get assignments for a course.
 
         Returns a flat list of assignment dicts with keys:
-        id, name, duedate, introattachments.
+        id, cmid, name, duedate, introattachments.
         """
         result = self._call("mod_assign_get_assignments", **{"courseids[0]": course_id})
         assignments = []
@@ -71,6 +71,7 @@ class MoodleAPIClient:
                 assignments.append(
                     {
                         "id": assign["id"],
+                        "cmid": assign.get("cmid"),
                         "name": assign["name"],
                         "duedate": assign.get("duedate", 0),
                         "introattachments": assign.get("introattachments", []),
@@ -148,9 +149,7 @@ class MoodleAPIClient:
 
         Returns dict with keys: status, graded, grade, feedback.
         """
-        result = self._call(
-            "mod_assign_get_submission_status", assignmentid=assignment_id
-        )
+        result = self._call("mod_assign_get_submission_status", assignid=assignment_id)
         sub_status = "new"
         if "lastattempt" in result:
             sub = result["lastattempt"].get("submission", {})
@@ -286,8 +285,13 @@ def resolve_credentials(
             "or add url to [moodle] in mograder.toml"
         )
     if not token:
+        cached = load_cached_token(url)
+        if cached:
+            token = cached["token"]
+    if not token:
         raise click.UsageError(
-            "Moodle token not set. Provide --token or set MOGRADER_MOODLE_TOKEN"
+            "Moodle token not set. Provide --token, set MOGRADER_MOODLE_TOKEN, "
+            "or run 'mograder moodle login'"
         )
 
     if url.startswith("http://"):
@@ -369,6 +373,67 @@ def request_token(
             error_code=data.get("errorcode"),
         )
     return data["token"]
+
+
+def build_sso_login_url(
+    url: str,
+    passport: str,
+    service: str = "moodle_mobile_app",
+) -> str:
+    """Build the SSO launch URL for browser-based token acquisition.
+
+    The user visits this URL, logs in via SSO, and is redirected to
+    ``moodlemobile://token=<base64_encoded_data>``.
+    """
+    base = url.rstrip("/")
+    return f"{base}/admin/tool/mobile/launch.php?service={service}&passport={passport}"
+
+
+def extract_token_from_sso_url(url_string: str) -> str:
+    """Extract the web service token from a ``moodlemobile://token=...`` redirect URL.
+
+    The token payload is base64-encoded as ``siteid:::token`` or
+    ``siteid:::token:::privatetoken``.  Returns the token (second field).
+
+    Raises ``MoodleAPIError`` if the URL cannot be parsed.
+    """
+    import base64
+    from urllib.parse import urlparse, parse_qs
+
+    parsed = urlparse(url_string)
+    # Try scheme-based: moodlemobile://token=ENCODED
+    encoded = None
+    if parsed.scheme == "moodlemobile":
+        # The path is "token=..." (no host)
+        path_part = parsed.netloc + parsed.path
+        if path_part.startswith("token="):
+            encoded = path_part[len("token=") :]
+        else:
+            # Try query string
+            qs = parse_qs(parsed.query)
+            if "token" in qs:
+                encoded = qs["token"][0]
+
+    if not encoded:
+        # Try as raw base64 string (user may have pasted just the token part)
+        encoded = url_string.strip()
+
+    # Pad base64 if needed
+    padding = 4 - len(encoded) % 4
+    if padding < 4:
+        encoded += "=" * padding
+
+    try:
+        decoded = base64.b64decode(encoded).decode("utf-8")
+    except Exception:
+        raise MoodleAPIError("Could not decode SSO token — check the pasted URL")
+
+    parts = decoded.split(":::")
+    if len(parts) < 2:
+        raise MoodleAPIError(
+            f"Unexpected token format (got {len(parts)} part(s), expected 2+)"
+        )
+    return parts[1]
 
 
 def load_cached_token(url: str) -> dict | None:

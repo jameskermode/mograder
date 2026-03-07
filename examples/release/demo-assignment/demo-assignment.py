@@ -3,7 +3,7 @@
 # dependencies = [
 #     "marimo",
 #     "numpy",
-#     "mograder @ git+https://github.com/jameskermode/mograder.git",
+#     "mograder",
 # ]
 # ///
 

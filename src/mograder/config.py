@@ -15,6 +15,7 @@ class MograderConfig:
     moodle_name_column: str = "Full name"
     moodle_url: str | None = None
     moodle_course_id: int | None = None
+    moodle_assignments: tuple[dict, ...] = ()
     # [defaults]
     jobs: int = 4
     timeout: int = 300
@@ -28,6 +29,8 @@ class MograderConfig:
     import_dir: str = "import"
     # [gradebook]
     gradebook: str = "gradebook.db"
+    # top-level
+    config_url: str | None = None
     # [sync]
     sync_remote: str | None = None
     sync_remote_course_dir: str | None = None
@@ -50,11 +53,13 @@ def load_config(course_dir: Path) -> MograderConfig:
     gradebook = data.get("gradebook", {})
     sync = data.get("sync", {})
     return MograderConfig(
+        config_url=data.get("config_url"),
         moodle_csv=moodle.get("csv"),
         moodle_match_column=moodle.get("match_column", "Username"),
         moodle_name_column=moodle.get("name_column", "Full name"),
         moodle_url=moodle.get("url"),
         moodle_course_id=moodle.get("course_id"),
+        moodle_assignments=tuple(moodle.get("assignments", [])),
         jobs=defaults.get("jobs", 4),
         timeout=defaults.get("timeout", 300),
         headless=defaults.get("headless", False),

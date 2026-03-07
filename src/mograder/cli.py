@@ -1065,6 +1065,227 @@ def moodle_feedback(ctx, assignment, course_id, url, token):
         click.echo("Not yet graded.")
 
 
+@moodle_group.command("sync")
+@_add_moodle_api_options
+@click.pass_context
+def moodle_sync(ctx, course_id, url, token):
+    """Sync assignment metadata from Moodle into mograder.toml.
+
+    Fetches assignment names, IDs, due dates, and file info from the Moodle API
+    and writes them to the [moodle] section of mograder.toml. This metadata is
+    used by the student dashboard to show assignments and open Moodle pages
+    without requiring students to have API tokens.
+
+    Run this as an instructor whenever assignments change, then commit the
+    updated mograder.toml so students get the latest info.
+    """
+    import tomllib
+
+    from mograder.moodle_api import (
+        MoodleAPIClient,
+        resolve_credentials,
+    )
+
+    config = ctx.obj["config"]
+    url, token = resolve_credentials(url, token, config)
+    cid = _get_course_id(course_id, config)
+    client = MoodleAPIClient(url, token)
+
+    assignments = client.get_assignments(cid)
+
+    # Fetch visibility from course contents (cmid → visible)
+    course_contents = client._call("core_course_get_contents", courseid=cid)
+    visible_cmids = set()
+    for section in course_contents:
+        for mod in section.get("modules", []):
+            if mod.get("modname") == "assign" and mod.get("uservisible"):
+                visible_cmids.add(mod["id"])
+
+    # Build assignment entries for toml (only visible ones)
+    toml_assignments = []
+    skipped = 0
+    for a in assignments:
+        if a["cmid"] not in visible_cmids:
+            skipped += 1
+            continue
+        # Convert webservice/pluginfile.php URLs to pluginfile.php (browser-accessible)
+        files = []
+        for att in a.get("introattachments", []):
+            file_url = att["fileurl"].replace(
+                "/webservice/pluginfile.php/", "/pluginfile.php/"
+            )
+            files.append({"name": att["filename"], "url": file_url})
+        entry = {
+            "name": a["name"],
+            "id": a["id"],
+            "cmid": a["cmid"],
+            "duedate": a["duedate"],
+            "files": files,
+        }
+        toml_assignments.append(entry)
+
+    # Update mograder.toml — preserve existing content, replace assignments
+    toml_path = Path.cwd() / "mograder.toml"
+    if toml_path.is_file():
+        with open(toml_path, "rb") as f:
+            toml_data = tomllib.load(f)
+    else:
+        toml_data = {}
+
+    moodle_section = toml_data.get("moodle", {})
+    moodle_section["assignments"] = toml_assignments
+
+    # Ensure url and course_id are set
+    if "url" not in moodle_section and url:
+        moodle_section["url"] = url
+    if "course_id" not in moodle_section and cid:
+        moodle_section["course_id"] = cid
+
+    toml_data["moodle"] = moodle_section
+
+    # Write back — tomllib is read-only, so we use a simple writer
+    _write_toml(toml_path, toml_data)
+
+    click.echo(
+        f"Synced {len(toml_assignments)} visible assignment(s) to {_rel(toml_path)}"
+    )
+    if skipped:
+        click.echo(f"  ({skipped} hidden assignment(s) excluded)")
+    for a in toml_assignments:
+        n_files = len(a["files"])
+        click.echo(f"  {a['name']} ({n_files} file(s))")
+
+
+def _write_toml(path: Path, data: dict) -> None:
+    """Write a dict to a TOML file (simple serializer for our config subset)."""
+    lines = []
+    for section_name, section_data in data.items():
+        if isinstance(section_data, dict):
+            # Separate scalar fields from nested structures
+            scalars = {}
+            nested = {}
+            for k, v in section_data.items():
+                if isinstance(v, list) and v and isinstance(v[0], dict):
+                    nested[k] = v
+                else:
+                    scalars[k] = v
+
+            lines.append(f"[{section_name}]")
+            for k, v in scalars.items():
+                lines.append(f"{k} = {_toml_value(v)}")
+            lines.append("")
+
+            for k, items in nested.items():
+                for item in items:
+                    lines.append(f"[[{section_name}.{k}]]")
+                    for ik, iv in item.items():
+                        if isinstance(iv, list) and iv and isinstance(iv[0], dict):
+                            # Inline array of tables
+                            for sub in iv:
+                                lines.append(f"  [[{section_name}.{k}.{ik}]]")
+                                for sk, sv in sub.items():
+                                    lines.append(f"  {sk} = {_toml_value(sv)}")
+                        else:
+                            lines.append(f"{ik} = {_toml_value(iv)}")
+                    lines.append("")
+
+    path.write_text("\n".join(lines) + "\n")
+
+
+def _toml_value(v) -> str:
+    """Format a Python value as a TOML literal."""
+    if isinstance(v, str):
+        # Escape backslashes and quotes
+        escaped = v.replace("\\", "\\\\").replace('"', '\\"')
+        return f'"{escaped}"'
+    elif isinstance(v, bool):
+        return "true" if v else "false"
+    elif isinstance(v, int):
+        return str(v)
+    elif isinstance(v, float):
+        return str(v)
+    elif isinstance(v, list):
+        if not v:
+            return "[]"
+        items = ", ".join(_toml_value(x) for x in v)
+        return f"[{items}]"
+    else:
+        return repr(v)
+
+
+@moodle_group.command("login")
+@click.option("--url", default=None, help="Moodle URL (overrides config/env)")
+@click.option(
+    "--sso",
+    is_flag=True,
+    default=False,
+    help="Use browser-based SSO login (for sites with CAS/SAML/OAuth)",
+)
+@click.pass_context
+def moodle_login(ctx, url, sso):
+    """Obtain and cache a Moodle API token.
+
+    For sites with SSO (CAS, SAML, Shibboleth), use --sso to open a browser
+    login flow. Otherwise, uses username/password via /login/token.php.
+    """
+    import webbrowser
+
+    from mograder.moodle_api import (
+        MoodleAPIClient,
+        MoodleAPIError,
+        request_token,
+        save_cached_token,
+    )
+
+    config = ctx.obj["config"]
+    url = (
+        url
+        or os.environ.get("MOGRADER_MOODLE_URL")
+        or getattr(config, "moodle_url", None)
+    )
+    if not url:
+        raise click.UsageError(
+            "Moodle URL not set. Provide --url, set MOGRADER_MOODLE_URL, "
+            "or add url to [moodle] in mograder.toml"
+        )
+
+    if sso:
+        token_page = f"{url.rstrip('/')}/user/managetoken.php"
+        click.echo("Opening your Moodle Security keys page...")
+        click.echo(f"  URL: {token_page}")
+        click.echo()
+        click.echo("In your browser:")
+        click.echo("  1. Log in if prompted")
+        click.echo('  2. Find the row for "Moodle mobile web service"')
+        click.echo("  3. Copy the token value (32-character string)")
+        click.echo()
+        webbrowser.open(token_page)
+        token = click.prompt("Paste your token").strip()
+        if not token:
+            click.echo("ERROR: no token provided", err=True)
+            sys.exit(1)
+    else:
+        username = click.prompt("Username")
+        password = click.prompt("Password", hide_input=True)
+        try:
+            token = request_token(url, username, password)
+        except MoodleAPIError as e:
+            click.echo(f"Login failed: {e}", err=True)
+            sys.exit(1)
+
+    # Verify token works
+    try:
+        client = MoodleAPIClient(url, token)
+        info = client.get_site_info()
+    except MoodleAPIError as e:
+        click.echo(f"Token verification failed: {e}", err=True)
+        sys.exit(1)
+
+    save_cached_token(url, token, info["fullname"])
+    click.echo(f"Logged in as {info['fullname']} ({info['username']})")
+    click.echo("Token cached to ~/.config/mograder/token.json")
+
+
 @cli.command("import-students")
 @click.argument("worksheet", type=click.Path(exists=True, path_type=Path))
 @click.option(
@@ -1233,20 +1454,68 @@ def formgrader(course_dir, port, headless):
         pass
 
 
+def _refresh_config(course: Path):
+    """Fetch latest mograder.toml from config_url if set."""
+    import tomllib
+
+    import requests
+
+    config_path = course / "mograder.toml"
+    if not config_path.is_file():
+        return
+    with open(config_path, "rb") as f:
+        data = tomllib.load(f)
+    url = data.get("config_url")
+    if not url:
+        return
+    click.echo("Updating assignments...")
+    try:
+        resp = requests.get(url, timeout=15)
+        resp.raise_for_status()
+        config_path.write_text(resp.text)
+        click.echo("  Done.")
+    except Exception as e:
+        click.echo(f"  Warning: could not fetch config ({e})")
+        click.echo("  Continuing with cached config...")
+
+
 @cli.command()
-@click.argument(
-    "course_dir",
-    type=click.Path(exists=True, path_type=Path),
-    default=".",
-)
+@click.argument("course_dir_or_url", default=".")
 @click.option("-p", "--port", type=int, default=None, help="Port for marimo app")
 @click.option("--headless", is_flag=True, help="Don't open browser")
-def student(course_dir, port, headless):
-    """Launch the student course browser for fetching and submitting assignments."""
+def student(course_dir_or_url, port, headless):
+    """Launch the student course browser for fetching and submitting assignments.
+
+    COURSE_DIR_OR_URL can be a local directory (default: .) or an HTTPS URL
+    to a mograder.toml config file for first-time setup.
+    """
     import subprocess as sp
+    from urllib.parse import urlparse
+
+    import requests
+
+    if course_dir_or_url.startswith("http"):
+        url = course_dir_or_url
+        click.echo(f"Fetching course config from {url}...")
+        resp = requests.get(url, timeout=15)
+        resp.raise_for_status()
+        # Derive directory name from URL path
+        parts = urlparse(url).path.strip("/").split("/")
+        # For raw.githubusercontent.com/<user>/<repo>/..., repo is parts[1]
+        dir_name = parts[1] if len(parts) > 2 else parts[0]
+        course = Path(dir_name).resolve()
+        course.mkdir(exist_ok=True)
+        (course / "mograder.toml").write_text(resp.text)
+        click.echo(f"  Created {course}/mograder.toml")
+    else:
+        course = Path(course_dir_or_url).resolve()
+        if not course.is_dir():
+            click.echo(f"Error: {course} is not a directory", err=True)
+            sys.exit(1)
+        _refresh_config(course)
 
     app_path = Path(__file__).parent / "student_app.py"
-    os.environ["MOGRADER_COURSE_DIR"] = str(course_dir.resolve())
+    os.environ["MOGRADER_COURSE_DIR"] = str(course)
 
     cmd = [sys.executable, "-m", "marimo", "run", str(app_path)]
     if port:
@@ -1254,7 +1523,7 @@ def student(course_dir, port, headless):
     if headless:
         cmd.append("--headless")
 
-    click.echo(f"Launching student dashboard for: {course_dir.resolve()}")
+    click.echo(f"Launching student dashboard for: {course}")
     try:
         proc = sp.run(cmd)
         sys.exit(proc.returncode)

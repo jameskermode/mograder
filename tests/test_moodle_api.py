@@ -12,7 +12,9 @@ from mograder.cli import cli
 from mograder.moodle_api import (
     MoodleAPIClient,
     MoodleAPIError,
+    build_sso_login_url,
     clear_cached_token,
+    extract_token_from_sso_url,
     find_assignment,
     load_cached_token,
     request_token,
@@ -256,8 +258,17 @@ class TestResolveCredentials:
     def test_missing_token_errors(self, monkeypatch):
         monkeypatch.delenv("MOGRADER_MOODLE_TOKEN", raising=False)
         config = MagicMock(moodle_url="https://example.com")
-        with pytest.raises(click.UsageError, match="token"):
-            resolve_credentials("https://example.com", None, config)
+        with patch("mograder.moodle_api.load_cached_token", return_value=None):
+            with pytest.raises(click.UsageError, match="token"):
+                resolve_credentials("https://example.com", None, config)
+
+    def test_cached_token_fallback(self, monkeypatch):
+        monkeypatch.delenv("MOGRADER_MOODLE_TOKEN", raising=False)
+        config = MagicMock(moodle_url="https://example.com")
+        cached = {"url": "https://example.com", "token": "cached-tok", "fullname": "A"}
+        with patch("mograder.moodle_api.load_cached_token", return_value=cached):
+            url, token = resolve_credentials("https://example.com", None, config)
+        assert token == "cached-tok"
 
     def test_http_warning(self, monkeypatch, capsys):
         monkeypatch.delenv("MOGRADER_MOODLE_URL", raising=False)
@@ -989,3 +1000,64 @@ class TestMoodleFeedbackCLI:
             )
         assert result.exit_code == 0, result.output
         assert "Not yet graded" in result.output
+
+
+# ---------------------------------------------------------------------------
+# SSO login tests
+# ---------------------------------------------------------------------------
+
+
+class TestBuildSsoLoginUrl:
+    def test_basic_url(self):
+        url = build_sso_login_url("https://moodle.example.com", "abc123")
+        assert url == (
+            "https://moodle.example.com/admin/tool/mobile/launch.php"
+            "?service=moodle_mobile_app&passport=abc123"
+        )
+
+    def test_trailing_slash_stripped(self):
+        url = build_sso_login_url("https://moodle.example.com/", "abc123")
+        assert url.startswith("https://moodle.example.com/admin/")
+
+    def test_custom_service(self):
+        url = build_sso_login_url(
+            "https://moodle.example.com", "abc", service="custom_svc"
+        )
+        assert "service=custom_svc" in url
+
+
+class TestExtractTokenFromSsoUrl:
+    def test_standard_moodlemobile_url(self):
+        import base64
+
+        payload = base64.b64encode(b"siteid123:::mytoken:::privatetoken").decode()
+        url = f"moodlemobile://token={payload}"
+        token = extract_token_from_sso_url(url)
+        assert token == "mytoken"
+
+    def test_two_part_payload(self):
+        import base64
+
+        payload = base64.b64encode(b"siteid123:::mytoken").decode()
+        url = f"moodlemobile://token={payload}"
+        token = extract_token_from_sso_url(url)
+        assert token == "mytoken"
+
+    def test_raw_base64_string(self):
+        import base64
+
+        payload = base64.b64encode(b"siteid123:::rawtoken:::priv").decode()
+        token = extract_token_from_sso_url(payload)
+        assert token == "rawtoken"
+
+    def test_invalid_base64_raises(self):
+        with pytest.raises(MoodleAPIError, match="Could not decode"):
+            extract_token_from_sso_url("moodlemobile://token=!!!invalid!!!")
+
+    def test_single_part_payload_raises(self):
+        import base64
+
+        payload = base64.b64encode(b"notokenhere").decode()
+        url = f"moodlemobile://token={payload}"
+        with pytest.raises(MoodleAPIError, match="Unexpected token format"):
+            extract_token_from_sso_url(url)

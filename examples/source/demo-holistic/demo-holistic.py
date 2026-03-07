@@ -2,7 +2,7 @@
 # requires-python = ">=3.11"
 # dependencies = [
 #     "marimo",
-#     "mograder @ git+https://github.com/jameskermode/mograder.git",
+#     "mograder",
 # ]
 # ///
 
