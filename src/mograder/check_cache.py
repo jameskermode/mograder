@@ -1,4 +1,4 @@
-"""Check result caching for student validation runs."""
+"""Check result caching for student validation runs and submission tracking."""
 
 from __future__ import annotations
 
@@ -56,6 +56,43 @@ def is_cache_stale(cached: dict, notebook_path: Path) -> bool:
         return notebook_path.stat().st_mtime > cached["file_mtime"]
     except (KeyError, OSError):
         return True
+
+
+def _submission_path(course_dir: Path, notebook_name: str) -> Path:
+    return course_dir / ".mograder" / "submissions" / f"{notebook_name}.json"
+
+
+def load_submission_record(course_dir: Path, notebook_name: str) -> dict | None:
+    """Load submission record. Returns dict with 'file_mtime' or None."""
+    path = _submission_path(course_dir, notebook_name)
+    if not path.is_file():
+        return None
+    try:
+        return json.loads(path.read_text())
+    except (json.JSONDecodeError, OSError):
+        return None
+
+
+def save_submission_record(
+    course_dir: Path, notebook_name: str, file_mtime: float
+) -> None:
+    """Record that a notebook was submitted at the given file mtime."""
+    path = _submission_path(course_dir, notebook_name)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps({"file_mtime": file_mtime}))
+
+
+def get_submission_status(course_dir: Path, notebook_path: Path) -> str:
+    """Return status string for a notebook: Downloaded, Submitted, or Modified."""
+    record = load_submission_record(course_dir, notebook_path.name)
+    if record is None:
+        return "Downloaded"
+    try:
+        if notebook_path.stat().st_mtime > record["file_mtime"]:
+            return "Modified"
+    except (KeyError, OSError):
+        return "Downloaded"
+    return "Submitted"
 
 
 def format_check_summary(cached: dict | None, stale: bool) -> str:

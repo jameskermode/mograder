@@ -17,9 +17,11 @@ def _():
 
     from mograder.check_cache import (
         format_check_summary,
+        get_submission_status,
         is_cache_stale,
         load_cached_results,
         save_cached_results,
+        save_submission_record,
     )
     from mograder.config import load_config
     from mograder.moodle_api import (
@@ -42,6 +44,7 @@ def _():
         create_shared_sandbox,
         datetime,
         format_check_summary,
+        get_submission_status,
         is_cache_stale,
         load_cached_results,
         load_cached_token,
@@ -50,6 +53,7 @@ def _():
         run_notebook,
         save_cached_results,
         save_cached_token,
+        save_submission_record,
         sp,
         sys,
         timezone,
@@ -172,6 +176,7 @@ def _(
     datetime,
     format_check_summary,
     get_refresh,
+    get_submission_status,
     get_token,
     is_cache_stale,
     load_cached_results,
@@ -217,7 +222,10 @@ def _(
                 else "No deadline"
             )
 
-            status = f"Downloaded ({local_nb.name})" if local_nb else "\u2014"
+            if local_nb:
+                status = get_submission_status(COURSE_DIR, local_nb)
+            else:
+                status = "\u2014"
 
             if local_nb is not None:
                 cached = load_cached_results(COURSE_DIR, local_nb.name)
@@ -266,15 +274,6 @@ def _(
                 )
                 btn_keys.append(key)
 
-            key = f"{i}_feedback"
-            all_buttons[key] = mo.ui.button(
-                label="Feedback",
-                on_change=lambda _, a=a, n=a["name"]: set_pending(
-                    {"action": "feedback", "assign": a, "name": n}
-                ),
-            )
-            btn_keys.append(key)
-
             rows.append(
                 {
                     "Assignment": a["name"],
@@ -291,7 +290,9 @@ def _(
         for row in rows:
             keys = row.pop("btn_keys")
             btns = [buttons[k] for k in keys]
-            row["Actions"] = mo.hstack(btns, gap=0.5) if btns else mo.md("")
+            row["Actions"] = (
+                mo.hstack(btns, gap=0.5, justify="center") if btns else mo.md("")
+            )
             display_rows.append(row)
 
         if display_rows:
@@ -314,6 +315,7 @@ def _(
     moodle_url,
     run_notebook,
     save_cached_results,
+    save_submission_record,
     set_action_log,
     set_pending,
     set_refresh,
@@ -401,25 +403,11 @@ def _(
             try:
                 _item_id = _client.upload_file(_path)
                 _client.save_submission(_assign["id"], _item_id)
+                save_submission_record(COURSE_DIR, _path.name, _path.stat().st_mtime)
                 set_action_log(f"Submitted **{_name}** (`{_path.name}`)")
             except Exception as _exc:
                 set_action_log(f"Submit failed for **{_name}**: {_exc}")
             set_refresh(lambda v: v + 1)
-
-        elif _act == "feedback" and _client:
-            _assign = pending["assign"]
-            _name = pending["name"]
-            try:
-                _status = _client.get_submission_status(_assign["id"])
-                if _status["graded"]:
-                    _msg = f"**{_name}** — Grade: **{_status['grade']}**"
-                    if _status["feedback"]:
-                        _msg += f"\n\nFeedback: {_status['feedback']}"
-                else:
-                    _msg = f"**{_name}** — Status: {_status['status']} (not yet graded)"
-                set_action_log(_msg)
-            except Exception as _exc:
-                set_action_log(f"Could not fetch feedback for **{_name}**: {_exc}")
 
         set_pending(None)
     return ()

@@ -1067,8 +1067,15 @@ def moodle_feedback(ctx, assignment, course_id, url, token):
 
 @moodle_group.command("sync")
 @_add_moodle_api_options
+@click.option(
+    "--include",
+    "-i",
+    "include_pattern",
+    default=None,
+    help="Only include assignments matching this regex (e.g. '^A[1-8]').",
+)
 @click.pass_context
-def moodle_sync(ctx, course_id, url, token):
+def moodle_sync(ctx, course_id, url, token, include_pattern):
     """Sync assignment metadata from Moodle into mograder.toml.
 
     Fetches assignment names, IDs, due dates, and file info from the Moodle API
@@ -1098,15 +1105,26 @@ def moodle_sync(ctx, course_id, url, token):
     visible_cmids = set()
     for section in course_contents:
         for mod in section.get("modules", []):
-            if mod.get("modname") == "assign" and mod.get("uservisible"):
+            if mod.get("modname") == "assign" and mod.get("visible"):
                 visible_cmids.add(mod["id"])
+
+    # Compile include filter if provided
+    include_re = None
+    if include_pattern:
+        import re
+
+        include_re = re.compile(include_pattern)
 
     # Build assignment entries for toml (only visible ones)
     toml_assignments = []
     skipped = 0
+    filtered = 0
     for a in assignments:
         if a["cmid"] not in visible_cmids:
             skipped += 1
+            continue
+        if include_re and not include_re.search(a["name"]):
+            filtered += 1
             continue
         # Convert webservice/pluginfile.php URLs to pluginfile.php (browser-accessible)
         files = []
@@ -1151,6 +1169,8 @@ def moodle_sync(ctx, course_id, url, token):
     )
     if skipped:
         click.echo(f"  ({skipped} hidden assignment(s) excluded)")
+    if filtered:
+        click.echo(f"  ({filtered} assignment(s) excluded by --include filter)")
     for a in toml_assignments:
         n_files = len(a["files"])
         click.echo(f"  {a['name']} ({n_files} file(s))")

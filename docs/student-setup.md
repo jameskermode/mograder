@@ -51,13 +51,16 @@ The dashboard will automatically fetch the latest assignment list.
 
 ## Working on assignments
 
-The student dashboard shows your course assignments with:
+When the dashboard launches, paste your Moodle security token to log in. You can find your token on your Moodle **Security Keys** page (look for **Moodle mobile web service**). The token is cached locally so you only need to do this once.
 
-- **Fetch** — opens the Moodle assignment page where you can download the notebook file
-- **Validate** — runs the notebook's checks locally to verify your answers pass
-- **Edit** — opens the notebook in marimo for editing
-- **Submit** — opens the Moodle submission page where you can upload your completed notebook
-- **Feedback** — view your grade and feedback after marking is complete
+The dashboard shows your course assignments with status tracking and action buttons:
+
+- **Download** — downloads the assignment `.py` file into a local subdirectory
+- **Edit** — opens the notebook in marimo for editing (launches `marimo edit --sandbox`)
+- **Validate** — runs the notebook's checks locally and shows results (e.g. "3/5 PASS") with an inline HTML report
+- **Submit** — uploads your `.py` file to Moodle and finalizes the submission
+
+Assignment status updates automatically: **Downloaded** → **Submitted** (after submit) → **Modified** (if you edit after submitting). View grades and feedback directly on Moodle.
 
 ### Opening notebooks directly
 

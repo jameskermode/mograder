@@ -67,9 +67,10 @@ course/
    - Merges grades into Moodle offline grading worksheets
    - Bundles HTML feedback into a Moodle-compatible ZIP
    - Auto-imports student names into gradebook
-7. **`mograder moodle fetch`** / **`mograder moodle submit`** / **`mograder moodle feedback`** — students fetch assignments, submit work, and view grades/feedback via Moodle API
+7. **`mograder moodle fetch`** / **`mograder moodle submit`** — students fetch assignments and submit work via Moodle API
 8. **`mograder moodle fetch-submissions`** / **`mograder moodle upload-feedback`** — instructors bulk-download submissions and push grades/feedback via Moodle API
-9. **`mograder student`** — launches an interactive student dashboard (Marimo app) for browsing, validating, editing, and submitting assignments
+9. **`mograder moodle sync`** — syncs assignment metadata from Moodle into `mograder.toml` (instructor runs this, students get the config via URL or file)
+10. **`mograder student`** — launches an interactive student dashboard (Marimo app) for downloading, validating, editing, and submitting assignments
 
 ## Installation
 
@@ -235,6 +236,17 @@ mograder moodle upload-feedback "HW1" --dry-run      # preview without pushing
 mograder moodle upload-feedback "HW1" --grades-csv grades.csv  # from CSV
 ```
 
+#### Sync assignment metadata (instructor)
+
+Fetch assignment metadata from Moodle and write it to `mograder.toml`:
+
+```bash
+mograder moodle sync                          # sync all visible assignments
+mograder moodle sync --include '^A[1-8]'      # only assignments matching regex
+```
+
+Only assignments visible to students are included (hidden assignments are excluded). Students receive this metadata via the config URL or file. Re-run after publishing or hiding assignments.
+
 #### View feedback (student)
 
 Check your submission status and view grade/feedback:
@@ -252,7 +264,8 @@ All Moodle API commands accept `--url` and `--token` flags, or read from `MOGRAD
 Launch an interactive course browser as a local Marimo web app:
 
 ```bash
-mograder student                    # current directory
+mograder student <CONFIG_URL>       # first-time setup from URL
+mograder student                    # current directory (returning sessions)
 mograder student ~/coursework/      # specific course directory
 mograder student --port 8080        # custom port
 mograder student --headless         # no browser auto-open
@@ -260,22 +273,22 @@ mograder student --headless         # no browser auto-open
 
 The dashboard provides:
 
-- **Moodle login** — username/password authentication with token caching (`~/.config/mograder/token.json`). The Moodle URL is pre-filled from `mograder.toml`.
-- **Assignment table** — lists all course assignments with due dates, submission status (from Moodle), check validation results, and action buttons.
-- **Fetch** — downloads assignment files and extracts ZIP archives.
+- **Moodle login** — paste your Moodle security token (from your Moodle Security Keys page). Tokens are cached at `~/.config/mograder/token.json`.
+- **Assignment table** — lists all course assignments with due dates, status, check validation results, and action buttons.
+- **Download** — downloads assignment `.py` files into per-assignment subdirectories.
 - **Edit** — opens the notebook in a new `marimo edit --sandbox` session.
-- **Validate** — runs the notebook and shows a summary of check results (e.g. "3/5 PASS"). Results are cached and marked stale when the notebook changes.
-- **Submit** — uploads the `.py` file and finalizes the submission.
-- **Feedback** — view grade and instructor feedback for graded assignments.
-- **Activity log** — shows status messages for recent actions.
-
-Set `MOGRADER_MOODLE_TOKEN` to skip interactive login (useful for automation).
+- **Validate** — runs the notebook and shows a summary of check results (e.g. "3/5 PASS") with an inline HTML report preview. Results are cached and marked stale when the notebook changes.
+- **Submit** — uploads the `.py` file to Moodle and finalizes the submission.
+- **Status tracking** — shows Downloaded, Submitted, or Modified for each assignment.
+- **Activity log** — shows status messages for recent actions with dismiss button.
 
 ## Configuration
 
 Create `mograder.toml` in the course directory to customise settings:
 
 ```toml
+config_url = "https://raw.githubusercontent.com/user/course/main/mograder.toml"  # self-referential URL for student auto-refresh
+
 [dirs]
 source = "source"       # default directory names
 import = "import"       # Moodle worksheets for export
