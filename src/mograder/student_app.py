@@ -438,12 +438,12 @@ def _(dismiss_btn, get_action_log, mo):
             if "failed" in log_text.lower() or "error" in log_text.lower()
             else "info"
         )
-        action_log_content = mo.vstack(
-            [mo.callout(mo.md(log_text), kind=kind), dismiss_btn]
+        mo.output.replace(
+            mo.vstack([mo.callout(mo.md(log_text), kind=kind), dismiss_btn])
         )
     else:
-        action_log_content = mo.md("")
-    return (action_log_content,)
+        mo.output.replace(mo.md(""))
+    return ()
 
 
 if __name__ == "__main__":
