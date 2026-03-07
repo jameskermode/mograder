@@ -1501,8 +1501,14 @@ def student(course_dir_or_url, port, headless):
         resp.raise_for_status()
         # Derive directory name from URL path
         parts = urlparse(url).path.strip("/").split("/")
-        # For raw.githubusercontent.com/<user>/<repo>/..., repo is parts[1]
-        dir_name = parts[1] if len(parts) > 2 else parts[0]
+        # For raw.githubusercontent.com/<user>/<repo>/branch/file, repo is parts[1]
+        # For other URLs, use parent dir name, falling back to filename stem
+        if len(parts) > 2:
+            dir_name = parts[1]
+        elif len(parts) > 1:
+            dir_name = parts[-2]
+        else:
+            dir_name = Path(parts[0]).stem
         course = Path(dir_name).resolve()
         course.mkdir(exist_ok=True)
         (course / "mograder.toml").write_text(resp.text)
