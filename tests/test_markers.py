@@ -1,6 +1,8 @@
 from mograder.markers import (
     SOLUTION_BEGIN,
     SOLUTION_END,
+    SUBMIT_MARKER,
+    build_submit_cell,
     convert_markdown_cells,
     count_markers,
     process_file,
@@ -226,3 +228,37 @@ def test_process_file_converts_markdown_cells(tmp_path):
     assert "# YOUR CODE HERE" not in content
     assert 'mo.md(r"""' in content
     assert "*Write here...*" in content
+
+
+# --- submit cell injection ---
+
+
+def test_build_submit_cell():
+    cell = build_submit_cell("https://example.com", "hw1")
+    assert SUBMIT_MARKER in cell
+    assert "https://example.com" in cell
+    assert "hw1" in cell
+    assert "mo.ui.run_button" in cell
+    assert "_submit_fn" in cell
+
+
+def test_process_file_with_submit_url(tmp_path, fixtures_dir):
+    source = fixtures_dir / "staff_notebook.py"
+    out_dir = tmp_path / "release"
+    assert process_file(source, out_dir, submit_url="https://example.com") is True
+    content = (out_dir / source.name).read_text()
+    assert SUBMIT_MARKER in content
+    assert "https://example.com" in content
+    # Submit cell should appear before if __name__
+    if "if __name__" in content:
+        main_idx = content.index("if __name__")
+        submit_idx = content.index(SUBMIT_MARKER)
+        assert submit_idx < main_idx
+
+
+def test_process_file_without_submit_url(tmp_path, fixtures_dir):
+    source = fixtures_dir / "staff_notebook.py"
+    out_dir = tmp_path / "release"
+    assert process_file(source, out_dir) is True
+    content = (out_dir / source.name).read_text()
+    assert SUBMIT_MARKER not in content

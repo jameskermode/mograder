@@ -16,6 +16,7 @@ def _rel(p: Path) -> str:
 
 SOLUTION_BEGIN = "### BEGIN SOLUTION"
 SOLUTION_END = "### END SOLUTION"
+SUBMIT_MARKER = "# === MOGRADER: SUBMIT ==="
 
 
 def validate_markers(lines: list[str], filepath: str) -> list[str]:
@@ -135,11 +136,52 @@ def convert_markdown_cells(lines: list[str]) -> list[str]:
     return output
 
 
+def build_submit_cell(server_url: str, assignment_name: str) -> str:
+    """Build a submit cell that uses ``mograder.remote.submit()``.
+
+    Returns source text for two marimo cells (username input + submit action).
+    """
+    return f'''\
+
+@app.cell
+def _(mo):
+    {SUBMIT_MARKER}
+    _username = mo.ui.text(label="Username", placeholder="Enter your username")
+    _submit_btn = mo.ui.run_button(label="Submit")
+    mo.hstack([_username, _submit_btn])
+    return (_submit_btn, _username)
+
+
+@app.cell
+def _(_submit_btn, _username, mo):
+    mo.stop(not _submit_btn.value or not _username.value)
+    from mograder.remote import submit as _submit_fn
+    _result = _submit_fn("{server_url}", "{assignment_name}", __file__, _username.value)
+    mo.callout(mo.md(f"**Submitted!** Status: {{_result}}"), kind="success")
+    return
+
+
+'''
+
+
+def _inject_before_main(lines: list[str], cell_text: str) -> list[str]:
+    """Insert *cell_text* before the ``if __name__`` guard."""
+    insert_idx = None
+    for i, line in enumerate(lines):
+        if line.strip().startswith("if __name__"):
+            insert_idx = i
+            break
+    if insert_idx is None:
+        insert_idx = len(lines)
+    return lines[:insert_idx] + cell_text.splitlines(keepends=True) + lines[insert_idx:]
+
+
 def process_file(
     source: Path,
     output_dir: Path | None,
     dry_run: bool = False,
     validate_only: bool = False,
+    submit_url: str | None = None,
 ) -> bool:
     """Process a single notebook file. Returns True on success."""
     lines = source.read_text().splitlines(keepends=True)
@@ -161,6 +203,11 @@ def process_file(
 
     student_lines = strip_solutions(lines)
     student_lines = convert_markdown_cells(student_lines)
+
+    if submit_url:
+        assignment_name = source.parent.name
+        submit_cell = build_submit_cell(submit_url, assignment_name)
+        student_lines = _inject_before_main(student_lines, submit_cell)
 
     if dry_run:
         n_removed = len(lines) - len(student_lines)

@@ -126,8 +126,13 @@ def cli(ctx):
 @click.option(
     "--validate", is_flag=True, help="Only validate markers, don't generate output"
 )
+@click.option(
+    "--submit-url",
+    default=None,
+    help="Inject a submit cell with this server URL into release notebooks",
+)
 @click.pass_context
-def generate(ctx, files, output_dir, dry_run, validate):
+def generate(ctx, files, output_dir, dry_run, validate, submit_url):
     """Strip solutions from source notebooks to produce release versions."""
     config = ctx.obj["config"]
     if output_dir is None:
@@ -148,7 +153,9 @@ def generate(ctx, files, output_dir, dry_run, validate):
             if filepath.parent.name != "."
             else output_dir
         )
-        if not markers.process_file(filepath, dest_dir, dry_run, validate):
+        if not markers.process_file(
+            filepath, dest_dir, dry_run, validate, submit_url=submit_url
+        ):
             success = False
         else:
             processed_dirs.add(filepath.parent)
@@ -1677,9 +1684,17 @@ def https_feedback(ctx, assignment, url, user):
     type=click.Path(exists=True, path_type=Path),
     default=".",
 )
-@click.option("-p", "--port", type=int, default=8080, help="Port to listen on")
 @click.option(
-    "--host", default="127.0.0.1", help="Host to bind to (default: 127.0.0.1)"
+    "-p",
+    "--port",
+    type=int,
+    default=None,
+    help="Port to listen on (default: $PORT or 8080)",
+)
+@click.option(
+    "--host",
+    default=None,
+    help="Host to bind to (default: 0.0.0.0 if $PORT set, else 127.0.0.1)",
 )
 def serve(directory, port, host):
     """Start a lightweight assignment server.
@@ -1687,6 +1702,12 @@ def serve(directory, port, host):
     Serves assignments from DIRECTORY (default: current dir).
     """
     from mograder.https_server import create_server
+
+    env_port = os.environ.get("PORT")
+    if port is None:
+        port = int(env_port) if env_port else 8080
+    if host is None:
+        host = "0.0.0.0" if env_port else "127.0.0.1"
 
     server = create_server(directory, host=host, port=port)
     actual_port = server.server_address[1]

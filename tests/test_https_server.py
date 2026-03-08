@@ -158,3 +158,36 @@ class TestStatus:
         base_url, _, _ = server
         resp = requests.get(f"{base_url}/assignments/hw1/status")
         assert resp.status_code == 400
+
+
+class TestCORS:
+    def test_cors_headers_on_get(self, server):
+        base_url, _, _ = server
+        resp = requests.get(f"{base_url}/assignments")
+        assert resp.headers.get("Access-Control-Allow-Origin") == "*"
+
+    def test_cors_headers_on_file(self, server):
+        base_url, _, _ = server
+        resp = requests.get(f"{base_url}/assignments/hw1/files/homework.py")
+        assert resp.headers.get("Access-Control-Allow-Origin") == "*"
+
+    def test_options_preflight(self, server):
+        base_url, _, _ = server
+        resp = requests.options(f"{base_url}/assignments")
+        assert resp.status_code == 204
+        assert resp.headers.get("Access-Control-Allow-Origin") == "*"
+        assert "POST" in resp.headers.get("Access-Control-Allow-Methods", "")
+
+
+class TestHealthCheck:
+    def test_root_returns_ok(self, server):
+        base_url, _, _ = server
+        resp = requests.get(f"{base_url}/")
+        assert resp.status_code == 200
+        assert resp.json()["status"] == "ok"
+
+    def test_root_no_trailing_slash(self, server):
+        base_url, _, _ = server
+        # requests normalizes, so test the raw path
+        resp = requests.get(base_url)
+        assert resp.status_code == 200

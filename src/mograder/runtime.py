@@ -20,7 +20,7 @@ import os
 import marimo as mo
 
 
-def _write_sidecar(label: str, status: str, details: list[str]) -> None:
+def _write_sidecar(label: str, check_status: str, details: list[str]) -> None:
     """Append a check result to the sidecar JSONL file (if configured).
 
     The runner sets ``MOGRADER_SIDECAR_PATH`` before executing the notebook.
@@ -28,7 +28,7 @@ def _write_sidecar(label: str, status: str, details: list[str]) -> None:
     path = os.environ.get("MOGRADER_SIDECAR_PATH")
     if not path:
         return
-    record = {"label": label, "status": status, "details": details}
+    record = {"label": label, "status": check_status, "details": details}
     with open(path, "a") as f:
         f.write(json.dumps(record) + "\n")
 
@@ -134,3 +134,7 @@ class Grader:
             ),
             kind="success" if auto == total else "neutral",
         )
+
+
+# Re-export remote helpers for use in notebooks
+from mograder.remote import fetch, status, submit  # noqa: F401, E402

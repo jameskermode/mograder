@@ -42,34 +42,48 @@ class AssignmentHandler(BaseHTTPRequestHandler):
     def root(self) -> Path:
         return self.server.root_dir
 
+    def _add_cors_headers(self):
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+        self.send_header("Access-Control-Allow-Headers", "Content-Type")
+
     def _send_json(self, data, status=200):
         body = json.dumps(data).encode()
         self.send_response(status)
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(body)))
+        self._add_cors_headers()
         self.end_headers()
         self.wfile.write(body)
 
     def _send_file(self, path: Path):
         if not path.is_file():
-            self.send_error(404, f"Not found: {path.name}")
+            self._send_error(404, f"Not found: {path.name}")
             return
         data = path.read_bytes()
         self.send_response(200)
         self.send_header("Content-Type", "application/octet-stream")
         self.send_header("Content-Length", str(len(data)))
+        self._add_cors_headers()
         self.end_headers()
         self.wfile.write(data)
 
     def _send_error(self, status, message):
         self._send_json({"error": message}, status=status)
 
+    def do_OPTIONS(self):
+        self.send_response(204)
+        self._add_cors_headers()
+        self.end_headers()
+
     def do_GET(self):
         parsed = urlparse(self.path)
         path = parsed.path.rstrip("/")
         qs = parse_qs(parsed.query)
 
-        if path == "/assignments":
+        if path in ("", "/"):
+            self._send_json({"status": "ok"})
+        elif path == "/assignments":
             self._handle_list_assignments()
         elif path.startswith("/assignments/"):
             parts = path.split("/")
@@ -87,9 +101,9 @@ class AssignmentHandler(BaseHTTPRequestHandler):
                 user = qs.get("user", [None])[0]
                 self._handle_status(parts[2], user)
             else:
-                self.send_error(404)
+                self._send_error(404, "Not found")
         else:
-            self.send_error(404)
+            self._send_error(404, "Not found")
 
     def do_POST(self):
         parsed = urlparse(self.path)
@@ -97,7 +111,7 @@ class AssignmentHandler(BaseHTTPRequestHandler):
         qs = parse_qs(parsed.query)
 
         if not path.startswith("/assignments/"):
-            self.send_error(404)
+            self._send_error(404, "Not found")
             return
 
         parts = path.split("/")
@@ -109,7 +123,7 @@ class AssignmentHandler(BaseHTTPRequestHandler):
         elif len(parts) == 4 and parts[3] == "grades":
             self._handle_upload_grades(parts[2])
         else:
-            self.send_error(404)
+            self._send_error(404, "Not found")
 
     def _handle_list_assignments(self):
         manifest_path = self.root / "assignments.json"
