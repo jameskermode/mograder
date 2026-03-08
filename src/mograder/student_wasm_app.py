@@ -66,7 +66,7 @@ def _(branch, github_repo, params, release_path, server_url, username):
 
 @app.cell
 def _():
-    async def _fetch_json(url):
+    async def fetch_json(url):
         """Fetch JSON — uses pyodide.http in WASM, urllib as fallback."""
         try:
             from pyodide.http import pyfetch  # type: ignore[import-not-found]
@@ -81,16 +81,16 @@ def _():
 
                 return _json.loads(resp.read().decode())
 
-    return (_fetch_json,)
+    return (fetch_json,)
 
 
 @app.cell
-async def _(_fetch_json, mo, server_url):
+async def _(fetch_json, mo, server_url):
     assignments = []
     _error = ""
     if server_url.value:
         try:
-            assignments = await _fetch_json(
+            assignments = await fetch_json(
                 f"{server_url.value.rstrip('/')}/assignments"
             )
         except Exception as e:
@@ -141,7 +141,7 @@ def _(assignments, branch, github_repo, mo, release_path):
 
 
 @app.cell
-async def _(_fetch_json, assignments, mo, server_url, username):
+async def _(fetch_json, assignments, mo, server_url, username):
     if not assignments or not username.value:
         mo.output.replace(mo.md(""))
         mo.stop(True)
@@ -152,7 +152,7 @@ async def _(_fetch_json, assignments, mo, server_url, username):
     for _a in assignments:
         _name = _a["name"]
         try:
-            _s = await _fetch_json(f"{_base}/assignments/{_name}/status?user={_user}")
+            _s = await fetch_json(f"{_base}/assignments/{_name}/status?user={_user}")
             _grade = _s.get("grade", "")
             _feedback = _s.get("feedback", "")
             _rows.append(
