@@ -129,10 +129,12 @@ def _(assignments, branch, github_repo, mo, release_path):
                     f"https://molab.marimo.io/github/{_repo}"
                     f"/blob/{_branch}/{_rel_path}/{_name}/{_fname}"
                 )
-                _links.append(f"[Edit in Molab]({_molab})")
+                _links.append(mo.md(f"[Edit in Molab]({_molab})"))
             else:
                 _links.append(_fname)
-        _rows.append({"Assignment": _name, "Files": ", ".join(_links)})
+        _rows.append(
+            {"Assignment": _name, "Files": mo.hstack(_links, gap=0.5) if _links else ""}
+        )
 
     mo.output.replace(
         mo.vstack([mo.md("## Assignments"), mo.ui.table(_rows, selection=None)])
