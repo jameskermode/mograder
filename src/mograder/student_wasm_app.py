@@ -7,11 +7,13 @@ app = marimo.App(width="medium")
 @app.cell
 def _():
     import json
+    import urllib.parse
+    import urllib.request
 
     import marimo as mo
 
     params = mo.query_params()
-    return json, mo, params
+    return json, mo, params, urllib
 
 
 @app.cell
@@ -29,7 +31,7 @@ def _(mo, params):
         full_width=True,
     )
     release_path = mo.ui.text(
-        value=params.get("path", "examples/release"),
+        value=params.get("path", "demo/course"),
         label="Release path in repo",
         full_width=True,
     )
@@ -55,51 +57,27 @@ def _(mo, params):
 
 
 @app.cell
-def _(branch, github_repo, params, release_path, server_url, username):
-    params["server"] = server_url.value
-    params["repo"] = github_repo.value
-    params["path"] = release_path.value
-    params["branch"] = branch.value
-    params["user"] = username.value
-    return
+def _(json, server_url, urllib):
+    def fetch_json(url):
+        """Fetch JSON from a URL using urllib (works in both WASM and regular Python)."""
+        with urllib.request.urlopen(url) as resp:
+            return json.loads(resp.read().decode())
 
-
-@app.cell
-def _():
-    async def fetch_json(url):
-        """Fetch JSON — uses pyodide.http in WASM, urllib as fallback."""
-        try:
-            from pyodide.http import pyfetch  # type: ignore[import-not-found]
-
-            resp = await pyfetch(url)
-            return await resp.json()
-        except ImportError:
-            import urllib.request
-
-            with urllib.request.urlopen(url) as resp:
-                import json as _json
-
-                return _json.loads(resp.read().decode())
-
-    return (fetch_json,)
-
-
-@app.cell
-async def _(fetch_json, mo, server_url):
     assignments = []
-    _error = ""
+    connection_error = ""
     if server_url.value:
         try:
-            assignments = await fetch_json(
-                f"{server_url.value.rstrip('/')}/assignments"
-            )
+            assignments = fetch_json(f"{server_url.value.rstrip('/')}/assignments")
         except Exception as e:
-            _error = str(e)
-    if _error:
-        mo.output.replace(
-            mo.callout(mo.md(f"**Connection error:** {_error}"), kind="danger")
-        )
-    return (assignments,)
+            connection_error = str(e)
+    return assignments, connection_error, fetch_json
+
+
+@app.cell
+def _(connection_error, mo):
+    if connection_error:
+        mo.callout(mo.md(f"**Connection error:** {connection_error}"), kind="danger")
+    return
 
 
 @app.cell
@@ -127,13 +105,16 @@ def _(assignments, branch, github_repo, mo, release_path):
             if _repo and _fname.endswith(".py"):
                 _molab = (
                     f"https://molab.marimo.io/github/{_repo}"
-                    f"/blob/{_branch}/{_rel_path}/{_name}/{_fname}"
+                    f"/blob/{_branch}/{_rel_path}/{_name}/files/{_fname}"
                 )
                 _links.append(mo.md(f"[Edit in Molab]({_molab})"))
             else:
                 _links.append(_fname)
         _rows.append(
-            {"Assignment": _name, "Files": mo.hstack(_links, gap=0.5) if _links else ""}
+            {
+                "Assignment": _name,
+                "Files": mo.hstack(_links, gap=0.5) if _links else "",
+            }
         )
 
     mo.output.replace(
@@ -143,7 +124,7 @@ def _(assignments, branch, github_repo, mo, release_path):
 
 
 @app.cell
-async def _(fetch_json, assignments, mo, server_url, username):
+def _(assignments, fetch_json, mo, server_url, username):
     if not assignments or not username.value:
         mo.output.replace(mo.md(""))
         mo.stop(True)
@@ -154,7 +135,7 @@ async def _(fetch_json, assignments, mo, server_url, username):
     for _a in assignments:
         _name = _a["name"]
         try:
-            _s = await fetch_json(f"{_base}/assignments/{_name}/status?user={_user}")
+            _s = fetch_json(f"{_base}/assignments/{_name}/status?user={_user}")
             _grade = _s.get("grade", "")
             _feedback = _s.get("feedback", "")
             _rows.append(

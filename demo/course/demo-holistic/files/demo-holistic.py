@@ -137,5 +137,24 @@ def _(mo):
     return
 
 
+
+@app.cell
+def _(mo):
+    # === MOGRADER: SUBMIT ===
+    _username = mo.ui.text(label="Username", placeholder="Enter your username")
+    _submit_btn = mo.ui.run_button(label="Submit")
+    mo.hstack([_username, _submit_btn])
+    return (_submit_btn, _username)
+
+
+@app.cell
+def _(_submit_btn, _username, mo):
+    mo.stop(not _submit_btn.value or not _username.value)
+    from mograder.remote import submit as _submit_fn
+    _result = _submit_fn("https://mograder-demo.onrender.com", "demo-holistic", __file__, _username.value)
+    mo.callout(mo.md(f"**Submitted!** Status: {_result}"), kind="success")
+    return
+
+
 if __name__ == "__main__":
     app.run()
