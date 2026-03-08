@@ -2,7 +2,7 @@ services:
   - type: web
     name: mograder-demo
     runtime: docker
-    dockerfilePath: demo/Dockerfile
+    dockerfilePath: demo/Dockerfile.formgrader
     plan: free
   - type: web
     name: mograder-editor

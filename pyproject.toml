@@ -35,6 +35,10 @@ grader = [
     "seaborn",
     "matplotlib",
 ]
+asgi = [
+    "starlette>=0.37.2",
+    "uvicorn>=0.24",
+]
 
 [project.scripts]
 mograder = "mograder.cli:cli"

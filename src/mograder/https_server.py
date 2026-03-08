@@ -300,3 +300,172 @@ def run_server_background(
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
     return server, thread
+
+
+def create_starlette_routes(root_dir: Path):
+    """Create a Starlette app serving the assignment API.
+
+    Same endpoints as ``AssignmentHandler`` but as async Starlette routes.
+    Import is deferred so the stdlib server path doesn't require starlette.
+    """
+    from starlette.applications import Starlette
+    from starlette.requests import Request
+    from starlette.responses import JSONResponse, Response
+    from starlette.routing import Route
+
+    root = root_dir.resolve()
+
+    def _cors(response: Response) -> Response:
+        response.headers["Access-Control-Allow-Origin"] = "*"
+        response.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
+        response.headers["Access-Control-Allow-Headers"] = "Content-Type"
+        return response
+
+    def _json(data, status=200):
+        return _cors(JSONResponse(data, status_code=status))
+
+    def _file(path: Path):
+        if not path.is_file():
+            return _json({"error": f"Not found: {path.name}"}, 404)
+        return _cors(Response(path.read_bytes(), media_type="application/octet-stream"))
+
+    async def list_assignments(request: Request):
+        manifest_path = root / "assignments.json"
+        if manifest_path.is_file():
+            data = json.loads(manifest_path.read_text())
+        else:
+            data = []
+            for d in sorted(root.iterdir()):
+                if d.is_dir() and (d / "files").is_dir():
+                    files = []
+                    for f in sorted((d / "files").iterdir()):
+                        if f.is_file():
+                            files.append(
+                                {
+                                    "filename": f.name,
+                                    "url": f"/assignments/{d.name}/files/{f.name}",
+                                }
+                            )
+                    data.append({"name": d.name, "id": d.name, "files": files})
+        return _json(data)
+
+    async def download_file(request: Request):
+        name = request.path_params["name"]
+        filename = request.path_params["file"]
+        return _file(root / name / "files" / filename)
+
+    async def download_submission(request: Request):
+        name = request.path_params["name"]
+        filename = request.path_params["file"]
+        return _file(root / name / "submissions" / filename)
+
+    async def submit(request: Request):
+        name = request.path_params["name"]
+        user = request.query_params.get("user")
+        if not user:
+            return _json({"error": "Missing 'user' query parameter"}, 400)
+
+        content_type = request.headers.get("content-type", "")
+        if "multipart/form-data" in content_type:
+            form = await request.form()
+            upload = form.get("file")
+            if upload is None:
+                return _json({"error": "No file data received"}, 400)
+            file_data = await upload.read()
+        else:
+            file_data = await request.body()
+
+        if not file_data:
+            return _json({"error": "No file data received"}, 400)
+
+        sub_dir = root / name / "submissions"
+        sub_dir.mkdir(parents=True, exist_ok=True)
+        dest = sub_dir / f"{user}.py"
+        dest.write_bytes(file_data)
+        return _json({"status": "ok", "filename": dest.name})
+
+    async def list_submissions(request: Request):
+        name = request.path_params["name"]
+        sub_dir = root / name / "submissions"
+        result = []
+        if sub_dir.is_dir():
+            for f in sorted(sub_dir.iterdir()):
+                if f.is_file() and f.suffix == ".py":
+                    result.append(
+                        {
+                            "username": f.stem,
+                            "filename": f.name,
+                            "url": f"/assignments/{name}/submissions/{f.name}",
+                        }
+                    )
+        return _json(result)
+
+    async def upload_grades(request: Request):
+        name = request.path_params["name"]
+        body = await request.body()
+        try:
+            grades_data = json.loads(body)
+        except json.JSONDecodeError:
+            return _json({"error": "Invalid JSON"}, 400)
+
+        grades_path = root / name / "grades.json"
+        grades_path.parent.mkdir(parents=True, exist_ok=True)
+
+        existing = []
+        if grades_path.is_file():
+            existing = json.loads(grades_path.read_text())
+
+        existing_map = {g.get("userid", g.get("username", "")): g for g in existing}
+        for g in grades_data.get(
+            "grades", grades_data if isinstance(grades_data, list) else []
+        ):
+            key = g.get("userid", g.get("username", ""))
+            existing_map[key] = g
+        grades_path.write_text(json.dumps(list(existing_map.values()), indent=2))
+        return _json({"status": "ok", "count": len(existing_map)})
+
+    async def status(request: Request):
+        name = request.path_params["name"]
+        user = request.query_params.get("user")
+        if not user:
+            return _json({"error": "Missing 'user' query parameter"}, 400)
+
+        sub_dir = root / name / "submissions"
+        submitted = (sub_dir / f"{user}.py").is_file() if sub_dir.is_dir() else False
+
+        grades_path = root / name / "grades.json"
+        grade = None
+        feedback_text = ""
+        graded = False
+        if grades_path.is_file():
+            grades = json.loads(grades_path.read_text())
+            for g in grades:
+                if g.get("username") == user or g.get("userid") == user:
+                    graded = True
+                    grade = str(g.get("grade", ""))
+                    feedback_text = g.get("feedback", "")
+                    break
+
+        return _json(
+            {
+                "status": "submitted" if submitted else "new",
+                "graded": graded,
+                "grade": grade,
+                "feedback": feedback_text,
+            }
+        )
+
+    routes = [
+        Route("/assignments", list_assignments),
+        Route("/assignments/{name:path}/files/{file:path}", download_file),
+        Route(
+            "/assignments/{name:path}/submissions/{file:path}",
+            download_submission,
+        ),
+        Route("/assignments/{name}/submit", submit, methods=["POST"]),
+        Route("/assignments/{name}/submissions", list_submissions),
+        Route("/assignments/{name}/grades", upload_grades, methods=["POST"]),
+        Route("/assignments/{name}/status", status),
+    ]
+
+    return Starlette(routes=routes)

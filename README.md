@@ -8,9 +8,11 @@ mograder is the Marimo equivalent of [nbgrader](https://nbgrader.readthedocs.io/
 
 A live demo is available with three components:
 
-1. **[Student Dashboard](https://jameskermode.github.io/mograder/?server=https://mograder-demo.onrender.com&repo=jameskermode/mograder&path=demo/course&branch=main)** — WASM app hosted on GitHub Pages. Lists assignments, shows submission status, and links to Molab for editing.
-2. **[Assignment Server](https://mograder-demo.onrender.com/assignments)** — Render free-tier instance running `mograder serve`. Handles fetch, submit, and status API calls. First request may take ~30s (cold start).
-3. **Edit in Molab** — Click "Edit in Molab" in the dashboard to open a release notebook in [molab.marimo.io](https://molab.marimo.io). Each notebook has a submit cell at the bottom to send your work back to the server.
+1. **[Student Dashboard](https://jameskermode.github.io/mograder/?server=https://mograder-demo.onrender.com&editor=https://mograder-editor.onrender.com)** — WASM app hosted on GitHub Pages. Lists assignments, shows submission status, and links to the editor for editing.
+2. **[Formgrader + Assignment Server](https://mograder-demo.onrender.com)** — Render free-tier instance running a combined ASGI app. The formgrader UI shows the full grading workflow (assignments, submissions, grading, students tabs) with pre-populated demo data. The same service also handles the assignment API at `/assignments`.
+3. **[Notebook Editor](https://mograder-editor.onrender.com)** — Render free-tier instance running `marimo edit --sandbox`. Click "Edit" in the dashboard to open a notebook in full edit mode with PEP 723 dependency isolation. Each notebook has a submit cell to send your work back to the assignment server.
+
+Both Render services run on the free tier, so the first request after idle may take ~30s (cold start). As an alternative to the hosted editor, the dashboard also supports [Molab](https://molab.marimo.io) links — pass `repo`, `path`, and `branch` query params instead of `editor` to use GitHub-backed editing.
 
 ## For students
 

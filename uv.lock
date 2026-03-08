@@ -838,7 +838,7 @@ wheels = [
 
 [[package]]
 name = "mograder"
-version = "0.0.2"
+version = "0.0.3"
 source = { editable = "." }
 dependencies = [
     { name = "click" },
@@ -847,6 +847,10 @@ dependencies = [
 ]
 
 [package.optional-dependencies]
+asgi = [
+    { name = "starlette" },
+    { name = "uvicorn" },
+]
 dev = [
     { name = "pytest" },
     { name = "pytest-cov" },
@@ -873,8 +877,10 @@ requires-dist = [
     { name = "requests", specifier = ">=2.28" },
     { name = "ruff", marker = "extra == 'dev'" },
     { name = "seaborn", marker = "extra == 'grader'" },
+    { name = "starlette", marker = "extra == 'asgi'", specifier = ">=0.37.2" },
+    { name = "uvicorn", marker = "extra == 'asgi'", specifier = ">=0.24" },
 ]
-provides-extras = ["dev", "editor", "grader"]
+provides-extras = ["dev", "editor", "grader", "asgi"]
 
 [[package]]
 name = "msgspec"
