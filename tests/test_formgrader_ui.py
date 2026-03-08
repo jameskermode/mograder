@@ -29,7 +29,7 @@ def test_formgrader_app_parses_as_valid_marimo():
     """The formgrader app should parse as a valid marimo notebook."""
     from marimo._convert import MarimoConvert
 
-    source = FORMGRADER_APP.read_text()
+    source = FORMGRADER_APP.read_text(encoding="utf-8")
     ir = MarimoConvert.from_py(source).to_ir()
     assert ir.valid, f"Notebook is invalid: {ir.violations}"
     assert len(ir.cells) > 0
@@ -37,7 +37,7 @@ def test_formgrader_app_parses_as_valid_marimo():
 
 def test_formgrader_app_has_expected_cells():
     """The formgrader app should have the key structural cells."""
-    source = FORMGRADER_APP.read_text()
+    source = FORMGRADER_APP.read_text(encoding="utf-8")
     assert "mo.ui.tabs" in source
     assert "assignments_content" in source
     assert "submissions_content" in source
@@ -49,7 +49,7 @@ def test_formgrader_app_has_expected_cells():
 
 def test_formgrader_app_no_script_header():
     """The app must not have a PEP 723 script header."""
-    header = FORMGRADER_APP.read_text()[:200]
+    header = FORMGRADER_APP.read_text(encoding="utf-8")[:200]
     assert "/// script" not in header
 
 

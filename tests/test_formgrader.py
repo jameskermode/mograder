@@ -218,7 +218,7 @@ def test_app_assignments_table_no_stats_columns():
     from pathlib import Path
 
     app_path = Path(__file__).parent.parent / "src" / "mograder" / "formgrader_app.py"
-    source = app_path.read_text()
+    source = app_path.read_text(encoding="utf-8")
     assert '"Mean"' not in source
     assert '"Std"' not in source
     assert "dropdown" in source
@@ -231,7 +231,7 @@ def test_app_title_is_mograder():
     from pathlib import Path
 
     app_path = Path(__file__).parent.parent / "src" / "mograder" / "formgrader_app.py"
-    source = app_path.read_text()
+    source = app_path.read_text(encoding="utf-8")
     assert '"# mograder"' in source
     assert "formgrader" not in source.split('"# mograder"')[0].split("@app.cell")[-1]
 
@@ -241,7 +241,7 @@ def test_app_assignments_table_selection_none():
     from pathlib import Path
 
     app_path = Path(__file__).parent.parent / "src" / "mograder" / "formgrader_app.py"
-    source = app_path.read_text()
+    source = app_path.read_text(encoding="utf-8")
     # Find the assignments_content table creation
     assert "assignments_content" in source
     # The mo.ui.table for assignments should have selection=None
@@ -255,7 +255,7 @@ def test_app_no_svg_histogram():
     from pathlib import Path
 
     app_path = Path(__file__).parent.parent / "src" / "mograder" / "formgrader_app.py"
-    source = app_path.read_text()
+    source = app_path.read_text(encoding="utf-8")
     assert "svg_histogram" not in source
 
 
@@ -267,7 +267,7 @@ def test_app_cli_executor_captures_output():
     from pathlib import Path
 
     app_path = Path(__file__).parent.parent / "src" / "mograder" / "formgrader_app.py"
-    source = app_path.read_text()
+    source = app_path.read_text(encoding="utf-8")
     assert "sp.run(" in source
     assert "capture_output=True" in source
     assert "sp.Popen(" in source
@@ -278,7 +278,7 @@ def test_app_cli_executor_does_not_use_python_m_mograder():
     from pathlib import Path
 
     app_path = Path(__file__).parent.parent / "src" / "mograder" / "formgrader_app.py"
-    source = app_path.read_text()
+    source = app_path.read_text(encoding="utf-8")
     assert '"-m", "mograder"' not in source
 
 
@@ -408,7 +408,7 @@ def test_app_no_value_access_in_creator_cell():
     from pathlib import Path
 
     app_path = Path(__file__).parent.parent / "src" / "mograder" / "formgrader_app.py"
-    source = app_path.read_text()
+    source = app_path.read_text(encoding="utf-8")
 
     # Split into cells by @app.cell boundaries
     import re
@@ -436,7 +436,7 @@ def test_app_students_cell_does_not_depend_on_ui_elements():
     from pathlib import Path
 
     app_path = Path(__file__).parent.parent / "src" / "mograder" / "formgrader_app.py"
-    source = app_path.read_text()
+    source = app_path.read_text(encoding="utf-8")
 
     # Find the cell that builds students_content
     cells = re.split(r"@app\.cell", source)
@@ -460,7 +460,7 @@ def test_app_on_change_callbacks_do_not_block():
     from pathlib import Path
 
     app_path = Path(__file__).parent.parent / "src" / "mograder" / "formgrader_app.py"
-    source = app_path.read_text()
+    source = app_path.read_text(encoding="utf-8")
     # on_change lambdas should set state, not call _run_cli
     assert "on_change=lambda" in source  # buttons still exist
     assert "_run_cli" not in source  # no blocking helper in callbacks
@@ -474,7 +474,7 @@ def test_app_open_marimo_passes_sandbox():
     from pathlib import Path
 
     app_path = Path(__file__).parent.parent / "src" / "mograder" / "formgrader_app.py"
-    source = app_path.read_text()
+    source = app_path.read_text(encoding="utf-8")
     # _open_marimo and _open_editor should use --sandbox
     assert source.count('"--sandbox"') >= 2
 
@@ -484,7 +484,7 @@ def test_app_executor_uses_popen_for_autograde():
     from pathlib import Path
 
     app_path = Path(__file__).parent.parent / "src" / "mograder" / "formgrader_app.py"
-    source = app_path.read_text()
+    source = app_path.read_text(encoding="utf-8")
     assert "sp.Popen(" in source
     assert '"--progress"' in source
     assert "progress_bar" in source
@@ -495,7 +495,7 @@ def test_app_executor_cell_after_layout():
     from pathlib import Path
 
     app_path = Path(__file__).parent.parent / "src" / "mograder" / "formgrader_app.py"
-    source = app_path.read_text()
+    source = app_path.read_text(encoding="utf-8")
     # Layout cell contains the tabs vstack; executor cell contains get_pending_action
     layout_pos = source.index("mo.ui.tabs(")
     executor_pos = source.index("get_pending_action()")
@@ -510,7 +510,7 @@ def test_app_uses_single_progress_bar():
     from pathlib import Path
 
     app_path = Path(__file__).parent.parent / "src" / "mograder" / "formgrader_app.py"
-    source = app_path.read_text()
+    source = app_path.read_text(encoding="utf-8")
 
     # spinner is used for non-autograde commands
     assert "mo.status.spinner(" in source
@@ -531,7 +531,7 @@ def test_app_executor_handles_results_event():
     from pathlib import Path
 
     app_path = Path(__file__).parent.parent / "src" / "mograder" / "formgrader_app.py"
-    source = app_path.read_text()
+    source = app_path.read_text(encoding="utf-8")
     assert '"results"' in source
     assert "_results_data" in source
     assert "_STATUS" in source
@@ -544,7 +544,7 @@ def test_app_has_grading_tab():
     from pathlib import Path
 
     app_path = Path(__file__).parent.parent / "src" / "mograder" / "formgrader_app.py"
-    source = app_path.read_text()
+    source = app_path.read_text(encoding="utf-8")
     assert '"Grading"' in source
     assert "grading_content" in source
 
@@ -687,7 +687,7 @@ def test_app_progress_bar_uses_context_manager_return():
     from pathlib import Path
 
     app_path = Path(__file__).parent.parent / "src" / "mograder" / "formgrader_app.py"
-    source = app_path.read_text()
+    source = app_path.read_text(encoding="utf-8")
 
     # Find all progress_bar context manager usages:
     # The pattern _var = mo.status.progress_bar(...) followed by _var.__enter__()
