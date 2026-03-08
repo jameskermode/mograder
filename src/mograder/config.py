@@ -9,6 +9,11 @@ from pathlib import Path
 class MograderConfig:
     """Configuration loaded from ``mograder.toml``."""
 
+    # top-level
+    transport: str = "moodle"
+    config_url: str | None = None
+    # [[assignments]] — transport-agnostic assignment list
+    assignments: tuple[dict, ...] = ()
     # [moodle]
     moodle_csv: str | None = None
     moodle_match_column: str = "Username"
@@ -16,6 +21,8 @@ class MograderConfig:
     moodle_url: str | None = None
     moodle_course_id: int | None = None
     moodle_assignments: tuple[dict, ...] = ()
+    # [https]
+    https_url: str | None = None
     # [defaults]
     jobs: int = 4
     timeout: int = 300
@@ -29,8 +36,6 @@ class MograderConfig:
     import_dir: str = "import"
     # [gradebook]
     gradebook: str = "gradebook.db"
-    # top-level
-    config_url: str | None = None
     # [sync]
     sync_remote: str | None = None
     sync_remote_course_dir: str | None = None
@@ -48,18 +53,28 @@ def load_config(course_dir: Path) -> MograderConfig:
     with open(config_path, "rb") as f:
         data = tomllib.load(f)
     moodle = data.get("moodle", {})
+    https = data.get("https", {})
     defaults = data.get("defaults", {})
     dirs = data.get("dirs", {})
     gradebook = data.get("gradebook", {})
     sync = data.get("sync", {})
+
+    # [[assignments]] with fallback to [[moodle.assignments]]
+    top_assignments = tuple(data.get("assignments", []))
+    moodle_assignments = tuple(moodle.get("assignments", []))
+    assignments = top_assignments if top_assignments else moodle_assignments
+
     return MograderConfig(
+        transport=data.get("transport", "moodle"),
         config_url=data.get("config_url"),
+        assignments=assignments,
         moodle_csv=moodle.get("csv"),
         moodle_match_column=moodle.get("match_column", "Username"),
         moodle_name_column=moodle.get("name_column", "Full name"),
         moodle_url=moodle.get("url"),
         moodle_course_id=moodle.get("course_id"),
-        moodle_assignments=tuple(moodle.get("assignments", [])),
+        moodle_assignments=moodle_assignments,
+        https_url=https.get("url"),
         jobs=defaults.get("jobs", 4),
         timeout=defaults.get("timeout", 300),
         headless=defaults.get("headless", False),

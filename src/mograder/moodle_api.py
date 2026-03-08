@@ -240,6 +240,7 @@ class MoodleAPIClient:
         self,
         assignment_id: int,
         grades: list[dict],
+        workflow_state: str = "",
     ) -> None:
         """Save grades for multiple students.
 
@@ -253,7 +254,7 @@ class MoodleAPIClient:
             params[f"grades[{i}][grade]"] = g["grade"]
             params[f"grades[{i}][attemptnumber]"] = g.get("attemptnumber", -1)
             params[f"grades[{i}][addattempt]"] = 0
-            params[f"grades[{i}][workflowstate]"] = ""
+            params[f"grades[{i}][workflowstate]"] = workflow_state
             params[f"grades[{i}][plugindata][assignfeedbackcomments_editor][text]"] = (
                 g.get("feedback", "")
             )

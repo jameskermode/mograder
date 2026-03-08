@@ -24,3 +24,35 @@ class NotebookResult:
     cell_errors: int = 0
     html_path: Path | None = None
     tampered: list[str] = field(default_factory=list)
+
+
+@dataclass
+class RemoteAssignment:
+    """An assignment available on a remote server (Moodle or HTTPS)."""
+
+    name: str
+    id: str
+    files: list[dict] = field(default_factory=list)
+    duedate: int = 0
+    cmid: str = ""
+
+
+@dataclass
+class RemoteSubmission:
+    """A student submission fetched from a remote server."""
+
+    userid: str
+    username: str
+    filename: str
+    url: str
+    status: str = "submitted"
+
+
+@dataclass
+class RemoteStatus:
+    """Submission status for the current user on a remote server."""
+
+    status: str = "new"
+    graded: bool = False
+    grade: str | None = None
+    feedback: str = ""

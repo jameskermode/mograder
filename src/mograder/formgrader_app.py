@@ -21,6 +21,7 @@ def _():
     from mograder.config import load_config
     from mograder.formgrader import DirNames
     from mograder.gradebook import Gradebook
+    from mograder.moodle_api import load_cached_token
 
     COURSE_DIR = Path(os.environ.get("MOGRADER_COURSE_DIR", ".")).resolve()
     MOGRADER_CONFIG = load_config(COURSE_DIR)
@@ -35,13 +36,26 @@ def _():
 
     _gb_path = COURSE_DIR / MOGRADER_CONFIG.gradebook
     GRADEBOOK = Gradebook(_gb_path) if _gb_path.is_file() else None
+
+    MOODLE_READY = False
+    if MOGRADER_CONFIG.moodle_url and MOGRADER_CONFIG.moodle_course_id:
+        _cached = load_cached_token(MOGRADER_CONFIG.moodle_url)
+        if _cached:
+            MOODLE_READY = True
+    _moodle_assign_names = {
+        a["name"]
+        for a in (MOGRADER_CONFIG.assignments or MOGRADER_CONFIG.moodle_assignments)
+    }
+
     return (
         COURSE_DIR,
         DIR_NAMES,
         GRADEBOOK,
         Gradebook,
         MOGRADER_CONFIG,
+        MOODLE_READY,
         Path,
+        _moodle_assign_names,
         io,
         mo,
         os,
@@ -117,6 +131,8 @@ def _(
     COURSE_DIR,
     DIR_NAMES,
     MOGRADER_CONFIG,
+    MOODLE_READY,
+    _moodle_assign_names,
     assignments,
     io,
     mo,
@@ -141,6 +157,8 @@ def _(
     _fb_csv_dl_list = []
     _fb_zip_dl_list = []
     _auto_upload_list = []
+    _fetch_sub_list = []
+    _upload_fb_list = []
 
     for _a in assignments:
         # Source — edit source notebook
@@ -321,6 +339,62 @@ def _(
             )
         )
 
+        # Fetch submissions from Moodle
+        _sub_out = str(COURSE_DIR / DIR_NAMES.submitted / _a.name)
+        if MOODLE_READY and _a.name in _moodle_assign_names:
+            _n_fetch = _a.name
+            _fetch_sub_list.append(
+                mo.ui.button(
+                    label="⬇",
+                    on_change=lambda _, n=_n_fetch, o=_sub_out: set_pending_action(
+                        {
+                            "cmd": ["moodle", "fetch-submissions", n, "-o", o],
+                            "label": f"fetch submissions {n}",
+                        }
+                    ),
+                    tooltip="Fetch submissions from Moodle",
+                )
+            )
+        else:
+            _fetch_sub_list.append(
+                mo.ui.button(
+                    label="⬇", disabled=True, tooltip="Fetch submissions from Moodle"
+                )
+            )
+
+        # Upload grades & feedback to Moodle
+        _fb_dir_path = COURSE_DIR / DIR_NAMES.feedback / _a.name
+        _has_feedback = _fb_dir_path.is_dir() and any(_fb_dir_path.glob("*.html"))
+        if MOODLE_READY and _a.name in _moodle_assign_names and _has_feedback:
+            _n_up = _a.name
+            _fb_d = str(_fb_dir_path)
+            _upload_fb_list.append(
+                mo.ui.button(
+                    label="⬆",
+                    on_change=lambda _, n=_n_up, d=_fb_d: set_pending_action(
+                        {
+                            "cmd": [
+                                "moodle",
+                                "upload-feedback",
+                                n,
+                                "--feedback-dir",
+                                d,
+                            ],
+                            "label": f"upload feedback {n}",
+                        }
+                    ),
+                    tooltip="Upload grades & feedback to Moodle",
+                )
+            )
+        else:
+            _upload_fb_list.append(
+                mo.ui.button(
+                    label="⬆",
+                    disabled=True,
+                    tooltip="Upload grades & feedback to Moodle",
+                )
+            )
+
     # Wrap interactive buttons in mo.ui.array for marimo state tracking
     _src_ui = [e for e in _src_btns_list if not isinstance(e, mo.Html)]
     _rel_ui = [e for e in _rel_btns_list if not isinstance(e, mo.Html)]
@@ -346,6 +420,8 @@ def _(
     auto_btns = mo.ui.array(_auto)
     fb_btns = mo.ui.array(_fb)
     auto_uploads = mo.ui.array(_auto_upload_list)
+    fetch_sub_btns = mo.ui.array(_fetch_sub_list)
+    upload_fb_btns = mo.ui.array(_upload_fb_list)
 
     # Map array indices back to row positions for mixed button/md lists
     _src_idx = 0
@@ -379,8 +455,12 @@ def _(
             )
             _rel_idx += 1
 
-        # Submitted column: count only
-        _sub_cell = mo.md(str(_a.num_submitted))
+        # Submitted column: count + fetch button
+        _sub_cell = mo.hstack(
+            [mo.md(str(_a.num_submitted)), fetch_sub_btns[_i]],
+            justify="start",
+            gap=0.25,
+        )
 
         # Feedback column: text only
         _fb_text = (
@@ -406,6 +486,7 @@ def _(
         if _fb_zip_dl_list[_i] is not None and fb_zip_downloads is not None:
             _export_items.append(fb_zip_downloads[_fb_zip_dl_idx])
             _fb_zip_dl_idx += 1
+        _export_items.append(upload_fb_btns[_i])
         _export_cell = (
             mo.hstack(_export_items, justify="start", gap=0.25)
             if len(_export_items) > 1
@@ -451,6 +532,8 @@ def _(
     return (
         assignments_content,
         auto_uploads,
+        fetch_sub_btns,
+        upload_fb_btns,
         src_btns,
         rel_btns,
         rel_downloads,

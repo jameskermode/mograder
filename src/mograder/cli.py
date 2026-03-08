@@ -614,6 +614,18 @@ def _get_course_id(cli_course_id, config):
     return course_id
 
 
+def _build_moodle_transport(ctx, course_id, url, token):
+    """Build a MoodleTransport from CLI context and Moodle credentials."""
+    from mograder.moodle_api import MoodleAPIClient, resolve_credentials
+    from mograder.moodle_transport import MoodleTransport
+
+    config = ctx.obj["config"]
+    url, token = resolve_credentials(url, token, config)
+    cid = _get_course_id(course_id, config)
+    client = MoodleAPIClient(url, token)
+    return MoodleTransport(client, cid)
+
+
 @moodle_group.command("export")
 @click.argument("assignment")
 @click.option(
@@ -752,67 +764,10 @@ def moodle_export(
 @click.pass_context
 def moodle_fetch(ctx, assignment, list_assignments, course_id, url, token, output_dir):
     """Download assignment files from Moodle."""
-    import zipfile
+    from mograder.transport_commands import do_fetch
 
-    from mograder.moodle_api import (
-        MoodleAPIClient,
-        find_assignment,
-        resolve_credentials,
-    )
-
-    config = ctx.obj["config"]
-    url, token = resolve_credentials(url, token, config)
-    cid = _get_course_id(course_id, config)
-    client = MoodleAPIClient(url, token)
-
-    assignments = client.get_assignments(cid)
-
-    if list_assignments:
-        from datetime import datetime, timezone
-
-        click.echo(f"{'ID':<8} {'Name':<40} {'Due date':<20} {'Files':>5}")
-        click.echo("-" * 75)
-        for a in assignments:
-            due = (
-                datetime.fromtimestamp(a["duedate"], tz=timezone.utc).strftime(
-                    "%Y-%m-%d %H:%M"
-                )
-                if a["duedate"]
-                else "No deadline"
-            )
-            n_files = len(a.get("introattachments", []))
-            click.echo(f"{a['id']:<8} {a['name']:<40} {due:<20} {n_files:>5}")
-        return
-
-    if not assignment:
-        raise click.UsageError(
-            "Provide an assignment name, or use --list to see available assignments"
-        )
-
-    match = find_assignment(client, cid, assignment)
-    files = match.get("introattachments", [])
-    if not files:
-        click.echo(f"No files attached to assignment '{match['name']}'")
-        return
-
-    output_dir = Path(output_dir)
-    output_dir.mkdir(parents=True, exist_ok=True)
-
-    downloaded = []
-    for f in files:
-        dest = output_dir / f["filename"]
-        client.download_file(f["fileurl"], dest)
-        downloaded.append(dest)
-        click.echo(f"  Downloaded: {_rel(dest)}")
-
-    # Auto-extract ZIP files
-    for dest in downloaded:
-        if dest.suffix.lower() == ".zip":
-            with zipfile.ZipFile(dest) as zf:
-                zf.extractall(output_dir)
-                click.echo(f"  Extracted: {dest.name} ({len(zf.namelist())} files)")
-
-    click.echo(f"Fetched {len(downloaded)} file(s) for '{match['name']}'")
+    transport = _build_moodle_transport(ctx, course_id, url, token)
+    do_fetch(transport, assignment, Path(output_dir), list_only=list_assignments)
 
 
 @moodle_group.command("submit")
@@ -886,47 +841,14 @@ def moodle_submit(ctx, file, assignment, course_id, url, token, no_finalize, dry
 @click.pass_context
 def moodle_fetch_submissions(ctx, assignment, course_id, url, token, output_dir):
     """Bulk download all student submissions for an assignment (instructor)."""
-    from mograder.moodle_api import (
-        MoodleAPIClient,
-        find_assignment,
-        resolve_credentials,
-    )
+    from mograder.transport_commands import do_fetch_submissions
 
     config = ctx.obj["config"]
-    url, token = resolve_credentials(url, token, config)
-    cid = _get_course_id(course_id, config)
-    client = MoodleAPIClient(url, token)
-
-    match = find_assignment(client, cid, assignment)
-    assignment_id = match["id"]
-
-    # Build userid → username mapping
-    participants = client.list_participants(assignment_id)
-    user_map = {p["id"]: p["username"] for p in participants}
-
-    # Get all submissions
-    submissions = client.get_submissions(assignment_id)
+    transport = _build_moodle_transport(ctx, course_id, url, token)
 
     if output_dir is None:
-        output_dir = Path(config.submitted_dir) / match["name"]
-    output_dir = Path(output_dir)
-    output_dir.mkdir(parents=True, exist_ok=True)
-
-    count = 0
-    for sub in submissions:
-        if sub["status"] != "submitted":
-            continue
-        py_files = [f for f in sub["files"] if f["filename"].endswith(".py")]
-        if not py_files:
-            continue
-        username = user_map.get(sub["userid"], f"user_{sub['userid']}")
-        # Download the first .py file
-        dest = output_dir / f"{username}.py"
-        client.download_file(py_files[0]["fileurl"], dest)
-        click.echo(f"  {username}.py")
-        count += 1
-
-    click.echo(f"Downloaded {count} submission(s) to {_rel(output_dir)}")
+        output_dir = Path(config.submitted_dir) / assignment
+    do_fetch_submissions(transport, assignment, Path(output_dir))
 
 
 @moodle_group.command("upload-feedback")
@@ -945,9 +867,22 @@ def moodle_fetch_submissions(ctx, assignment, course_id, url, token, output_dir)
     help="Grades CSV (auto-discovered from gradebook.db if omitted)",
 )
 @click.option("--dry-run", is_flag=True, help="Show what would be uploaded")
+@click.option(
+    "--workflow-state",
+    default="readyforrelease",
+    help="Marking workflow state (default: readyforrelease). Use 'released' to make visible immediately.",
+)
 @click.pass_context
 def moodle_upload_feedback(
-    ctx, assignment, course_id, url, token, feedback_dir, grades_csv, dry_run
+    ctx,
+    assignment,
+    course_id,
+    url,
+    token,
+    feedback_dir,
+    grades_csv,
+    dry_run,
+    workflow_state,
 ):
     """Upload grades and feedback to Moodle via API (instructor)."""
     from mograder.moodle_api import (
@@ -1028,7 +963,7 @@ def moodle_upload_feedback(
         click.echo("No grades to upload")
         return
 
-    client.save_grades(assignment_id, grade_payloads)
+    client.save_grades(assignment_id, grade_payloads, workflow_state=workflow_state)
     click.echo(f"Uploaded {len(grade_payloads)} grade(s) to '{match['name']}'")
 
 
@@ -1161,6 +1096,9 @@ def moodle_sync(ctx, course_id, url, token, include_pattern):
 
     toml_data["moodle"] = moodle_section
 
+    # Also write top-level [[assignments]] for transport-agnostic access
+    toml_data["assignments"] = toml_assignments
+
     # Write back — tomllib is read-only, so we use a simple writer
     _write_toml(toml_path, toml_data)
 
@@ -1179,6 +1117,30 @@ def moodle_sync(ctx, course_id, url, token, include_pattern):
 def _write_toml(path: Path, data: dict) -> None:
     """Write a dict to a TOML file (simple serializer for our config subset)."""
     lines = []
+
+    # Write top-level scalars first
+    for key, value in data.items():
+        if not isinstance(value, (dict, list)):
+            lines.append(f"{key} = {_toml_value(value)}")
+    if any(not isinstance(v, (dict, list)) for v in data.values()):
+        lines.append("")
+
+    # Write top-level array-of-tables (e.g. [[assignments]])
+    for key, value in data.items():
+        if isinstance(value, list) and value and isinstance(value[0], dict):
+            for item in value:
+                lines.append(f"[[{key}]]")
+                for ik, iv in item.items():
+                    if isinstance(iv, list) and iv and isinstance(iv[0], dict):
+                        for sub in iv:
+                            lines.append(f"  [[{key}.{ik}]]")
+                            for sk, sv in sub.items():
+                                lines.append(f"  {sk} = {_toml_value(sv)}")
+                    else:
+                        lines.append(f"{ik} = {_toml_value(iv)}")
+                lines.append("")
+
+    # Write sections (dicts)
     for section_name, section_data in data.items():
         if isinstance(section_data, dict):
             # Separate scalar fields from nested structures
@@ -1555,3 +1517,184 @@ def student(course_dir_or_url, port, headless):
         sys.exit(proc.returncode)
     except KeyboardInterrupt:
         pass
+
+
+# ---------------------------------------------------------------------------
+# HTTPS transport group
+# ---------------------------------------------------------------------------
+
+
+@cli.group()
+@click.pass_context
+def https_group(ctx):
+    """HTTPS server transport: fetch, submit, upload grades."""
+    pass
+
+
+cli.add_command(https_group, "https")
+
+
+@https_group.command("fetch")
+@click.argument("assignment", required=False, default=None)
+@click.option(
+    "--list", "list_assignments", is_flag=True, help="List available assignments"
+)
+@click.option("--url", default=None, help="Server URL (overrides config)")
+@click.option(
+    "-o",
+    "--output-dir",
+    type=click.Path(path_type=Path),
+    default=".",
+    help="Output directory (default: current dir)",
+)
+@click.pass_context
+def https_fetch(ctx, assignment, list_assignments, url, output_dir):
+    """Download assignment files from an HTTPS server."""
+    from mograder.https_transport import HTTPSTransport
+    from mograder.transport_commands import do_fetch
+
+    config = ctx.obj["config"]
+    url = url or config.https_url
+    if not url:
+        raise click.UsageError(
+            "No HTTPS URL configured. Provide --url or set [https] url in mograder.toml"
+        )
+    transport = HTTPSTransport(url)
+    do_fetch(transport, assignment, Path(output_dir), list_only=list_assignments)
+
+
+@https_group.command("submit")
+@click.argument("file", type=click.Path(exists=True, path_type=Path))
+@click.option("-a", "--assignment", required=True, help="Assignment name or ID")
+@click.option("--url", default=None, help="Server URL (overrides config)")
+@click.option("--user", required=True, help="Username for submission")
+@click.option("--dry-run", is_flag=True, help="Show what would happen")
+@click.pass_context
+def https_submit(ctx, file, assignment, url, user, dry_run):
+    """Submit a .py notebook to an HTTPS assignment server."""
+    from mograder.https_transport import HTTPSTransport
+    from mograder.transport_commands import do_submit
+
+    config = ctx.obj["config"]
+    url = url or config.https_url
+    if not url:
+        raise click.UsageError(
+            "No HTTPS URL configured. Provide --url or set [https] url in mograder.toml"
+        )
+    transport = HTTPSTransport(url, user=user)
+    do_submit(transport, file, assignment, dry_run=dry_run)
+
+
+@https_group.command("fetch-submissions")
+@click.argument("assignment")
+@click.option("--url", default=None, help="Server URL (overrides config)")
+@click.option(
+    "-o",
+    "--output-dir",
+    type=click.Path(path_type=Path),
+    default=None,
+    help="Output directory",
+)
+@click.pass_context
+def https_fetch_submissions(ctx, assignment, url, output_dir):
+    """Download all submissions from an HTTPS server (instructor)."""
+    from mograder.https_transport import HTTPSTransport
+    from mograder.transport_commands import do_fetch_submissions
+
+    config = ctx.obj["config"]
+    url = url or config.https_url
+    if not url:
+        raise click.UsageError(
+            "No HTTPS URL configured. Provide --url or set [https] url in mograder.toml"
+        )
+    transport = HTTPSTransport(url)
+    if output_dir is None:
+        output_dir = Path(config.submitted_dir) / assignment
+    do_fetch_submissions(transport, assignment, Path(output_dir))
+
+
+@https_group.command("upload-grades")
+@click.argument("assignment")
+@click.option("--url", default=None, help="Server URL (overrides config)")
+@click.option(
+    "--grades-csv",
+    type=click.Path(exists=True, path_type=Path),
+    required=True,
+    help="Grades CSV file",
+)
+@click.option("--dry-run", is_flag=True, help="Show what would happen")
+@click.pass_context
+def https_upload_grades(ctx, assignment, url, grades_csv, dry_run):
+    """Upload grades to an HTTPS assignment server."""
+    import csv
+
+    from mograder.https_transport import HTTPSTransport
+    from mograder.transport_commands import do_upload_feedback
+
+    config = ctx.obj["config"]
+    url = url or config.https_url
+    if not url:
+        raise click.UsageError(
+            "No HTTPS URL configured. Provide --url or set [https] url in mograder.toml"
+        )
+    transport = HTTPSTransport(url)
+
+    # Read grades from CSV
+    with open(grades_csv) as f:
+        reader = csv.DictReader(f)
+        grades = [dict(row) for row in reader]
+    do_upload_feedback(transport, assignment, grades, dry_run=dry_run)
+
+
+@https_group.command("feedback")
+@click.argument("assignment")
+@click.option("--url", default=None, help="Server URL (overrides config)")
+@click.option("--user", required=True, help="Username to check status for")
+@click.pass_context
+def https_feedback(ctx, assignment, url, user):
+    """Check submission status and view grade/feedback."""
+    from mograder.https_transport import HTTPSTransport
+    from mograder.transport_commands import do_status
+
+    config = ctx.obj["config"]
+    url = url or config.https_url
+    if not url:
+        raise click.UsageError(
+            "No HTTPS URL configured. Provide --url or set [https] url in mograder.toml"
+        )
+    transport = HTTPSTransport(url, user=user)
+    do_status(transport, assignment)
+
+
+# ---------------------------------------------------------------------------
+# Serve command
+# ---------------------------------------------------------------------------
+
+
+@cli.command()
+@click.argument(
+    "directory",
+    type=click.Path(exists=True, path_type=Path),
+    default=".",
+)
+@click.option("-p", "--port", type=int, default=8080, help="Port to listen on")
+@click.option(
+    "--host", default="127.0.0.1", help="Host to bind to (default: 127.0.0.1)"
+)
+def serve(directory, port, host):
+    """Start a lightweight assignment server.
+
+    Serves assignments from DIRECTORY (default: current dir).
+    """
+    from mograder.https_server import create_server
+
+    server = create_server(directory, host=host, port=port)
+    actual_port = server.server_address[1]
+    click.echo(f"Serving assignments from {directory.resolve()}")
+    click.echo(f"  URL: http://{host}:{actual_port}")
+    click.echo("Press Ctrl+C to stop.")
+    try:
+        server.serve_forever()
+    except KeyboardInterrupt:
+        click.echo("\nShutting down.")
+        server.shutdown()

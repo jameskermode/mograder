@@ -107,7 +107,8 @@ def _(
     moodle_url = CONFIG.moodle_url
     token_input = mo.ui.text(label="", value="")
 
-    if not moodle_url or not CONFIG.moodle_assignments:
+    _assignments_cfg = CONFIG.assignments or CONFIG.moodle_assignments
+    if not moodle_url or not _assignments_cfg:
         mo.output.replace(
             mo.callout(
                 mo.md(
@@ -186,7 +187,7 @@ def _(
     set_pending,
     timezone,
 ):
-    assignments_cfg = CONFIG.moodle_assignments
+    assignments_cfg = CONFIG.assignments or CONFIG.moodle_assignments
     token = get_token()
     _ = get_refresh()
 

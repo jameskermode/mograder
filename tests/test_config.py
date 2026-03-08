@@ -125,3 +125,62 @@ def test_config_is_frozen():
         assert False, "Should have raised"
     except AttributeError:
         pass
+
+
+def test_load_config_transport_default(tmp_path):
+    """Default transport is moodle."""
+    (tmp_path / "mograder.toml").write_text("")
+    config = load_config(tmp_path)
+    assert config.transport == "moodle"
+
+
+def test_load_config_transport_https(tmp_path):
+    """transport field is read from top-level."""
+    (tmp_path / "mograder.toml").write_text(
+        'transport = "https"\n\n[https]\nurl = "http://localhost:8080"\n'
+    )
+    config = load_config(tmp_path)
+    assert config.transport == "https"
+    assert config.https_url == "http://localhost:8080"
+
+
+def test_load_config_top_level_assignments(tmp_path):
+    """[[assignments]] is read from top-level."""
+    (tmp_path / "mograder.toml").write_text(
+        '[[assignments]]\nname = "HW1"\nid = "10"\n'
+    )
+    config = load_config(tmp_path)
+    assert len(config.assignments) == 1
+    assert config.assignments[0]["name"] == "HW1"
+
+
+def test_load_config_assignments_fallback_to_moodle(tmp_path):
+    """[[moodle.assignments]] is used when [[assignments]] is absent."""
+    (tmp_path / "mograder.toml").write_text(
+        '[moodle]\nurl = "https://moodle.example.com"\n\n'
+        '[[moodle.assignments]]\nname = "HW2"\nid = 20\n'
+    )
+    config = load_config(tmp_path)
+    assert len(config.assignments) == 1
+    assert config.assignments[0]["name"] == "HW2"
+    # moodle_assignments also populated
+    assert len(config.moodle_assignments) == 1
+
+
+def test_load_config_top_level_assignments_override_moodle(tmp_path):
+    """[[assignments]] takes precedence over [[moodle.assignments]]."""
+    (tmp_path / "mograder.toml").write_text(
+        '[[assignments]]\nname = "HW1"\nid = "10"\n\n'
+        '[moodle]\nurl = "https://moodle.example.com"\n\n'
+        '[[moodle.assignments]]\nname = "HW2"\nid = 20\n'
+    )
+    config = load_config(tmp_path)
+    assert len(config.assignments) == 1
+    assert config.assignments[0]["name"] == "HW1"
+
+
+def test_load_config_https_section(tmp_path):
+    """[https] url is read."""
+    (tmp_path / "mograder.toml").write_text('[https]\nurl = "http://localhost:9000"\n')
+    config = load_config(tmp_path)
+    assert config.https_url == "http://localhost:9000"
