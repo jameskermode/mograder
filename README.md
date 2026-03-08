@@ -71,6 +71,7 @@ course/
 8. **`mograder moodle fetch-submissions`** / **`mograder moodle upload-feedback`** — instructors bulk-download submissions and push grades/feedback via Moodle API
 9. **`mograder moodle sync`** — syncs assignment metadata from Moodle into `mograder.toml` (instructor runs this, students get the config via URL or file)
 10. **`mograder student`** — launches an interactive student dashboard (Marimo app) for downloading, validating, editing, and submitting assignments
+11. **`mograder serve`** / **`mograder https *`** — lightweight HTTPS server + transport for assignment distribution without Moodle
 
 ## Installation
 
@@ -259,6 +260,57 @@ Shows submission status, grade (if graded), and instructor feedback text.
 
 All Moodle API commands accept `--url` and `--token` flags, or read from `MOGRADER_MOODLE_URL` / `MOGRADER_MOODLE_TOKEN` environment variables, or from the `[moodle]` section in `mograder.toml`.
 
+### HTTPS transport (Moodle-free alternative)
+
+mograder includes a lightweight HTTP server and transport for distributing assignments without Moodle. This is useful for courses that don't use Moodle, for local testing, or as a simple course server on platforms like Molab.
+
+#### Start an assignment server
+
+```bash
+mograder serve course/release/        # serve assignment files
+mograder serve course/release/ -p 9000  # custom port
+```
+
+The server auto-discovers assignments from the directory structure. Each subdirectory with a `files/` subfolder becomes an assignment. You can also provide a manual `assignments.json` manifest.
+
+#### Student commands
+
+```bash
+mograder https fetch --list --url http://localhost:8080        # list assignments
+mograder https fetch "hw1" --url http://localhost:8080 -o hw1/ # download files
+mograder https submit hw1.py -a "hw1" --url http://localhost:8080 --user alice
+mograder https feedback "hw1" --url http://localhost:8080 --user alice
+```
+
+#### Instructor commands
+
+```bash
+mograder https fetch-submissions "hw1" --url http://localhost:8080 -o submitted/hw1/
+mograder https upload-grades "hw1" --url http://localhost:8080 --grades-csv grades.csv
+```
+
+The URL can also be set in `mograder.toml`:
+
+```toml
+transport = "https"
+
+[https]
+url = "http://localhost:8080"
+```
+
+#### Server directory structure
+
+```
+server_root/
+  assignments.json                    # optional manifest
+  hw1/
+    files/
+      homework.py                     # assignment files
+    submissions/
+      alice.py                        # student submissions
+    grades.json                       # uploaded grades
+```
+
 ### Student dashboard
 
 Launch an interactive course browser as a local Marimo web app:
@@ -287,7 +339,18 @@ The dashboard provides:
 Create `mograder.toml` in the course directory to customise settings:
 
 ```toml
-config_url = "https://raw.githubusercontent.com/user/course/main/mograder.toml"  # self-referential URL for student auto-refresh
+config_url = "https://raw.githubusercontent.com/user/course/main/mograder.toml"
+transport = "moodle"   # or "https" — selects the active transport for student/formgrader
+
+# Transport-agnostic assignment list (written by `moodle sync` or `https sync`)
+[[assignments]]
+name = "HW1"
+id = "10"
+cmid = "42"
+duedate = 1700000000
+  [[assignments.files]]
+  name = "hw1.py"
+  url = "https://..."
 
 [dirs]
 source = "source"       # default directory names
@@ -299,6 +362,9 @@ course_id = 12345                  # Moodle course ID (for API commands)
 csv = "moodle.csv"                 # default Moodle worksheet (for export)
 match_column = "Username"
 name_column = "Full name"
+
+[https]
+url = "http://localhost:8080"      # HTTPS transport server URL
 
 [defaults]
 jobs = 4

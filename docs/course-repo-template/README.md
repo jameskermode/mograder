@@ -40,10 +40,10 @@ uvx mograder student
 
 If you're working on [Molab](https://molab.marimo.io):
 
-1. Download the notebook from Moodle
+1. Download the notebook from Moodle (or via `uvx mograder https fetch`)
 2. Upload to Molab — dependencies install automatically
 3. Work on the notebook in your browser
-4. Download and submit via Moodle
+4. Download and submit via Moodle (or via `uvx mograder https submit`)
 
 ## Troubleshooting
 

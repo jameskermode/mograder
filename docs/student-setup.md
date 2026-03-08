@@ -76,12 +76,38 @@ The `--sandbox` flag tells marimo to read the PEP 723 inline metadata in the not
 
 If you're using [Molab](https://molab.marimo.io), no local installation is required:
 
-1. Download the `.py` notebook file from Moodle
+1. Download the `.py` notebook file from Moodle (or your course's HTTPS server)
 2. Upload the file to Molab
 3. Molab automatically installs dependencies from the notebook's inline metadata
 4. Work on the notebook in your browser
 5. Download the completed `.py` file from Molab
-6. Submit via the Moodle web interface
+6. Submit via the Moodle web interface or `mograder https submit`
+
+### Molab with HTTPS transport
+
+If your course uses the mograder HTTPS transport (instead of Moodle), your instructor will provide a server URL. You can fetch and submit assignments via the CLI:
+
+```bash
+# Fetch the assignment notebook
+uvx mograder https fetch "hw1" --url <SERVER_URL> -o hw1/
+
+# Upload to Molab, work on it, then download the completed file
+
+# Submit your work
+uvx mograder https submit hw1/homework.py -a "hw1" --url <SERVER_URL> --user <YOUR_USERNAME>
+
+# Check your status
+uvx mograder https feedback "hw1" --url <SERVER_URL> --user <YOUR_USERNAME>
+```
+
+Or set the URL in `mograder.toml` so you don't need `--url` every time:
+
+```toml
+transport = "https"
+
+[https]
+url = "http://your-course-server.example.com:8080"
+```
 
 ## Troubleshooting
 
