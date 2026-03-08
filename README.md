@@ -6,7 +6,11 @@ mograder is the Marimo equivalent of [nbgrader](https://nbgrader.readthedocs.io/
 
 ## Try it
 
-[![Open in marimo](https://marimo.io/shield.svg)](https://molab.marimo.io/github/jameskermode/mograder/blob/main/examples/release/demo-assignment/demo-assignment.py)
+A live demo is available with three components:
+
+1. **[Student Dashboard](https://jameskermode.github.io/mograder/?server=https://mograder-demo.onrender.com&repo=jameskermode/mograder&path=demo/course&branch=main)** — WASM app hosted on GitHub Pages. Lists assignments, shows submission status, and links to Molab for editing.
+2. **[Assignment Server](https://mograder-demo.onrender.com/assignments)** — Render free-tier instance running `mograder serve`. Handles fetch, submit, and status API calls. First request may take ~30s (cold start).
+3. **Edit in Molab** — Click "Edit in Molab" in the dashboard to open a release notebook in [molab.marimo.io](https://molab.marimo.io). Each notebook has a submit cell at the bottom to send your work back to the server.
 
 ## For students
 
