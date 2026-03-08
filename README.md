@@ -2,7 +2,7 @@
 
 Semi-automated grading for [Marimo](https://marimo.io) notebooks.
 
-mograder is the Marimo equivalent of [nbgrader](https://nbgrader.readthedocs.io/). Coding exercises support optional per-question marks via `Grader` (auto-scored pass/fail), while written analysis sections are graded by a GTA. Without per-question marks, a single holistic mark (0-100) is assigned.
+mograder is the Marimo equivalent of [nbgrader](https://nbgrader.readthedocs.io/). Coding exercises support optional per-question marks via `Grader` (auto-scored pass/fail), while written analysis sections are hand-graded. Alternatively, without per-question marks, a single holistic mark (0-100) is assigned.
 
 ## Try it
 
@@ -74,6 +74,14 @@ course/
 11. **`mograder serve`** / **`mograder https *`** — lightweight HTTPS server + transport for assignment distribution without Moodle
 
 ## Installation
+
+Stable release:
+
+```
+pip install mograder # or: uv add mograder
+```
+
+Development version:
 
 ```bash
 git clone https://github.com/jameskermode/mograder.git
