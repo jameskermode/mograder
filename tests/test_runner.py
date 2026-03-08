@@ -7,6 +7,7 @@ from unittest.mock import MagicMock, patch
 
 from mograder.models import CheckResult, NotebookResult
 from mograder.runner import (
+    _venv_python,
     build_zip,
     create_shared_sandbox,
     discover_labels,
@@ -276,10 +277,10 @@ def test_run_notebook_with_sandbox_dir(tmp_path):
     nb = tmp_path / "student.py"
     nb.write_text("# notebook")
 
-    # Create a fake sandbox dir structure (.venv with bin/python)
+    # Create a fake sandbox dir structure (cross-platform venv layout)
     sandbox_dir = tmp_path / ".venv"
-    (sandbox_dir / "bin").mkdir(parents=True)
-    fake_python = sandbox_dir / "bin" / "python"
+    fake_python = _venv_python(sandbox_dir)
+    fake_python.parent.mkdir(parents=True)
     fake_python.touch()
 
     with patch(
@@ -317,7 +318,8 @@ def test_run_batch_passes_sandbox_dir(tmp_path):
         nbs.append(nb)
 
     sandbox_dir = tmp_path / ".venv"
-    (sandbox_dir / "bin").mkdir(parents=True)
+    fake_python = _venv_python(sandbox_dir)
+    fake_python.parent.mkdir(parents=True)
 
     with patch(
         "mograder.runner.subprocess.run", side_effect=_mock_subprocess_success(tmp_path)
@@ -328,7 +330,7 @@ def test_run_batch_passes_sandbox_dir(tmp_path):
     # Every subprocess call should use the sandbox python
     for call in mock_run.call_args_list:
         cmd = call[0][0]
-        assert cmd[0] == str(sandbox_dir / "bin" / "python")
+        assert cmd[0] == str(fake_python)
         assert "--no-sandbox" in cmd
 
 
@@ -351,14 +353,15 @@ def test_create_shared_sandbox_returns_none_without_deps(tmp_path):
 
 
 def test_create_shared_sandbox_reuses_existing_venv(tmp_path):
-    """create_shared_sandbox skips venv creation if .venv/bin/python already exists."""
+    """create_shared_sandbox skips venv creation if venv python already exists."""
     nb = tmp_path / "notebook.py"
     nb.write_text("# has deps")
 
-    # Pre-create the venv structure
+    # Pre-create the venv structure (cross-platform)
     venv_dir = tmp_path / ".venv"
-    (venv_dir / "bin").mkdir(parents=True)
-    (venv_dir / "bin" / "python").touch()
+    venv_py = _venv_python(venv_dir)
+    venv_py.parent.mkdir(parents=True)
+    venv_py.touch()
 
     calls = []
 

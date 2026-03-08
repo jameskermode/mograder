@@ -2,6 +2,7 @@
 
 import csv
 import io
+import os
 import shutil
 import subprocess
 import sys
@@ -13,6 +14,13 @@ from pathlib import Path
 
 from mograder.models import NotebookResult
 from mograder.parser import count_cell_errors, parse_check_results
+
+
+def _venv_python(venv_dir: Path) -> Path:
+    """Return the path to the Python executable inside a venv (cross-platform)."""
+    if os.name == "nt":
+        return venv_dir / "Scripts" / "python.exe"
+    return venv_dir / "bin" / "python"
 
 
 def create_shared_sandbox(notebook_path: Path) -> Path | None:
@@ -43,7 +51,7 @@ def create_shared_sandbox(notebook_path: Path) -> Path | None:
 
     try:
         # Create venv only if it doesn't already exist
-        if not (venv_dir / "bin" / "python").exists():
+        if not _venv_python(venv_dir).exists():
             subprocess.run(
                 ["uv", "venv", "--seed", str(venv_dir)],
                 capture_output=True,
@@ -54,7 +62,7 @@ def create_shared_sandbox(notebook_path: Path) -> Path | None:
 
         # Always run install — uv is fast on cache hits
         reqs_file.write_text(proc.stdout)
-        venv_python = venv_dir / "bin" / "python"
+        venv_python = _venv_python(venv_dir)
         subprocess.run(
             [
                 "uv",
@@ -95,7 +103,7 @@ def run_notebook(
 
     try:
         if sandbox_dir is not None:
-            python_exe = str(sandbox_dir / "bin" / "python")
+            python_exe = str(_venv_python(sandbox_dir))
         else:
             python_exe = sys.executable
 
