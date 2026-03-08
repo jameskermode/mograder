@@ -239,7 +239,7 @@ def test_build_submit_cell():
     assert "https://example.com" in cell
     assert "hw1" in cell
     assert "mo.ui.run_button" in cell
-    assert "_submit_fn" in cell
+    assert "submit_fn" in cell
 
 
 def test_process_file_with_submit_url(tmp_path, fixtures_dir):
