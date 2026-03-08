@@ -14,7 +14,23 @@ Per-question marks usage::
     check = grader.check
 """
 
+import json
+import os
+
 import marimo as mo
+
+
+def _write_sidecar(label: str, status: str, details: list[str]) -> None:
+    """Append a check result to the sidecar JSONL file (if configured).
+
+    The runner sets ``MOGRADER_SIDECAR_PATH`` before executing the notebook.
+    """
+    path = os.environ.get("MOGRADER_SIDECAR_PATH")
+    if not path:
+        return
+    record = {"label": label, "status": status, "details": details}
+    with open(path, "a") as f:
+        f.write(json.dumps(record) + "\n")
 
 
 def check(label, checks):
@@ -28,13 +44,16 @@ def check(label, checks):
     """
     failures = [msg for ok, msg in checks if not ok]
     if not checks:
+        _write_sidecar(label, "warn", [])
         return mo.callout(mo.md(f"**{label}** — waiting for your code"), kind="warn")
     if failures:
+        _write_sidecar(label, "danger", failures)
         items = "\n".join(f"- {f}" for f in failures)
         return mo.callout(
             mo.md(f"**{label}** — some checks failed:\n\n{items}"),
             kind="danger",
         )
+    _write_sidecar(label, "success", [])
     return mo.callout(mo.md(f"**{label}** — all checks passed"), kind="success")
 
 
@@ -79,20 +98,24 @@ class Grader:
             badge = ""
 
         if not checks:
+            _write_sidecar(label, "warn", [])
             return _mo.callout(
                 _mo.md(f"{badge}**{label}** — waiting for your code"), kind="warn"
             )
         if failures:
+            _write_sidecar(label, "danger", failures)
             items = "\n".join(f"- {f}" for f in failures)
             return _mo.callout(
                 _mo.md(f"{badge}**{label}** — some checks failed:\n\n{items}"),
                 kind="danger",
             )
+        _write_sidecar(label, "success", [])
         return _mo.callout(
             _mo.md(f"{badge}**{label}** — all checks passed"), kind="success"
         )
 
     def scores(self):
+        # MOGRADER_SCORES_CELL — removed during feedback export
         """Display a reactive score table callout."""
         _mo = self.mo
         results = self._state()

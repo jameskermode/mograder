@@ -47,7 +47,7 @@ def test_run_notebook_success(tmp_path):
         result = run_notebook(nb, timeout=60)
 
     assert result.export_ok is True
-    assert len(result.checks) == 3
+    assert len(result.checks) == 4
     assert result.cell_errors == 2
 
 

@@ -9,6 +9,7 @@ from mograder.models import CheckResult
 VERIFICATION_MARKER = "# === MOGRADER: VERIFICATION SUMMARY ==="
 FEEDBACK_MARKER = "# === MOGRADER: GTA FEEDBACK ==="
 MARKS_MARKER = "# === MOGRADER: MARKS ==="
+SCORES_MARKER = "# MOGRADER_SCORES_CELL"
 
 
 def parse_marks_metadata(source_lines: list[str]) -> dict[str, int | float] | None:

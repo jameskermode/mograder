@@ -10,7 +10,12 @@ import subprocess
 import sys
 from pathlib import Path
 
-from mograder.cells import parse_auto_marks, parse_gta_feedback, parse_marks_metadata
+from mograder.cells import (
+    SCORES_MARKER,
+    parse_auto_marks,
+    parse_gta_feedback,
+    parse_marks_metadata,
+)
 
 
 def _build_callout_html(content_html: str, kind: str) -> str:
@@ -133,7 +138,7 @@ def inject_feedback_html(
     _scores_ids = {
         c["id"]
         for c in config["notebook"]["cells"]
-        if c["code"].strip() == "grader.scores()"
+        if SCORES_MARKER in c.get("code", "")
     }
     if _scores_ids:
         config["notebook"]["cells"] = [

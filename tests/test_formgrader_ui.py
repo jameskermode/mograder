@@ -47,6 +47,13 @@ def test_formgrader_app_has_expected_cells():
     assert "extract_submissions" in source
 
 
+def test_formgrader_app_uses_slider_for_mark():
+    """The grading mark input should be a slider, not a text input."""
+    source = FORMGRADER_APP.read_text(encoding="utf-8")
+    assert "mo.ui.slider" in source
+    assert "grading_mark_input = mo.ui.slider(" in source
+
+
 def test_formgrader_app_no_script_header():
     """The app must not have a PEP 723 script header."""
     header = FORMGRADER_APP.read_text(encoding="utf-8")[:200]

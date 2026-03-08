@@ -2,6 +2,7 @@
 
 import csv
 import io
+import json
 import os
 import shutil
 import subprocess
@@ -12,7 +13,7 @@ from collections.abc import Callable
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from pathlib import Path
 
-from mograder.models import NotebookResult
+from mograder.models import CheckResult, NotebookResult
 from mograder.parser import count_cell_errors, parse_check_results
 
 
@@ -89,6 +90,30 @@ def create_shared_sandbox(notebook_path: Path) -> Path | None:
     return venv_dir
 
 
+def _read_sidecar(path: Path) -> list[CheckResult]:
+    """Read check results from a sidecar JSONL file."""
+    results = []
+    try:
+        text = path.read_text().strip()
+    except OSError:
+        return results
+    if not text:
+        return results
+    for line in text.splitlines():
+        try:
+            record = json.loads(line)
+            results.append(
+                CheckResult(
+                    label=record["label"],
+                    status=record["status"],
+                    details=record.get("details", []),
+                )
+            )
+        except (json.JSONDecodeError, KeyError):
+            continue
+    return results
+
+
 def run_notebook(
     notebook_path: Path,
     timeout: int = 300,
@@ -100,6 +125,12 @@ def run_notebook(
 
     with tempfile.NamedTemporaryFile(suffix=".html", delete=False) as tmp:
         tmp_path = Path(tmp.name)
+
+    sidecar_fd, sidecar_name = tempfile.mkstemp(
+        suffix=".jsonl", prefix="mograder_sidecar_"
+    )
+    os.close(sidecar_fd)
+    sidecar_path = Path(sidecar_name)
 
     try:
         if sandbox_dir is not None:
@@ -120,11 +151,13 @@ def run_notebook(
         if sandbox_dir is not None:
             cmd.append("--no-sandbox")
 
+        env = {**os.environ, "MOGRADER_SIDECAR_PATH": str(sidecar_path)}
         proc = subprocess.run(
             cmd,
             capture_output=True,
             text=True,
             timeout=timeout,
+            env=env,
         )
 
         if proc.returncode != 0 and not tmp_path.exists():
@@ -133,8 +166,14 @@ def run_notebook(
             return result
 
         html_content = tmp_path.read_text()
-        result.checks = parse_check_results(html_content)
         result.cell_errors = count_cell_errors(html_content)
+
+        # Prefer sidecar results; fall back to HTML parsing
+        sidecar_results = _read_sidecar(sidecar_path)
+        if sidecar_results:
+            result.checks = sidecar_results
+        else:
+            result.checks = parse_check_results(html_content)
 
         if "some cells failed to execute" in proc.stderr:
             result.export_error = "some cells failed to execute"
@@ -152,6 +191,7 @@ def run_notebook(
         result.export_error = str(e)
     finally:
         tmp_path.unlink(missing_ok=True)
+        sidecar_path.unlink(missing_ok=True)
 
     return result
 

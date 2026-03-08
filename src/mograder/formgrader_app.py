@@ -979,21 +979,23 @@ def _(GRADEBOOK, grading_assignment_name, grading_current_sub, mo, set_grading_i
             _mark, _feedback_text = _parse_fb(_lines)
             _auto_mark = _parse_auto(_lines)
 
-        _existing_mark = ""
-        if _mark is not None:
-            if _auto_mark is not None:
-                _existing_mark = str(_mark)
-            else:
-                _existing_mark = str(_mark)
+        _max_mark = 100
+        if GRADEBOOK is not None and grading_assignment_name:
+            _assign = GRADEBOOK.get_assignment(grading_assignment_name)
+            if _assign:
+                _max_mark = int(_assign["max_mark"])
 
-        _mark_label = "Mark (0-100)"
-        if _auto_mark is not None:
-            _mark_label = "Manual mark"
+        _auto = _auto_mark or 0
+        _manual_max = _max_mark - _auto
+        _current_mark = int(_mark or 0)
 
-        grading_mark_input = mo.ui.text(
-            value=_existing_mark,
-            label=_mark_label,
-            full_width=False,
+        grading_mark_input = mo.ui.slider(
+            start=0,
+            stop=max(_manual_max, 1),
+            step=1,
+            value=min(_current_mark, _manual_max),
+            label=f"Manual mark (/{_manual_max})",
+            show_value=True,
         )
         grading_feedback_input = mo.ui.text_area(
             value=_feedback_text or "",
@@ -1006,7 +1008,9 @@ def _(GRADEBOOK, grading_assignment_name, grading_current_sub, mo, set_grading_i
             f"**Auto marks:** {_auto_mark}" if _auto_mark is not None else ""
         )
     else:
-        grading_mark_input = mo.ui.text(value="", label="Mark")
+        grading_mark_input = mo.ui.slider(
+            start=0, stop=100, step=1, value=0, label="Mark", show_value=True
+        )
         grading_feedback_input = mo.ui.text_area(value="", label="Feedback")
         grading_auto_info = ""
     set_grading_inputs({"mark": grading_mark_input, "feedback": grading_feedback_input})
@@ -1059,8 +1063,7 @@ def _(
             and grading_current_sub.autograded_path
             and _inputs is not None
         ):
-            _mark_str = _inputs["mark"].value.strip()
-            _mark = int(_mark_str) if _mark_str else None
+            _mark = _inputs["mark"].value
             _feedback = _inputs["feedback"].value or ""
             # Write to DB if available
             if GRADEBOOK is not None and grading_assignment_name:

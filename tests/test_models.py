@@ -7,12 +7,12 @@ def test_check_result_defaults():
     cr = CheckResult(label="Q1: Foo", status="success")
     assert cr.label == "Q1: Foo"
     assert cr.status == "success"
-    assert cr.details == ""
+    assert cr.details == []
 
 
 def test_check_result_with_details():
-    cr = CheckResult(label="Q2: Bar", status="danger", details="x != y")
-    assert cr.details == "x != y"
+    cr = CheckResult(label="Q2: Bar", status="danger", details=["x != y"])
+    assert cr.details == ["x != y"]
 
 
 def test_notebook_result_defaults():

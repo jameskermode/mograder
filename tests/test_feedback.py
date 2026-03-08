@@ -319,6 +319,40 @@ def test_export_falls_back_when_no_html(tmp_path):
     assert html_path.exists()
 
 
+def test_scores_cell_removed_with_trailing_comment(tmp_path):
+    """grader.scores() cell with trailing comment should still be removed."""
+    cells = [
+        {
+            "code": "grader.scores()  # show results",
+            "code_hash": "abc",
+            "config": {"column": None, "disabled": False, "hide_code": False},
+            "id": "SC01",
+            "name": "_",
+        },
+        {
+            "code": "# MOGRADER_SCORES_CELL\ngrader.scores()",
+            "code_hash": "def",
+            "config": {"column": None, "disabled": False, "hide_code": False},
+            "id": "SC02",
+            "name": "_",
+        },
+    ]
+    html_src = _make_marimo_html(cells)
+    dest = tmp_path / "out.html"
+
+    inject_feedback_html(html_src, dest, mark=80, feedback_text="Good")
+
+    result = dest.read_text()
+    prefix = "window.__MARIMO_MOUNT_CONFIG__ = "
+    start = result.index(prefix) + len(prefix)
+    config, _ = json.JSONDecoder().raw_decode(result, start)
+
+    # SC02 (with sentinel) should be removed; SC01 (without sentinel) should remain
+    nb_ids = {c["id"] for c in config["notebook"]["cells"]}
+    assert "SC02" not in nb_ids
+    assert "SC01" in nb_ids
+
+
 def test_export_copies_html_when_ungraded(tmp_path):
     """When mark is None (ungraded), HTML is copied without injection."""
     nb = tmp_path / "student.py"

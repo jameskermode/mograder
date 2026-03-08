@@ -10,7 +10,7 @@ class CheckResult:
 
     label: str
     status: str  # "success", "danger", "warn", or "error"
-    details: str = ""
+    details: list[str] = field(default_factory=list)
 
 
 @dataclass

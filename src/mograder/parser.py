@@ -1,14 +1,17 @@
-"""HTML callout parsing for marimo notebook exports."""
+"""HTML callout parsing for marimo notebook exports.
+
+This is a legacy fallback for notebooks that don't write a sidecar JSONL file
+at runtime.  The primary extraction path is via ``MOGRADER_SIDECAR_PATH``
+(see ``runner.py``).
+"""
 
 import re
 
 from mograder.models import CheckResult
 
-# Pattern to match callout elements in exported HTML.
-# marimo renders callouts as <marimo-callout-output> custom elements with
-# data-kind and content attributes that are HTML-entity-encoded.
+# Legacy pattern — matches any label starting with a letter (not just Q\d+).
 CALLOUT_PATTERN = re.compile(
-    r"(Q\d+):\s*([^\\\"<]+?)\\u0026lt;/strong\\u0026gt;\s*"
+    r"([A-Za-z][A-Za-z0-9_ -]*):\s*([^\\\"<]+?)\\u0026lt;/strong\\u0026gt;\s*"
     r"\\u2014\s*(all checks passed|some checks failed|waiting[^\\]*)"
 )
 
@@ -23,11 +26,11 @@ def parse_check_results(html_content: str) -> list[CheckResult]:
     seen = set()
 
     for match in CALLOUT_PATTERN.finditer(html_content):
-        q_num = match.group(1)
+        label_prefix = match.group(1).strip()
         label_rest = match.group(2).strip()
         status_text = match.group(3).strip()
 
-        label = f"{q_num}: {label_rest}".rstrip("\\")
+        label = f"{label_prefix}: {label_rest}".rstrip("\\")
 
         if "all checks passed" in status_text:
             status = "success"
@@ -38,7 +41,7 @@ def parse_check_results(html_content: str) -> list[CheckResult]:
         else:
             status = "unknown"
 
-        key = (q_num, status)
+        key = (label, status)
         if key not in seen:
             seen.add(key)
             results.append(CheckResult(label=label, status=status))
