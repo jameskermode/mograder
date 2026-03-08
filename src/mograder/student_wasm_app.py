@@ -13,11 +13,15 @@ def _():
     import marimo as mo
 
     params = mo.query_params()
-    return json, mo, params, urllib
+    # Snapshot which params were provided — plain set, no reactive writes
+    provided_params = frozenset(
+        k for k in ("server", "repo", "path", "branch", "user") if params.get(k, "")
+    )
+    return json, mo, params, provided_params, urllib
 
 
 @app.cell
-def _(mo, params):
+def _(mo, params, provided_params):
     server_url = mo.ui.text(
         value=params.get("server", ""),
         label="Server URL",
@@ -45,14 +49,26 @@ def _(mo, params):
         placeholder="your-name",
     )
 
-    mo.vstack(
-        [
-            mo.md("# mograder student dashboard"),
-            mo.hstack([server_url]),
-            mo.hstack([github_repo, release_path, branch]),
-            mo.hstack([username]),
+    # Only show widgets for params not already provided via URL
+    _rows = []
+    if "server" not in provided_params:
+        _rows.append(mo.hstack([server_url]))
+    if not provided_params.issuperset({"repo", "path", "branch"}):
+        _repo_row = [
+            w
+            for k, w in [
+                ("repo", github_repo),
+                ("path", release_path),
+                ("branch", branch),
+            ]
+            if k not in provided_params
         ]
-    )
+        if _repo_row:
+            _rows.append(mo.hstack(_repo_row))
+    if "user" not in provided_params:
+        _rows.append(mo.hstack([username]))
+
+    mo.vstack([mo.md("# mograder student dashboard")] + _rows)
     return branch, github_repo, release_path, server_url, username
 
 
