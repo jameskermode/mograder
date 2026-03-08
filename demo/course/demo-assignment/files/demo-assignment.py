@@ -201,7 +201,7 @@ def _(grader):
 
 
 
-@app.cell
+@app.cell(hide_code=True)
 def _(mo):
     # === MOGRADER: SUBMIT ===
     submit_username = mo.ui.text(label="Username", placeholder="Enter your username")
@@ -210,7 +210,7 @@ def _(mo):
     return (submit_btn, submit_username)
 
 
-@app.cell
+@app.cell(hide_code=True)
 def _(submit_btn, submit_username, mo):
     mo.stop(not submit_btn.value or not submit_username.value)
     from mograder.remote import submit as submit_fn

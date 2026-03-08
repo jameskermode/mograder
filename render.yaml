@@ -4,3 +4,8 @@ services:
     runtime: docker
     dockerfilePath: demo/Dockerfile
     plan: free
+  - type: web
+    name: mograder-editor
+    runtime: docker
+    dockerfilePath: demo/Dockerfile.editor
+    plan: free
