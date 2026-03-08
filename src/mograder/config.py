@@ -26,7 +26,8 @@ class MograderConfig:
     # [defaults]
     jobs: int = 4
     timeout: int = 300
-    headless: bool = False
+    no_edit: bool = False
+    no_actions: bool = False
     # [dirs]
     source_dir: str = "source"
     release_dir: str = "release"
@@ -77,7 +78,8 @@ def load_config(course_dir: Path) -> MograderConfig:
         https_url=https.get("url"),
         jobs=defaults.get("jobs", 4),
         timeout=defaults.get("timeout", 300),
-        headless=defaults.get("headless", False),
+        no_edit=defaults.get("no_edit", defaults.get("headless", False)),
+        no_actions=defaults.get("no_actions", defaults.get("headless", False)),
         source_dir=dirs.get("source", "source"),
         release_dir=dirs.get("release", "release"),
         submitted_dir=dirs.get("submitted", "submitted"),

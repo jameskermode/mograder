@@ -163,7 +163,7 @@ def _(
     for _a in assignments:
         # Source — edit source notebook
         if _a.source_path:
-            if MOGRADER_CONFIG.headless:
+            if MOGRADER_CONFIG.no_edit:
                 _src_btns_list.append(mo.md(""))
             else:
                 _p = _a.source_path
@@ -180,7 +180,7 @@ def _(
 
         # Release — preview release notebook
         if _a.release_path:
-            if MOGRADER_CONFIG.headless:
+            if MOGRADER_CONFIG.no_edit:
                 _rel_btns_list.append(mo.md(""))
             else:
                 _p2 = _a.release_path
@@ -240,7 +240,7 @@ def _(
         # Autograde
         _sub_dir = COURSE_DIR / DIR_NAMES.submitted / _a.name
         if (
-            not MOGRADER_CONFIG.headless
+            not MOGRADER_CONFIG.no_actions
             and _sub_dir.is_dir()
             and any(_sub_dir.glob("*.py"))
         ):
@@ -714,7 +714,7 @@ def _(
 
         _edit_list = []
         for _s in _subs:
-            if MOGRADER_CONFIG.headless:
+            if MOGRADER_CONFIG.no_edit:
                 _edit_list.append(mo.ui.button(label="✏️", disabled=True))
             elif _s.autograded_path:
                 _p = _s.autograded_path

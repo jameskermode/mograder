@@ -30,6 +30,11 @@ ${MOGRADER:-mograder} feedback examples/autograded/demo-assignment/*.py
 
 echo "=== Assembling course directory ==="
 mkdir -p "$COURSE/import"
+
+cat > "$COURSE/mograder.toml" << 'TOML'
+[defaults]
+no_edit = true
+TOML
 cp -r examples/source "$COURSE/"
 cp -r examples/release "$COURSE/"
 cp -r examples/submitted "$COURSE/"
