@@ -9,6 +9,20 @@ import requests
 from mograder.models import RemoteAssignment, RemoteStatus, RemoteSubmission
 
 
+def register(base_url: str, user: str, enrollment_code: str) -> dict:
+    """Register with the server and return ``{"token": ..., "user": ...}``."""
+    resp = requests.post(
+        f"{base_url.rstrip('/')}/register",
+        json={"user": user, "enrollment_code": enrollment_code},
+        timeout=30,
+    )
+    resp.raise_for_status()
+    data = resp.json()
+    if "error" in data:
+        raise RuntimeError(data["error"])
+    return data
+
+
 class HTTPSTransport:
     """Transport backed by the mograder HTTPS assignment server."""
 

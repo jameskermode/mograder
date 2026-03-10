@@ -509,3 +509,112 @@ class TestInvalidToken:
             headers={"Authorization": "Basic dXNlcjpwYXNz"},
         )
         assert resp.status_code == 401
+
+
+@pytest.fixture()
+def reg_server(tmp_path):
+    """Start a server with auth + enrollment code enabled."""
+    hw1_dir = tmp_path / "hw1" / "files"
+    hw1_dir.mkdir(parents=True)
+    (hw1_dir / "homework.py").write_text("# HW1")
+    secret = generate_secret()
+    enrollment_code = "test-enroll-123"
+    srv, thread = run_server_background(
+        tmp_path, port=0, secret=secret, enrollment_code=enrollment_code
+    )
+    port = srv.server_address[1]
+    base_url = f"http://127.0.0.1:{port}"
+    yield base_url, tmp_path, srv, secret, enrollment_code
+    srv.shutdown()
+
+
+class TestRegistration:
+    def test_register_success(self, reg_server):
+        from mograder.auth import verify_token
+
+        base_url, _, _, secret, enrollment_code = reg_server
+        resp = requests.post(
+            f"{base_url}/register",
+            json={"user": "alice", "enrollment_code": enrollment_code},
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["user"] == "alice"
+        assert verify_token(secret, data["token"]) == "alice"
+
+    def test_register_token_works_for_list(self, reg_server):
+        base_url, _, _, _, enrollment_code = reg_server
+        resp = requests.post(
+            f"{base_url}/register",
+            json={"user": "bob", "enrollment_code": enrollment_code},
+        )
+        token = resp.json()["token"]
+        # Use the token to access a protected endpoint
+        resp2 = requests.get(
+            f"{base_url}/assignments",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert resp2.status_code == 200
+
+    def test_register_wrong_code(self, reg_server):
+        base_url, _, _, _, _ = reg_server
+        resp = requests.post(
+            f"{base_url}/register",
+            json={"user": "alice", "enrollment_code": "wrong"},
+        )
+        assert resp.status_code == 403
+
+    def test_register_missing_user(self, reg_server):
+        base_url, _, _, _, enrollment_code = reg_server
+        resp = requests.post(
+            f"{base_url}/register",
+            json={"enrollment_code": enrollment_code},
+        )
+        assert resp.status_code == 400
+
+    def test_register_reserved_username(self, reg_server):
+        base_url, _, _, _, enrollment_code = reg_server
+        resp = requests.post(
+            f"{base_url}/register",
+            json={"user": INSTRUCTOR_USER, "enrollment_code": enrollment_code},
+        )
+        assert resp.status_code == 400
+
+    def test_register_dunder_username(self, reg_server):
+        base_url, _, _, _, enrollment_code = reg_server
+        resp = requests.post(
+            f"{base_url}/register",
+            json={"user": "__admin__", "enrollment_code": enrollment_code},
+        )
+        assert resp.status_code == 400
+
+    def test_register_not_enabled(self, auth_server):
+        base_url, _, _, _ = auth_server
+        resp = requests.post(
+            f"{base_url}/register",
+            json={"user": "alice", "enrollment_code": "anything"},
+        )
+        assert resp.status_code == 403
+
+    def test_register_no_auth_server(self, server):
+        base_url, _, _ = server
+        resp = requests.post(
+            f"{base_url}/register",
+            json={"user": "alice", "enrollment_code": "anything"},
+        )
+        # No enrollment code configured → 403 (not enabled)
+        assert resp.status_code in (400, 403, 404)
+
+    def test_registered_token_cannot_access_instructor(self, reg_server):
+        base_url, _, _, _, enrollment_code = reg_server
+        resp = requests.post(
+            f"{base_url}/register",
+            json={"user": "student1", "enrollment_code": enrollment_code},
+        )
+        token = resp.json()["token"]
+        # Student cannot list submissions (instructor-only)
+        resp2 = requests.get(
+            f"{base_url}/assignments/hw1/submissions",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert resp2.status_code == 403

@@ -16,6 +16,7 @@ Serves from a directory structure::
 
 Endpoints::
 
+    POST /register                                 -> self-service token (needs enrollment code)
     GET  /assignments                              -> JSON manifest
     GET  /assignments/<name>/files/<file>          -> download file
     POST /assignments/<name>/submit?user=<u>       -> upload .py (multipart)
@@ -26,6 +27,7 @@ Endpoints::
 
 from __future__ import annotations
 
+import hmac
 import json
 import os
 import re
@@ -212,6 +214,10 @@ class AssignmentHandler(BaseHTTPRequestHandler):
         path = parsed.path.rstrip("/")
         qs = parse_qs(parsed.query)
 
+        if path == "/register":
+            self._handle_register()
+            return
+
         if not path.startswith("/assignments/"):
             self._send_error(404, "Not found")
             return
@@ -358,6 +364,40 @@ class AssignmentHandler(BaseHTTPRequestHandler):
             }
         )
 
+    def _handle_register(self):
+        if self.server.enrollment_code is None:
+            self._send_error(403, "Registration is not enabled on this server")
+            return
+        if self.server.secret is None:
+            self._send_error(
+                400, "Server has no auth secret (running in --no-auth mode)"
+            )
+            return
+        content_length = int(self.headers.get("Content-Length", 0))
+        body = self.rfile.read(content_length)
+        try:
+            data = json.loads(body)
+        except json.JSONDecodeError:
+            self._send_error(400, "Invalid JSON")
+            return
+        user = data.get("user", "").strip()
+        code = data.get("enrollment_code", "")
+        if not user:
+            self._send_error(400, "Missing 'user' field")
+            return
+        from mograder.auth import INSTRUCTOR_USER
+
+        if user == INSTRUCTOR_USER or user.startswith("__"):
+            self._send_error(400, "Reserved username")
+            return
+        if not hmac.compare_digest(code, self.server.enrollment_code):
+            self._send_error(403, "Invalid enrollment code")
+            return
+        from mograder.auth import make_token
+
+        token = make_token(self.server.secret, user)
+        self._send_json({"token": token, "user": user})
+
 
 class AssignmentServer(HTTPServer):
     """HTTPServer subclass that stores the root directory."""
@@ -369,10 +409,12 @@ class AssignmentServer(HTTPServer):
         handler_class,
         submitted_dir: Path | None = None,
         secret: str | None = None,
+        enrollment_code: str | None = None,
     ):
         self.root_dir = root_dir
         self.submitted_dir = submitted_dir if submitted_dir is not None else root_dir
         self.secret = secret
+        self.enrollment_code = enrollment_code
         super().__init__(server_address, handler_class)
 
 
@@ -399,6 +441,7 @@ def create_server(
     port: int = 0,
     submitted_dir: Path | None = None,
     secret: str | None = None,
+    enrollment_code: str | None = None,
 ) -> AssignmentServer:
     """Create an AssignmentServer on *host*:*port*.
 
@@ -406,6 +449,7 @@ def create_server(
     The actual port is available as ``server.server_address[1]``.
 
     If *secret* is given, all endpoints require a valid HMAC token.
+    If *enrollment_code* is given, ``POST /register`` is enabled.
     """
     server = AssignmentServer(
         root_dir,
@@ -413,6 +457,7 @@ def create_server(
         AssignmentHandler,
         submitted_dir=submitted_dir,
         secret=secret,
+        enrollment_code=enrollment_code,
     )
     return server
 
@@ -423,10 +468,16 @@ def run_server_background(
     port: int = 0,
     secret: str | None = None,
     submitted_dir: Path | None = None,
+    enrollment_code: str | None = None,
 ) -> tuple[AssignmentServer, threading.Thread]:
     """Start a server in a daemon thread. Returns (server, thread)."""
     server = create_server(
-        root_dir, host, port, submitted_dir=submitted_dir, secret=secret
+        root_dir,
+        host,
+        port,
+        submitted_dir=submitted_dir,
+        secret=secret,
+        enrollment_code=enrollment_code,
     )
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
@@ -437,6 +488,7 @@ def create_starlette_routes(
     root_dir: Path,
     submitted_dir: Path | None = None,
     secret: str | None = None,
+    enrollment_code: str | None = None,
 ):
     """Create a Starlette app serving the assignment API.
 
@@ -658,7 +710,31 @@ def create_starlette_routes(
             }
         )
 
+    async def register(request: Request):
+        if enrollment_code is None:
+            return _json({"error": "Registration is not enabled"}, 403)
+        if secret is None:
+            return _json({"error": "No auth secret configured"}, 400)
+        body = await request.body()
+        try:
+            data = json.loads(body)
+        except json.JSONDecodeError:
+            return _json({"error": "Invalid JSON"}, 400)
+        user = data.get("user", "").strip()
+        code = data.get("enrollment_code", "")
+        if not user:
+            return _json({"error": "Missing 'user' field"}, 400)
+        from mograder.auth import INSTRUCTOR_USER, make_token
+
+        if user == INSTRUCTOR_USER or user.startswith("__"):
+            return _json({"error": "Reserved username"}, 400)
+        if not hmac.compare_digest(code, enrollment_code):
+            return _json({"error": "Invalid enrollment code"}, 403)
+        token = make_token(secret, user)
+        return _json({"token": token, "user": user})
+
     routes = [
+        Route("/register", register, methods=["POST"]),
         Route("/assignments", list_assignments),
         Route("/assignments/{name:path}/files/{file:path}", download_file),
         Route(

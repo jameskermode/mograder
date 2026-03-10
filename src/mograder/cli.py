@@ -1770,7 +1770,27 @@ def https_feedback(ctx, assignment, url, token, user):
     default=None,
     help="Read usernames from FILE, print tokens, then exit",
 )
-def serve(directory, port, host, no_auth, generate_tokens):
+@click.option(
+    "--enrollment-code",
+    envvar="MOGRADER_ENROLLMENT_CODE",
+    default=None,
+    help="Enrollment passphrase for student self-registration",
+)
+@click.option(
+    "--enrollment-code-file",
+    type=click.Path(exists=True, path_type=Path),
+    default=None,
+    help="Read enrollment code from FILE",
+)
+def serve(
+    directory,
+    port,
+    host,
+    no_auth,
+    generate_tokens,
+    enrollment_code,
+    enrollment_code_file,
+):
     """Start a lightweight assignment server.
 
     Serves assignments from DIRECTORY (default: current dir).
@@ -1795,13 +1815,27 @@ def serve(directory, port, host, no_auth, generate_tokens):
         click.echo(f"\ninstructor: {make_token(secret, INSTRUCTOR_USER)}")
         return
 
+    # Resolve enrollment code: explicit flag > file > env var (via Click envvar)
+    if enrollment_code_file is not None:
+        if enrollment_code is not None:
+            raise click.UsageError(
+                "Cannot use both --enrollment-code and --enrollment-code-file."
+            )
+        enrollment_code = enrollment_code_file.read_text().strip()
+
     env_port = os.environ.get("PORT")
     if port is None:
         port = int(env_port) if env_port else 8080
     if host is None:
         host = "0.0.0.0" if env_port else "127.0.0.1"
 
-    server = create_server(directory, host=host, port=port, secret=secret)
+    server = create_server(
+        directory,
+        host=host,
+        port=port,
+        secret=secret,
+        enrollment_code=enrollment_code,
+    )
     actual_port = server.server_address[1]
     click.echo(f"Serving assignments from {directory.resolve()}")
     click.echo(f"  URL: http://{host}:{actual_port}")
@@ -1809,6 +1843,8 @@ def serve(directory, port, host, no_auth, generate_tokens):
         click.echo("  Authentication: enabled")
     else:
         click.echo("  Authentication: disabled (--no-auth)")
+    if enrollment_code:
+        click.echo("  Registration: enabled")
     click.echo("Press Ctrl+C to stop.")
     try:
         server.serve_forever()
