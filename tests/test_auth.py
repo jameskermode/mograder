@@ -167,13 +167,22 @@ class TestTokenCommand:
         token_str = result.output.strip().splitlines()[0].split(": ", 1)[1]
         assert verify_token("stdinsecret", token_str) == "alice"
 
-    def test_error_no_secret_source(self):
+    def test_default_secret_from_cwd(self, tmp_path, monkeypatch):
+        (tmp_path / ".mograder-secret").write_text("cwdsecret\n")
+        monkeypatch.chdir(tmp_path)
+        runner = CliRunner()
+        result = runner.invoke(cli, ["token", "alice"])
+        assert result.exit_code == 0
+        token_str = result.output.strip().splitlines()[0].split(": ", 1)[1]
+        assert verify_token("cwdsecret", token_str) == "alice"
+
+    def test_error_no_secret_in_cwd(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
         runner = CliRunner()
         result = runner.invoke(cli, ["token", "alice"])
         assert result.exit_code != 0
-        assert (
-            "exactly one" in result.output.lower()
-            or "exactly one" in str(result.exception).lower()
+        assert ".mograder-secret" in result.output or ".mograder-secret" in str(
+            result.exception
         )
 
     def test_error_multiple_secret_sources(self, tmp_path):

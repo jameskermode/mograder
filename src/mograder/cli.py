@@ -1831,16 +1831,27 @@ def serve(directory, port, host, no_auth, generate_tokens):
 def token(usernames, secret_file, secret_stdin, secret_value):
     """Generate authentication tokens for the given usernames.
 
-    Reads the HMAC secret via exactly one of --secret-file, --secret-stdin,
-    or --secret.  Always appends an instructor token.
+    Reads the HMAC secret via --secret-file, --secret-stdin, or --secret.
+    With no flag, reads .mograder-secret from the current directory.
+    Always appends an instructor token.
     """
-    from mograder.auth import INSTRUCTOR_USER, make_token
+    from mograder.auth import INSTRUCTOR_USER, SECRET_FILENAME, make_token
 
     sources = sum([secret_file is not None, secret_stdin, secret_value is not None])
-    if sources != 1:
+    if sources > 1:
         raise click.UsageError(
-            "Provide exactly one of --secret-file, --secret-stdin, or --secret."
+            "Provide at most one of --secret-file, --secret-stdin, or --secret."
         )
+
+    if sources == 0:
+        # Default: read from CWD
+        default = Path(SECRET_FILENAME)
+        if not default.is_file():
+            raise click.UsageError(
+                f"No {SECRET_FILENAME} in current directory. "
+                "Use --secret-file, --secret-stdin, or --secret."
+            )
+        secret_file = default
 
     if secret_file is not None:
         secret = secret_file.read_text().strip()
