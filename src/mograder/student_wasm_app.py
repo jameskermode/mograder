@@ -27,7 +27,7 @@ def _(mo, params, provided_params):
     server_url = mo.ui.text(
         value=params.get("server", ""),
         label="Server URL",
-        placeholder="https://mograder-demo.onrender.com",
+        placeholder="https://mograder-demo.jrkermode.uk",
         full_width=True,
     )
     github_repo = mo.ui.text(
@@ -53,7 +53,7 @@ def _(mo, params, provided_params):
     editor_url = mo.ui.text(
         value=params.get("editor", ""),
         label="Editor URL",
-        placeholder="https://mograder-editor.onrender.com",
+        placeholder="https://mograder-demo.jrkermode.uk",
         full_width=True,
     )
 

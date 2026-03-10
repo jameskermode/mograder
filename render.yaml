@@ -1,6 +1,0 @@
-services:
-  - type: web
-    name: mograder-demo
-    runtime: docker
-    dockerfilePath: demo/Dockerfile.formgrader
-    plan: free

@@ -1,7 +1,7 @@
 transport = "https"
 
 [https]
-url = "https://mograder-demo.onrender.com"
+url = "https://mograder-demo.jrkermode.uk"
 
 [defaults]
 headless_edit = true

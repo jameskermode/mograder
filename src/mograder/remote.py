@@ -18,7 +18,7 @@ def fetch(url: str, assignment: str, dest: str = ".") -> list[Path]:
     """Download all files for an assignment from the server.
 
     Args:
-        url: Base server URL (e.g. ``"https://mograder-demo.onrender.com"``)
+        url: Base server URL (e.g. ``"https://mograder-demo.jrkermode.uk"``)
         assignment: Assignment name
         dest: Destination directory (default: current dir)
 
