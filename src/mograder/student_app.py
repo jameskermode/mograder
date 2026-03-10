@@ -306,6 +306,7 @@ def _(
 # --- Execution cell: reads get_pending() and does the actual work ---
 @app.cell
 def _(
+    CONFIG,
     COURSE_DIR,
     MoodleAPIClient,
     Path,
@@ -357,8 +358,51 @@ def _(
         elif _act == "edit":
             _path = pending["path"]
             _name = pending["name"]
-            sp.Popen([sys.executable, "-m", "marimo", "edit", "--sandbox", _path])
-            set_action_log(f"Opened **{_name}** for editing")
+            _cmd = [sys.executable, "-m", "marimo", "edit", "--sandbox", _path]
+            if CONFIG.headless_edit:
+                import os as _os
+                import re as _re
+                import threading as _threading
+                from urllib.parse import urlparse as _urlparse
+
+                _cmd.extend(["--headless", "--host", "0.0.0.0"])
+                _proc = sp.Popen(_cmd, stdout=sp.PIPE, stderr=sp.STDOUT, text=True)
+                _url_box = []
+                _found = _threading.Event()
+
+                def _drain_output():
+                    for _line in _proc.stdout:
+                        if not _url_box:
+                            _m = _re.search(r"https?://\S+", _line)
+                            if _m:
+                                _url_box.append(_m.group(0))
+                                _found.set()
+
+                _threading.Thread(target=_drain_output, daemon=True).start()
+                _found.wait(timeout=30)
+                if _url_box:
+                    _raw_url = _url_box[0]
+                    if _os.environ.get("CODESPACES"):
+                        _parsed = _urlparse(_raw_url)
+                        _port = _parsed.port or 2718
+                        _cs_name = _os.environ["CODESPACE_NAME"]
+                        _cs_domain = _os.environ.get(
+                            "GITHUB_CODESPACES_PORT_FORWARDING_DOMAIN",
+                            "app.github.dev",
+                        )
+                        _url = f"https://{_cs_name}-{_port}.{_cs_domain}"
+                        if _parsed.query:
+                            _url += f"?{_parsed.query}"
+                    else:
+                        _url = _raw_url
+                    set_action_log(f"Opened **{_name}** for editing: [{_url}]({_url})")
+                else:
+                    set_action_log(
+                        f"Opened **{_name}** for editing (could not detect URL)"
+                    )
+            else:
+                sp.Popen(_cmd)
+                set_action_log(f"Opened **{_name}** for editing")
 
         elif _act == "validate":
             _path = Path(pending["path"])

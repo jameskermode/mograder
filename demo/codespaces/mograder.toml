@@ -1,0 +1,7 @@
+transport = "https"
+
+[https]
+url = "https://mograder-demo.onrender.com"
+
+[defaults]
+headless_edit = true

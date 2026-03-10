@@ -1,0 +1,12 @@
+{
+  "name": "mograder",
+  "image": "mcr.microsoft.com/devcontainers/python:3.12",
+  "postCreateCommand": "curl -LsSf https://astral.sh/uv/install.sh | sh && export PATH=\"$HOME/.local/bin:$PATH\" && uv sync",
+  "postStartCommand": "cd demo/codespaces && $HOME/.local/bin/uv run mograder student . --headless",
+  "forwardPorts": [2718],
+  "customizations": {
+    "vscode": {
+      "extensions": ["marimo-team.vscode-marimo"]
+    }
+  }
+}

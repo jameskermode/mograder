@@ -11,6 +11,7 @@ A live demo is available with three components:
 1. **[Student Dashboard](https://jameskermode.github.io/mograder/?server=https://mograder-demo.onrender.com&repo=jameskermode/mograder&path=demo/course&branch=main)** — WASM app hosted on GitHub Pages. Lists assignments, shows submission status, and links to [Molab](https://molab.marimo.io) for editing.
 2. **[Formgrader + Assignment Server](https://mograder-demo.onrender.com)** — Render free-tier instance running a combined ASGI app. The formgrader UI shows the full grading workflow (assignments, submissions, grading, students tabs) with pre-populated demo data. The same service also handles the assignment API at `/assignments`.
 3. **Notebook Editor** — Click "Edit in Molab" in the dashboard to open a notebook in [Molab](https://molab.marimo.io) with full edit mode. Each notebook has a submit cell to send your work back to the assignment server.
+4. **[GitHub Codespaces](https://codespaces.new/jameskermode/mograder)** — Open the repo in a Codespace for a full development environment with uv, marimo, and the student dashboard pre-configured. Assignments are served from the Render demo server.
 
 The Render service runs on the free tier, so the first request after idle may take ~30s (cold start).
 
