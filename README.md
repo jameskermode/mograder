@@ -23,6 +23,8 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
 uvx mograder student <CONFIG_URL>
 ```
 
+**Or open in [GitHub Codespaces](docs/student-setup.md#option-2-github-codespaces)** — one click, no install needed.
+
 ## Directory convention
 
 mograder follows [nbgrader's terminology](https://nbgrader.readthedocs.io/en/latest/user_guide/philosophy.html): **source** → **release** → **submitted** → **autograded** → **feedback**.
