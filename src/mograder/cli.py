@@ -1815,3 +1815,40 @@ def serve(directory, port, host, no_auth, generate_tokens):
     except KeyboardInterrupt:
         click.echo("\nShutting down.")
         server.shutdown()
+
+
+@cli.command()
+@click.argument("usernames", nargs=-1, required=True)
+@click.option(
+    "--secret-file",
+    type=click.Path(exists=True, path_type=Path),
+    help="Read secret from FILE",
+)
+@click.option("--secret-stdin", is_flag=True, help="Read secret from stdin")
+@click.option(
+    "--secret", "secret_value", help="Secret string (visible in process list)"
+)
+def token(usernames, secret_file, secret_stdin, secret_value):
+    """Generate authentication tokens for the given usernames.
+
+    Reads the HMAC secret via exactly one of --secret-file, --secret-stdin,
+    or --secret.  Always appends an instructor token.
+    """
+    from mograder.auth import INSTRUCTOR_USER, make_token
+
+    sources = sum([secret_file is not None, secret_stdin, secret_value is not None])
+    if sources != 1:
+        raise click.UsageError(
+            "Provide exactly one of --secret-file, --secret-stdin, or --secret."
+        )
+
+    if secret_file is not None:
+        secret = secret_file.read_text().strip()
+    elif secret_stdin:
+        secret = click.get_text_stream("stdin").read().strip()
+    else:
+        secret = secret_value
+
+    for username in usernames:
+        click.echo(f"{username}: {make_token(secret, username)}")
+    click.echo(f"\ninstructor: {make_token(secret, INSTRUCTOR_USER)}")

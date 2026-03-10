@@ -1,5 +1,7 @@
 """Tests for mograder.auth — token generation and verification."""
 
+from click.testing import CliRunner
+
 from mograder.auth import (
     INSTRUCTOR_USER,
     clear_cached_https_token,
@@ -11,6 +13,7 @@ from mograder.auth import (
     save_cached_https_token,
     verify_token,
 )
+from mograder.cli import cli
 
 
 class TestGenerateSecret:
@@ -115,3 +118,74 @@ class TestHTTPSTokenCache:
 
         save_cached_https_token("http://example.com/", "tok:abc", "alice")
         assert load_cached_https_token("http://example.com") is not None
+
+
+class TestTokenCommand:
+    def test_with_secret_flag(self):
+        runner = CliRunner()
+        result = runner.invoke(cli, ["token", "--secret", "mysecret", "alice", "bob"])
+        assert result.exit_code == 0
+        assert "alice: alice:" in result.output
+        assert "bob: bob:" in result.output
+        assert f"instructor: {INSTRUCTOR_USER}:" in result.output
+
+    def test_instructor_always_included(self):
+        runner = CliRunner()
+        result = runner.invoke(cli, ["token", "--secret", "s", "eve"])
+        assert result.exit_code == 0
+        lines = [line for line in result.output.strip().splitlines() if line]
+        assert len(lines) == 2  # eve + instructor
+        assert lines[-1].startswith("instructor:")
+
+    def test_tokens_are_valid(self):
+        secret = "testsecret"
+        runner = CliRunner()
+        result = runner.invoke(cli, ["token", "--secret", secret, "alice"])
+        assert result.exit_code == 0
+        # Extract the token from "alice: alice:<hmac>"
+        token_line = result.output.strip().splitlines()[0]
+        token_str = token_line.split(": ", 1)[1]
+        assert verify_token(secret, token_str) == "alice"
+
+    def test_secret_file(self, tmp_path):
+        secret_file = tmp_path / "secret.txt"
+        secret_file.write_text("filesecret\n")
+        runner = CliRunner()
+        result = runner.invoke(
+            cli, ["token", "--secret-file", str(secret_file), "alice"]
+        )
+        assert result.exit_code == 0
+        token_str = result.output.strip().splitlines()[0].split(": ", 1)[1]
+        assert verify_token("filesecret", token_str) == "alice"
+
+    def test_secret_stdin(self):
+        runner = CliRunner()
+        result = runner.invoke(
+            cli, ["token", "--secret-stdin", "alice"], input="stdinsecret\n"
+        )
+        assert result.exit_code == 0
+        token_str = result.output.strip().splitlines()[0].split(": ", 1)[1]
+        assert verify_token("stdinsecret", token_str) == "alice"
+
+    def test_error_no_secret_source(self):
+        runner = CliRunner()
+        result = runner.invoke(cli, ["token", "alice"])
+        assert result.exit_code != 0
+        assert (
+            "exactly one" in result.output.lower()
+            or "exactly one" in str(result.exception).lower()
+        )
+
+    def test_error_multiple_secret_sources(self, tmp_path):
+        secret_file = tmp_path / "s.txt"
+        secret_file.write_text("x\n")
+        runner = CliRunner()
+        result = runner.invoke(
+            cli, ["token", "--secret", "x", "--secret-file", str(secret_file), "alice"]
+        )
+        assert result.exit_code != 0
+
+    def test_error_no_usernames(self):
+        runner = CliRunner()
+        result = runner.invoke(cli, ["token", "--secret", "s"])
+        assert result.exit_code != 0
