@@ -1,6 +1,7 @@
 """Tests for mograder.https_server — assignment HTTP server."""
 
 import json
+import sys
 
 import pytest
 import requests
@@ -116,10 +117,11 @@ class TestSubmittedDir:
             )
             assert resp.status_code == 200
 
-            # Symlink exists and resolves to the content
+            # Symlink (or copy on Windows) exists and resolves to the content
             symlink = submitted / "hw1" / "alice.py"
             assert symlink.exists()
-            assert symlink.is_symlink()
+            if sys.platform != "win32":
+                assert symlink.is_symlink()
             assert symlink.read_bytes() == b"print('answer')"
 
             # Timestamped file exists
@@ -155,6 +157,7 @@ class TestSubmittedDir:
                 f"{base_url}/assignments/hw1/submit?user=alice",
                 files={"file": ("solution.py", b"v1")},
             )
+            # On Unix, resolve() follows symlink to the timestamped file
             first_target = (submitted / "hw1" / "alice.py").resolve()
 
             # Wait to ensure different timestamp
@@ -169,9 +172,10 @@ class TestSubmittedDir:
             symlink = submitted / "hw1" / "alice.py"
             assert symlink.read_bytes() == b"v2"
 
-            # Old timestamped file still exists
-            assert first_target.exists()
-            assert first_target.read_bytes() == b"v1"
+            if sys.platform != "win32":
+                # On Unix the old timestamped file still exists via symlink resolve
+                assert first_target.exists()
+                assert first_target.read_bytes() == b"v1"
 
             # Two timestamped files
             timestamped = [

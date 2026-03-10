@@ -29,6 +29,8 @@ from __future__ import annotations
 import json
 import os
 import re
+import shutil
+import sys
 import tempfile
 import threading
 from datetime import datetime, timezone
@@ -59,9 +61,14 @@ def _write_submission(target_dir: Path, user: str, file_data: bytes) -> Path:
     # 2. Rename temp → timestamped name (atomic on same FS)
     os.rename(tmp, timestamped)
     # 3. Create symlink atomically: make temp symlink, then rename over real one
-    tmp_link = timestamped.with_suffix(".py.lnk")
-    os.symlink(timestamped.name, tmp_link)  # relative symlink
-    os.rename(str(tmp_link), str(symlink))  # atomic replace
+    if sys.platform == "win32":
+        # Windows: symlinks need admin privileges; use a plain copy instead
+        symlink.unlink(missing_ok=True)
+        shutil.copy2(timestamped, symlink)
+    else:
+        tmp_link = timestamped.with_suffix(".py.lnk")
+        os.symlink(timestamped.name, tmp_link)  # relative symlink
+        os.replace(str(tmp_link), str(symlink))  # atomic replace
     return timestamped
 
 
