@@ -1,7 +1,5 @@
 """End-to-end test: fetch → submit → status via localhost HTTPS server."""
 
-import json
-
 import pytest
 from click.testing import CliRunner
 
@@ -80,7 +78,7 @@ class TestE2EStudentWorkflow:
         )
         assert result.exit_code == 0, result.output
         assert "Submitted" in result.output
-        assert (server_root / "hw1" / "submissions" / "alice.py").exists()
+        assert (server_root / "hw1" / "alice.py").exists()
 
     def test_https_feedback_after_submit(self, course_server, monkeypatch):
         base_url, course_dir, server_root = course_server

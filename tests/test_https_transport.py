@@ -73,15 +73,20 @@ class TestHTTPSTransportSubmit:
         nb = tmp_path / "solution.py"
         nb.write_text("print('answer')")
         transport.submit_file("hw1", nb)
-        assert (server_root / "hw1" / "submissions" / "alice.py").exists()
+        # submitted_dir defaults to root; symlink created there
+        assert (server_root / "hw1" / "alice.py").exists()
 
 
 class TestHTTPSTransportGetSubmissions:
     def test_get_submissions(self, transport_server):
         transport, server_root = transport_server
-        sub_dir = server_root / "hw1" / "submissions"
-        sub_dir.mkdir(parents=True)
-        (sub_dir / "bob.py").write_text("code")
+        # Create a symlink-style submission in submitted_dir (defaults to root)
+        sub_dir = server_root / "hw1"
+        sub_dir.mkdir(parents=True, exist_ok=True)
+        import os
+
+        (sub_dir / "bob_20260310T195000.py").write_text("code")
+        os.symlink("bob_20260310T195000.py", sub_dir / "bob.py")
 
         subs = transport.get_submissions("hw1")
         assert len(subs) == 1
@@ -127,7 +132,7 @@ class TestHTTPSTransportAuth:
         nb = tmp_path / "solution.py"
         nb.write_text("print('answer')")
         student.submit_file("hw1", nb)
-        assert (server_root / "hw1" / "submissions" / "alice.py").exists()
+        assert (server_root / "hw1" / "alice.py").exists()
 
     def test_student_can_get_status_with_token(self, auth_transport_server):
         student, _, _, _ = auth_transport_server
@@ -135,10 +140,13 @@ class TestHTTPSTransportAuth:
         assert status.status == "new"
 
     def test_instructor_can_list_submissions(self, auth_transport_server):
+        import os
+
         _, instructor, server_root, _ = auth_transport_server
-        sub_dir = server_root / "hw1" / "submissions"
-        sub_dir.mkdir(parents=True)
-        (sub_dir / "bob.py").write_text("code")
+        sub_dir = server_root / "hw1"
+        sub_dir.mkdir(parents=True, exist_ok=True)
+        (sub_dir / "bob_20260310T195000.py").write_text("code")
+        os.symlink("bob_20260310T195000.py", sub_dir / "bob.py")
         subs = instructor.get_submissions("hw1")
         assert len(subs) == 1
 

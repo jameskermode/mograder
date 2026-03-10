@@ -1,9 +1,6 @@
 """Tests for mograder.auth — token generation and verification."""
 
-import json
-
 from mograder.auth import (
-    HTTPS_TOKEN_CACHE,
     INSTRUCTOR_USER,
     clear_cached_https_token,
     generate_secret,

@@ -1,7 +1,5 @@
 """Tests for mograder.moodle_api — Moodle REST API client and CLI commands."""
 
-import json
-from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import click
@@ -196,7 +194,6 @@ class TestSaveGrades:
         with patch.object(client, "_call", return_value=[]) as mock_call:
             client.save_grades(10, grades)
         call_kwargs = mock_call.call_args
-        params = call_kwargs.kwargs if call_kwargs.kwargs else call_kwargs[1]
         # Just check the function name was correct
         assert call_kwargs.args[0] == "mod_assign_save_grades"
 

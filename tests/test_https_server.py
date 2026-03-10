@@ -82,7 +82,10 @@ class TestSubmit:
         assert resp.status_code == 200
         data = resp.json()
         assert data["status"] == "ok"
-        assert (tmp_path / "hw1" / "submissions" / "alice.py").exists()
+        # Symlink created in submitted_dir (defaults to root)
+        symlink = tmp_path / "hw1" / "alice.py"
+        assert symlink.exists()
+        assert symlink.read_bytes() == b"print('hello')"
 
     def test_submit_missing_user(self, server):
         base_url, _, _ = server
@@ -94,16 +97,15 @@ class TestSubmit:
 
 
 class TestSubmittedDir:
-    def test_submit_writes_to_both_dirs(self, tmp_path):
-        """Submitting with submitted_dir writes to both locations."""
+    def test_submit_writes_timestamped_and_symlink(self, tmp_path):
+        """Submitting with submitted_dir creates timestamped file + symlink."""
         root = tmp_path / "root"
         hw1_dir = root / "hw1" / "files"
         hw1_dir.mkdir(parents=True)
         (hw1_dir / "homework.py").write_text("# starter")
 
         submitted = tmp_path / "submitted"
-        srv, thread = run_server_background(root, port=0)
-        srv.submitted_dir = submitted
+        srv, thread = run_server_background(root, port=0, submitted_dir=submitted)
         port = srv.server_address[1]
         base_url = f"http://127.0.0.1:{port}"
 
@@ -114,10 +116,70 @@ class TestSubmittedDir:
             )
             assert resp.status_code == 200
 
-            # Check both locations
-            assert (root / "hw1" / "submissions" / "alice.py").exists()
-            assert (submitted / "hw1" / "alice.py").exists()
-            assert (submitted / "hw1" / "alice.py").read_bytes() == b"print('answer')"
+            # Symlink exists and resolves to the content
+            symlink = submitted / "hw1" / "alice.py"
+            assert symlink.exists()
+            assert symlink.is_symlink()
+            assert symlink.read_bytes() == b"print('answer')"
+
+            # Timestamped file exists
+            timestamped = [
+                f
+                for f in (submitted / "hw1").iterdir()
+                if f.name.startswith("alice_") and f.suffix == ".py"
+            ]
+            assert len(timestamped) == 1
+
+            # Nothing written to root/<assignment>/submissions/
+            assert not (root / "hw1" / "submissions").exists()
+        finally:
+            srv.shutdown()
+
+    def test_resubmission_preserves_history(self, tmp_path):
+        """Resubmitting creates a new timestamped file, updates symlink."""
+        import time
+
+        root = tmp_path / "root"
+        hw1_dir = root / "hw1" / "files"
+        hw1_dir.mkdir(parents=True)
+        (hw1_dir / "homework.py").write_text("# starter")
+
+        submitted = tmp_path / "submitted"
+        srv, thread = run_server_background(root, port=0, submitted_dir=submitted)
+        port = srv.server_address[1]
+        base_url = f"http://127.0.0.1:{port}"
+
+        try:
+            # First submission
+            requests.post(
+                f"{base_url}/assignments/hw1/submit?user=alice",
+                files={"file": ("solution.py", b"v1")},
+            )
+            first_target = (submitted / "hw1" / "alice.py").resolve()
+
+            # Wait to ensure different timestamp
+            time.sleep(1.1)
+
+            # Second submission
+            requests.post(
+                f"{base_url}/assignments/hw1/submit?user=alice",
+                files={"file": ("solution.py", b"v2")},
+            )
+
+            symlink = submitted / "hw1" / "alice.py"
+            assert symlink.read_bytes() == b"v2"
+
+            # Old timestamped file still exists
+            assert first_target.exists()
+            assert first_target.read_bytes() == b"v1"
+
+            # Two timestamped files
+            timestamped = [
+                f
+                for f in (submitted / "hw1").iterdir()
+                if f.name.startswith("alice_") and f.suffix == ".py"
+            ]
+            assert len(timestamped) == 2
         finally:
             srv.shutdown()
 
@@ -131,12 +193,15 @@ class TestListSubmissions:
 
     def test_list_after_submit(self, server):
         base_url, tmp_path, _ = server
-        sub_dir = tmp_path / "hw1" / "submissions"
-        sub_dir.mkdir(parents=True)
-        (sub_dir / "alice.py").write_text("print('hi')")
+        # Submit a file so timestamped + symlink are created
+        requests.post(
+            f"{base_url}/assignments/hw1/submit?user=alice",
+            files={"file": ("solution.py", b"print('hi')")},
+        )
 
         resp = requests.get(f"{base_url}/assignments/hw1/submissions")
         data = resp.json()
+        # Should list only the symlink, not the timestamped file
         assert len(data) == 1
         assert data[0]["username"] == "alice"
 
@@ -174,9 +239,11 @@ class TestStatus:
 
     def test_status_submitted(self, server):
         base_url, tmp_path, _ = server
-        sub_dir = tmp_path / "hw1" / "submissions"
-        sub_dir.mkdir(parents=True)
-        (sub_dir / "alice.py").write_text("code")
+        # Submit via the API so symlink is created
+        requests.post(
+            f"{base_url}/assignments/hw1/submit?user=alice",
+            files={"file": ("solution.py", b"code")},
+        )
 
         resp = requests.get(f"{base_url}/assignments/hw1/status?user=alice")
         data = resp.json()
@@ -184,9 +251,11 @@ class TestStatus:
 
     def test_status_graded(self, server):
         base_url, tmp_path, _ = server
-        sub_dir = tmp_path / "hw1" / "submissions"
-        sub_dir.mkdir(parents=True)
-        (sub_dir / "alice.py").write_text("code")
+        # Submit via the API
+        requests.post(
+            f"{base_url}/assignments/hw1/submit?user=alice",
+            files={"file": ("solution.py", b"code")},
+        )
         grades_path = tmp_path / "hw1" / "grades.json"
         grades_path.write_text(
             json.dumps([{"username": "alice", "grade": "90", "feedback": "Great!"}])
@@ -405,9 +474,13 @@ class TestInstructorAuth:
 
     def test_instructor_can_download_submission(self, auth_server):
         base_url, tmp_path, _, secret = auth_server
-        sub_dir = tmp_path / "hw1" / "submissions"
-        sub_dir.mkdir(parents=True)
-        (sub_dir / "alice.py").write_text("code")
+        # Submit via API so symlink is created in submitted_dir (defaults to root)
+        resp = requests.post(
+            f"{base_url}/assignments/hw1/submit?user=alice",
+            files={"file": ("solution.py", b"code")},
+            headers=self._headers(secret),
+        )
+        assert resp.status_code == 200
 
         resp = requests.get(
             f"{base_url}/assignments/hw1/submissions/alice.py",

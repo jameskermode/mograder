@@ -7,9 +7,12 @@ Serves from a directory structure::
       <assignment>/
         files/
           <filename>.py                        <- assignment files
-        submissions/
-          <username>.py                        <- submitted files
         grades.json                            <- uploaded grades
+
+    submitted_dir/  (defaults to server_root if not specified)
+      <assignment>/
+        <user>_<timestamp>.py                  <- timestamped submissions
+        <user>.py -> <user>_<timestamp>.py     <- symlink to latest
 
 Endpoints::
 
@@ -24,10 +27,42 @@ Endpoints::
 from __future__ import annotations
 
 import json
+import os
+import re
+import tempfile
 import threading
+from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
+
+# Regex to detect timestamped submission stems like alice_20260310T200800
+_TIMESTAMP_RE = re.compile(r"_\d{8}T\d{6}$")
+
+
+def _write_submission(target_dir: Path, user: str, file_data: bytes) -> Path:
+    """Atomically write a timestamped submission and update the symlink.
+
+    Returns the path to the timestamped file.
+    """
+    target_dir.mkdir(parents=True, exist_ok=True)
+    ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S")
+    timestamped = target_dir / f"{user}_{ts}.py"
+    symlink = target_dir / f"{user}.py"
+
+    # 1. Write to temp file in same dir (same filesystem for atomic rename)
+    fd, tmp = tempfile.mkstemp(dir=target_dir, suffix=".py")
+    try:
+        os.write(fd, file_data)
+    finally:
+        os.close(fd)
+    # 2. Rename temp → timestamped name (atomic on same FS)
+    os.rename(tmp, timestamped)
+    # 3. Create symlink atomically: make temp symlink, then rename over real one
+    tmp_link = timestamped.with_suffix(".py.lnk")
+    os.symlink(timestamped.name, tmp_link)  # relative symlink
+    os.rename(str(tmp_link), str(symlink))  # atomic replace
+    return timestamped
 
 
 class AssignmentHandler(BaseHTTPRequestHandler):
@@ -215,7 +250,7 @@ class AssignmentHandler(BaseHTTPRequestHandler):
         self._send_file(file_path)
 
     def _handle_download_submission(self, assignment: str, filename: str):
-        file_path = self.root / assignment / "submissions" / filename
+        file_path = self.server.submitted_dir / assignment / filename
         self._send_file(file_path)
 
     def _handle_submit(self, assignment: str, user: str | None):
@@ -240,25 +275,16 @@ class AssignmentHandler(BaseHTTPRequestHandler):
             self._send_error(400, "No file data received")
             return
 
-        sub_dir = self.root / assignment / "submissions"
-        sub_dir.mkdir(parents=True, exist_ok=True)
-        dest = sub_dir / f"{user}.py"
-        dest.write_bytes(file_data)
-
-        # Also write to nbgrader-convention submitted/ dir if configured
-        if self.server.submitted_dir is not None:
-            nb_dir = self.server.submitted_dir / assignment
-            nb_dir.mkdir(parents=True, exist_ok=True)
-            (nb_dir / f"{user}.py").write_bytes(file_data)
-
-        self._send_json({"status": "ok", "filename": dest.name})
+        target_dir = self.server.submitted_dir / assignment
+        _write_submission(target_dir, user, file_data)
+        self._send_json({"status": "ok", "filename": f"{user}.py"})
 
     def _handle_list_submissions(self, assignment: str):
-        sub_dir = self.root / assignment / "submissions"
+        sub_dir = self.server.submitted_dir / assignment
         result = []
         if sub_dir.is_dir():
             for f in sorted(sub_dir.iterdir()):
-                if f.is_file() and f.suffix == ".py":
+                if f.suffix == ".py" and not _TIMESTAMP_RE.search(f.stem):
                     result.append(
                         {
                             "username": f.stem,
@@ -300,8 +326,8 @@ class AssignmentHandler(BaseHTTPRequestHandler):
             self._send_error(400, "Missing 'user' query parameter")
             return
 
-        sub_dir = self.root / assignment / "submissions"
-        submitted = (sub_dir / f"{user}.py").is_file() if sub_dir.is_dir() else False
+        sub_dir = self.server.submitted_dir / assignment
+        submitted = (sub_dir / f"{user}.py").exists() if sub_dir.is_dir() else False
 
         grades_path = self.root / assignment / "grades.json"
         grade = None
@@ -338,7 +364,7 @@ class AssignmentServer(HTTPServer):
         secret: str | None = None,
     ):
         self.root_dir = root_dir
-        self.submitted_dir = submitted_dir
+        self.submitted_dir = submitted_dir if submitted_dir is not None else root_dir
         self.secret = secret
         super().__init__(server_address, handler_class)
 
@@ -389,9 +415,12 @@ def run_server_background(
     host: str = "127.0.0.1",
     port: int = 0,
     secret: str | None = None,
+    submitted_dir: Path | None = None,
 ) -> tuple[AssignmentServer, threading.Thread]:
     """Start a server in a daemon thread. Returns (server, thread)."""
-    server = create_server(root_dir, host, port, secret=secret)
+    server = create_server(
+        root_dir, host, port, submitted_dir=submitted_dir, secret=secret
+    )
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
     return server, thread
@@ -407,8 +436,10 @@ def create_starlette_routes(
     Same endpoints as ``AssignmentHandler`` but as async Starlette routes.
     Import is deferred so the stdlib server path doesn't require starlette.
 
-    If *submitted_dir* is given, submissions are also written to
-    ``submitted_dir/<assignment>/<user>.py`` (nbgrader convention).
+    Submissions are written atomically to
+    ``submitted_dir/<assignment>/<user>_<timestamp>.py`` with a symlink
+    ``<user>.py`` pointing to the latest.  Defaults to *root_dir* if
+    *submitted_dir* is not given.
 
     If *secret* is given, all endpoints require a valid HMAC token.
     """
@@ -418,6 +449,9 @@ def create_starlette_routes(
     from starlette.routing import Route
 
     root = root_dir.resolve()
+    resolved_submitted_dir = (
+        submitted_dir if submitted_dir is not None else root_dir
+    ).resolve()
 
     def _cors(response: Response) -> Response:
         response.headers["Access-Control-Allow-Origin"] = "*"
@@ -509,7 +543,7 @@ def create_starlette_routes(
             return err
         name = request.path_params["name"]
         filename = request.path_params["file"]
-        return _file(root / name / "submissions" / filename)
+        return _file(resolved_submitted_dir / name / filename)
 
     async def submit(request: Request):
         name = request.path_params["name"]
@@ -533,29 +567,20 @@ def create_starlette_routes(
         if not file_data:
             return _json({"error": "No file data received"}, 400)
 
-        sub_dir = root / name / "submissions"
-        sub_dir.mkdir(parents=True, exist_ok=True)
-        dest = sub_dir / f"{user}.py"
-        dest.write_bytes(file_data)
-
-        # Also write to nbgrader-convention submitted/ dir if configured
-        if submitted_dir is not None:
-            nb_dir = submitted_dir / name
-            nb_dir.mkdir(parents=True, exist_ok=True)
-            (nb_dir / f"{user}.py").write_bytes(file_data)
-
-        return _json({"status": "ok", "filename": dest.name})
+        target_dir = resolved_submitted_dir / name
+        _write_submission(target_dir, user, file_data)
+        return _json({"status": "ok", "filename": f"{user}.py"})
 
     async def list_submissions(request: Request):
         err = _check_instructor(request)
         if err:
             return err
         name = request.path_params["name"]
-        sub_dir = root / name / "submissions"
+        sub_dir = resolved_submitted_dir / name
         result = []
         if sub_dir.is_dir():
             for f in sorted(sub_dir.iterdir()):
-                if f.is_file() and f.suffix == ".py":
+                if f.suffix == ".py" and not _TIMESTAMP_RE.search(f.stem):
                     result.append(
                         {
                             "username": f.stem,
@@ -601,8 +626,8 @@ def create_starlette_routes(
         if err:
             return err
 
-        sub_dir = root / name / "submissions"
-        submitted = (sub_dir / f"{user}.py").is_file() if sub_dir.is_dir() else False
+        sub_dir = resolved_submitted_dir / name
+        submitted = (sub_dir / f"{user}.py").exists() if sub_dir.is_dir() else False
 
         grades_path = root / name / "grades.json"
         grade = None
