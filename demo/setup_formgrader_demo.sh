@@ -3,6 +3,10 @@
 # Run from the repo root: bash demo/setup_formgrader_demo.sh
 set -e
 
+# Resolve to absolute paths so subshells (cd) work
+PYTHON="$(realpath "${PYTHON:-$(command -v python)}")"
+MOGRADER="$(realpath "${MOGRADER:-$(command -v mograder)}")"
+
 COURSE=demo/formgrader-course
 
 echo "=== Cleaning up ==="
@@ -11,22 +15,22 @@ rm -rf "$COURSE" examples/submitted examples/autograded examples/feedback \
        examples/moodle_worksheet.csv
 
 echo "=== Generating spoof submissions ==="
-${PYTHON:-python} examples/generate_spoof.py
+$PYTHON examples/generate_spoof.py
 
 echo "=== Autograding demo-holistic ==="
-${MOGRADER:-mograder} autograde examples/submitted/demo-holistic/*.py \
+$MOGRADER autograde examples/submitted/demo-holistic/*.py \
   --source examples/source/demo-holistic/demo-holistic.py
 
 echo "=== Autograding demo-assignment ==="
-${MOGRADER:-mograder} autograde examples/submitted/demo-assignment/*.py \
+$MOGRADER autograde examples/submitted/demo-assignment/*.py \
   --source examples/source/demo-assignment/demo-assignment.py
 
 echo "=== Simulating GTA grading ==="
-${PYTHON:-python} examples/generate_spoof.py --postprocess
+$PYTHON examples/generate_spoof.py --postprocess
 
 echo "=== Exporting feedback ==="
-${MOGRADER:-mograder} feedback examples/autograded/demo-holistic/*.py
-${MOGRADER:-mograder} feedback examples/autograded/demo-assignment/*.py
+$MOGRADER feedback examples/autograded/demo-holistic/*.py
+$MOGRADER feedback examples/autograded/demo-assignment/*.py
 
 echo "=== Assembling course directory ==="
 mkdir -p "$COURSE/import"
@@ -45,7 +49,7 @@ cp examples/gradebook.db "$COURSE/"
 cp examples/moodle_worksheet.csv "$COURSE/import/demo-assignment.csv"
 
 echo "=== Importing student names ==="
-(cd "$COURSE" && ${MOGRADER:-mograder} import-students import/demo-assignment.csv)
+(cd "$COURSE" && $MOGRADER import-students import/demo-assignment.csv)
 
 echo "=== Restructuring release for assignment server ==="
 # Assignment server expects: <assignment>/files/<file>.py
