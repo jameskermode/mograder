@@ -84,6 +84,7 @@ When a notebook has a `# === MOGRADER: MARKS ===` cell with `_marks = {"Q1": 10,
 
 ## Conventions
 
+- **Marimo `_` prefix rule**: In marimo notebooks (`student_app.py`, `formgrader_app.py`), names prefixed with `_` are **private to the cell** and cannot be referenced from callbacks or other cells. Never use `_`-prefixed names for UI elements, variables referenced in `on_change` handlers, or anything that needs to be visible outside the immediate cell scope. Use unprefixed names instead.
 - Source layout: `src/mograder/`, tests in `tests/`, fixtures in `tests/fixtures/`.
 - Examples: `examples/source/` (source notebooks in assignment subdirs), `examples/release/` (generated release versions in matching subdirs).
 - Local pre-commit hook (`.git/hooks/pre-commit`, not tracked) does two things:

@@ -165,29 +165,29 @@ def _(
                 )
             )
         else:
+            username_input = mo.ui.text(label="Username", full_width=True)
+            enrollment_input = mo.ui.text(
+                label="Enrollment code", kind="password", full_width=True
+            )
 
             def handle_https_register(_):
-                _user = _username_input.value.strip()
-                _code = _enrollment_input.value.strip()
-                if not _user or not _code:
+                user = username_input.value.strip()
+                code = enrollment_input.value.strip()
+                if not user or not code:
                     set_action_log("Enter both username and enrollment code")
                     return
                 try:
                     from mograder.https_transport import register
 
-                    _result = register(CONFIG.https_url, _user, _code)
-                    _tok = _result["token"]
-                    save_cached_https_token(CONFIG.https_url, _tok, _user)
-                    set_token(_tok)
-                    set_action_log(f"Registered and logged in as **{_user}**")
+                    result = register(CONFIG.https_url, user, code)
+                    tok = result["token"]
+                    save_cached_https_token(CONFIG.https_url, tok, user)
+                    set_token(tok)
+                    set_action_log(f"Registered and logged in as **{user}**")
                 except Exception as exc:
                     set_action_log(f"Registration failed: {exc}")
 
-            _username_input = mo.ui.text(label="Username", full_width=True)
-            _enrollment_input = mo.ui.text(
-                label="Enrollment code", kind="password", full_width=True
-            )
-            _register_btn = mo.ui.button(
+            register_btn = mo.ui.button(
                 label="Register", on_change=handle_https_register
             )
 
@@ -216,9 +216,9 @@ def _(
                             "Enter your username and the enrollment code "
                             "provided by your instructor."
                         ),
-                        _username_input,
-                        _enrollment_input,
-                        _register_btn,
+                        username_input,
+                        enrollment_input,
+                        register_btn,
                         mo.md("---"),
                         mo.md("*Or paste a token directly:*"),
                         token_input,
