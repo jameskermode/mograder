@@ -31,16 +31,20 @@ def _():
         save_cached_token,
     )
     from mograder.runner import create_shared_sandbox, run_notebook
+    from mograder.transport import build_transport
 
     COURSE_DIR = Path(os.environ.get("MOGRADER_COURSE_DIR", ".")).resolve()
     CONFIG = load_config(COURSE_DIR)
+    IS_HTTPS = CONFIG.transport == "https"
 
     return (
         COURSE_DIR,
         CONFIG,
+        IS_HTTPS,
         MoodleAPIClient,
         MoodleAPIError,
         Path,
+        build_transport,
         create_shared_sandbox,
         datetime,
         format_check_summary,
@@ -62,19 +66,22 @@ def _():
 
 # --- State ---
 @app.cell
-def _(CONFIG, load_cached_token, mo):
+def _(CONFIG, IS_HTTPS, load_cached_token, mo):
     get_action_log, set_action_log = mo.state("")
     get_report_path, set_report_path = mo.state("")
     get_refresh, set_refresh = mo.state(0)
     get_pending, set_pending = mo.state(None)
 
-    # Initialize token from cache if available
+    # Initialize token from cache if available (HTTPS needs no token)
     _initial_token = ""
-    _url = CONFIG.moodle_url
-    if _url:
-        _cached_tok = load_cached_token(_url)
-        if _cached_tok:
-            _initial_token = _cached_tok["token"]
+    if IS_HTTPS:
+        _initial_token = "_https_"
+    else:
+        _url = CONFIG.moodle_url
+        if _url:
+            _cached_tok = load_cached_token(_url)
+            if _cached_tok:
+                _initial_token = _cached_tok["token"]
     get_token, set_token = mo.state(_initial_token)
 
     return (
@@ -96,8 +103,10 @@ def _(CONFIG, load_cached_token, mo):
 def _(
     CONFIG,
     COURSE_DIR,
+    IS_HTTPS,
     MoodleAPIClient,
     MoodleAPIError,
+    build_transport,
     get_token,
     mo,
     save_cached_token,
@@ -107,8 +116,45 @@ def _(
     moodle_url = CONFIG.moodle_url
     token_input = mo.ui.text(label="", value="")
 
+    # For HTTPS transport, fetch assignments from the server if not in config
     _assignments_cfg = CONFIG.assignments or CONFIG.moodle_assignments
-    if not moodle_url or not _assignments_cfg:
+    https_assignments = ()
+    if IS_HTTPS and not _assignments_cfg:
+        try:
+            _transport = build_transport(CONFIG)
+            _remote = _transport.list_assignments()
+            https_assignments = tuple(
+                {
+                    "name": a.name,
+                    "id": a.id,
+                    "duedate": a.duedate,
+                    "files": [
+                        {"name": f["filename"], "url": f["url"]} for f in a.files
+                    ],
+                }
+                for a in _remote
+            )
+        except Exception as _exc:
+            mo.output.replace(
+                mo.callout(
+                    mo.md(f"Failed to fetch assignments from server: {_exc}"),
+                    kind="danger",
+                )
+            )
+
+    _has_assignments = bool(_assignments_cfg or https_assignments)
+
+    if IS_HTTPS:
+        if _has_assignments:
+            mo.output.replace(
+                mo.hstack(
+                    [mo.md("# mograder student"), mo.md(f"`{COURSE_DIR}`")],
+                    justify="space-between",
+                    align="center",
+                )
+            )
+        # else: error already shown above
+    elif not moodle_url or not _has_assignments:
         mo.output.replace(
             mo.callout(
                 mo.md(
@@ -165,7 +211,7 @@ def _(
                 ]
             )
         )
-    return (moodle_url, token_input)
+    return (https_assignments, moodle_url, token_input)
 
 
 # --- Assignments table ---
@@ -174,11 +220,13 @@ def _(
 def _(
     COURSE_DIR,
     CONFIG,
+    IS_HTTPS,
     datetime,
     format_check_summary,
     get_refresh,
     get_submission_status,
     get_token,
+    https_assignments,
     is_cache_stale,
     load_cached_results,
     mo,
@@ -187,13 +235,16 @@ def _(
     set_pending,
     timezone,
 ):
-    assignments_cfg = CONFIG.assignments or CONFIG.moodle_assignments
+    assignments_cfg = (
+        CONFIG.assignments or CONFIG.moodle_assignments or https_assignments
+    )
     token = get_token()
     _ = get_refresh()
 
     buttons = mo.ui.dictionary({})
 
-    if not moodle_url or not assignments_cfg or not token:
+    _ready = bool(assignments_cfg) and (IS_HTTPS or (moodle_url and token))
+    if not _ready:
         mo.output.replace(mo.md(""))
     else:
 
@@ -308,8 +359,10 @@ def _(
 def _(
     CONFIG,
     COURSE_DIR,
+    IS_HTTPS,
     MoodleAPIClient,
     Path,
+    build_transport,
     create_shared_sandbox,
     get_pending,
     get_token,
@@ -329,9 +382,14 @@ def _(
     if pending is not None:
         _act = pending["action"]
         _token = get_token()
-        _client = MoodleAPIClient(moodle_url, _token) if _token else None
+        if IS_HTTPS:
+            _transport = build_transport(CONFIG)
+            _client = None
+        else:
+            _transport = None
+            _client = MoodleAPIClient(moodle_url, _token) if _token else None
 
-        if _act == "download" and _client:
+        if _act == "download" and (_client or _transport):
             _assign = pending["assign"]
             _slug = pending["slug"]
             _adir = COURSE_DIR / _slug
@@ -346,10 +404,13 @@ def _(
                 try:
                     for _finfo in _py_files:
                         _dest = _adir / _finfo["name"]
-                        _file_url = _finfo["url"].replace(
-                            "/pluginfile.php/", "/webservice/pluginfile.php/"
-                        )
-                        _client.download_file(_file_url, _dest)
+                        if _transport:
+                            _transport.download_file(_finfo["url"], _dest)
+                        else:
+                            _file_url = _finfo["url"].replace(
+                                "/pluginfile.php/", "/webservice/pluginfile.php/"
+                            )
+                            _client.download_file(_file_url, _dest)
                     set_action_log(f"Downloaded **{_name}** to `{_slug}/`")
                 except Exception as _exc:
                     set_action_log(f"Download failed for **{_name}**: {_exc}")
@@ -441,13 +502,16 @@ def _(
                     set_action_log(f"Validation failed for **{_name}**: {_exc}")
             set_refresh(lambda v: v + 1)
 
-        elif _act == "submit" and _client:
+        elif _act == "submit" and (_client or _transport):
             _path = Path(pending["path"])
             _assign = pending["assign"]
             _name = pending["name"]
             try:
-                _item_id = _client.upload_file(_path)
-                _client.save_submission(_assign["id"], _item_id)
+                if _transport:
+                    _transport.submit_file(_assign["id"], _path)
+                else:
+                    _item_id = _client.upload_file(_path)
+                    _client.save_submission(_assign["id"], _item_id)
                 save_submission_record(COURSE_DIR, _path.name, _path.stat().st_mtime)
                 set_action_log(f"Submitted **{_name}** (`{_path.name}`)")
             except Exception as _exc:
