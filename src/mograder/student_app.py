@@ -383,7 +383,12 @@ def _(
         _act = pending["action"]
         _token = get_token()
         if IS_HTTPS:
+            import os as _os
+
             _transport = build_transport(CONFIG)
+            _transport.user = _os.environ.get(
+                "GITHUB_USER", _os.environ.get("USER", "student")
+            )
             _client = None
         else:
             _transport = None
