@@ -1,8 +1,9 @@
 """Combined ASGI app serving formgrader UI and assignment API.
 
 Environment variables:
-    MOGRADER_COURSE_DIR  — course directory for formgrader (default: ".")
-    MOGRADER_SERVE_DIR   — directory for assignment API (optional)
+    MOGRADER_COURSE_DIR       — course directory for formgrader (default: ".")
+    MOGRADER_SERVE_DIR        — directory for assignment API (optional)
+    MOGRADER_ENROLLMENT_CODE  — enrollment passphrase for student self-registration
 """
 
 from __future__ import annotations
@@ -28,10 +29,12 @@ if serve_dir and Path(serve_dir).is_dir():
 
     course_dir = Path(os.environ.get("MOGRADER_COURSE_DIR", "."))
     _secret = load_or_create_secret(course_dir)
+    _enrollment_code = os.environ.get("MOGRADER_ENROLLMENT_CODE") or None
     api_app = create_starlette_routes(
         Path(serve_dir),
         submitted_dir=course_dir / "submitted",
         secret=_secret,
+        enrollment_code=_enrollment_code,
     )
     marimo_app = server.build()
 
@@ -39,7 +42,7 @@ if serve_dir and Path(serve_dir).is_dir():
     async def app(scope, receive, send):
         if scope["type"] in ("http", "websocket"):
             path = scope.get("path", "")
-            if path.startswith("/assignments"):
+            if path.startswith("/assignments") or path == "/register":
                 await api_app(scope, receive, send)
                 return
         await marimo_app(scope, receive, send)

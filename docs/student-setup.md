@@ -99,19 +99,35 @@ If you're using [Molab](https://molab.marimo.io), no local installation is requi
 
 ### Molab with HTTPS transport
 
-If your course uses the mograder HTTPS transport (instead of Moodle), your instructor will provide a server URL. You can fetch and submit assignments via the CLI:
+If your course uses the mograder HTTPS transport (instead of Moodle), your instructor will provide a server URL and an enrollment code.
+
+**Register from the CLI** (one time):
+
+```bash
+uvx mograder https login --register --url <SERVER_URL>
+```
+
+You'll be prompted for your username and enrollment code. Your token is generated on the server and cached at `~/.config/mograder/https_token.json`.
+
+Alternatively, if your instructor gave you a token directly:
+
+```bash
+uvx mograder https login --token <YOUR_TOKEN> --url <SERVER_URL>
+```
+
+Then fetch and submit assignments via the CLI:
 
 ```bash
 # Fetch the assignment notebook
-uvx mograder https fetch "hw1" --url <SERVER_URL> -o hw1/
+uvx mograder https fetch "hw1" -o hw1/
 
 # Upload to Molab, work on it, then download the completed file
 
 # Submit your work
-uvx mograder https submit hw1/homework.py -a "hw1" --url <SERVER_URL> --user <YOUR_USERNAME>
+uvx mograder https submit hw1/homework.py -a "hw1"
 
 # Check your status
-uvx mograder https feedback "hw1" --url <SERVER_URL> --user <YOUR_USERNAME>
+uvx mograder https feedback "hw1"
 ```
 
 Or set the URL in `mograder.toml` so you don't need `--url` every time:
@@ -120,12 +136,15 @@ Or set the URL in `mograder.toml` so you don't need `--url` every time:
 transport = "https"
 
 [https]
-url = "http://your-course-server.example.com:8080"
+url = "https://your-course-server.example.com"
 ```
 
 ## Working on assignments
 
-When the dashboard launches, log in with your credentials (Moodle token or course username, depending on your course setup). Credentials are cached locally so you only need to do this once.
+When the dashboard launches, log in with your credentials:
+
+- **Moodle** courses — paste your Moodle security token (from your Moodle Security Keys page).
+- **HTTPS transport** courses — enter your username and the enrollment code provided by your instructor to register. You can also paste a token directly if your instructor gave you one. Credentials are cached locally so you only need to do this once.
 
 The dashboard shows your course assignments with status tracking and action buttons:
 

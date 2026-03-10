@@ -9,7 +9,7 @@ mograder is the Marimo equivalent of [nbgrader](https://nbgrader.readthedocs.io/
 A live demo is available with three components:
 
 1. **[Student Dashboard](https://jameskermode.github.io/mograder/?server=https://mograder-demo.jrkermode.uk&repo=jameskermode/mograder&path=demo/course&branch=main)** — WASM app hosted on GitHub Pages. Lists assignments, shows submission status, and links to [Molab](https://molab.marimo.io) for editing.
-2. **[Formgrader + Assignment Server](https://mograder-demo.jrkermode.uk)** — Combined ASGI app. The formgrader UI shows the full grading workflow (assignments, submissions, grading, students tabs) with pre-populated demo data. The same service also handles the assignment API at `/assignments`.
+2. **[Formgrader + Assignment Server](https://mograder-demo.jrkermode.uk)** — Combined ASGI app. The formgrader UI shows the full grading workflow (assignments, submissions, grading, students tabs) with pre-populated demo data. The same service also handles the assignment API at `/assignments`. Student self-registration is enabled with enrollment code `demo`.
 3. **Notebook Editor** — Click "Edit in Molab" in the dashboard to open a notebook in [Molab](https://molab.marimo.io) with full edit mode. Each notebook has a submit cell to send your work back to the assignment server.
 4. **[GitHub Codespaces](https://codespaces.new/jameskermode/mograder)** — Open the repo in a Codespace for a full development environment with uv, marimo, and the student dashboard pre-configured. Assignments are served from the demo server.
 
@@ -78,7 +78,7 @@ course/
 8. **`mograder moodle fetch-submissions`** / **`mograder moodle upload-feedback`** — instructors bulk-download submissions and push grades/feedback via Moodle API
 9. **`mograder moodle sync`** — syncs assignment metadata from Moodle into `mograder.toml` (instructor runs this, students get the config via URL or file)
 10. **`mograder student`** — launches an interactive student dashboard (Marimo app) for downloading, validating, editing, and submitting assignments
-11. **`mograder serve`** / **`mograder https *`** — lightweight HTTPS server + transport for assignment distribution without Moodle
+11. **`mograder serve`** / **`mograder https *`** — lightweight HTTPS server + transport for assignment distribution without Moodle (HMAC token auth, atomic timestamped submissions)
 
 ## Installation
 
@@ -288,20 +288,61 @@ mograder serve course/release/ -p 9000  # custom port
 
 The server auto-discovers assignments from the directory structure. Each subdirectory with a `files/` subfolder becomes an assignment. You can also provide a manual `assignments.json` manifest.
 
-#### Student commands
+#### Authentication
+
+Authentication is enabled by default. The server generates a secret (`.mograder-secret`) on first start and uses HMAC-SHA256 tokens in the format `username:hmac_hex`.
+
+**Student self-registration** (recommended): Set an enrollment code so students can register themselves via the student dashboard or API:
 
 ```bash
-mograder https fetch --list --url http://localhost:8080        # list assignments
-mograder https fetch "hw1" --url http://localhost:8080 -o hw1/ # download files
-mograder https submit hw1.py -a "hw1" --url http://localhost:8080 --user alice
-mograder https feedback "hw1" --url http://localhost:8080 --user alice
+mograder serve course/release/ --enrollment-code "my-course-phrase"
+# or via environment variable:
+MOGRADER_ENROLLMENT_CODE="my-course-phrase" mograder serve course/release/
+# or from a file:
+mograder serve course/release/ --enrollment-code-file enrollment.txt
 ```
+
+Students enter their username + enrollment code in the dashboard to receive a personal token. The enrollment code can be shared in class or via LMS — it is separate from the HMAC secret.
+
+**Generate tokens manually** (alternative): Use `mograder token` to generate tokens directly:
+
+```bash
+mograder token alice bob carol                      # reads .mograder-secret from CWD
+mograder token --secret-file path/to/.mograder-secret alice bob
+ssh server "cat /path/.mograder-secret" | mograder token --secret-stdin alice bob
+```
+
+Or from the `serve` command with a file of usernames (one per line):
+
+```bash
+mograder serve course/release/ --generate-tokens students.txt
+```
+
+Disable auth for local testing with `--no-auth`.
+
+**Token roles:**
+- **Student tokens** — can list/download assignments, submit own work, check own status
+- **Instructor token** — full access: list submissions, download any submission, upload grades
+
+#### Student commands
+
+Students register via the student dashboard (enter username + enrollment code), or cache a token manually:
+
+```bash
+mograder https login --token <YOUR_TOKEN> --url https://server.example.com
+mograder https fetch --list                              # list assignments
+mograder https fetch "hw1" -o hw1/                       # download files
+mograder https submit hw1.py -a "hw1"                    # submit work
+mograder https feedback "hw1"                            # check status/grade
+```
+
+The URL and token can also be passed explicitly with `--url` and `--token` flags.
 
 #### Instructor commands
 
 ```bash
-mograder https fetch-submissions "hw1" --url http://localhost:8080 -o submitted/hw1/
-mograder https upload-grades "hw1" --url http://localhost:8080 --grades-csv grades.csv
+mograder https fetch-submissions "hw1" --url https://server.example.com --token <INSTRUCTOR_TOKEN> -o submitted/hw1/
+mograder https upload-grades "hw1" --url https://server.example.com --token <INSTRUCTOR_TOKEN> --grades-csv grades.csv
 ```
 
 The URL can also be set in `mograder.toml`:
@@ -310,21 +351,27 @@ The URL can also be set in `mograder.toml`:
 transport = "https"
 
 [https]
-url = "http://localhost:8080"
+url = "https://server.example.com"
 ```
 
 #### Server directory structure
 
 ```
 server_root/
+  .mograder-secret                    # HMAC secret (auto-generated)
   assignments.json                    # optional manifest
   hw1/
     files/
       homework.py                     # assignment files
-    submissions/
-      alice.py                        # student submissions
     grades.json                       # uploaded grades
+
+submitted/                            # submission storage (configurable)
+  hw1/
+    alice_20260310T200800.py          # timestamped submissions
+    alice.py -> alice_20260310T200800.py  # symlink to latest
 ```
+
+Submissions are written atomically with timestamped filenames, preserving history across resubmissions. A symlink `<user>.py` always points to the latest version.
 
 ### Student dashboard
 
@@ -340,7 +387,7 @@ mograder student --headless         # no browser auto-open
 
 The dashboard provides:
 
-- **Moodle login** — paste your Moodle security token (from your Moodle Security Keys page). Tokens are cached at `~/.config/mograder/token.json`.
+- **Login** — for Moodle courses, paste your Moodle security token (from your Moodle Security Keys page). For HTTPS transport courses, register with your username and the enrollment code provided by your instructor (or paste a token directly). Tokens are cached at `~/.config/mograder/`.
 - **Assignment table** — lists all course assignments with due dates, status, check validation results, and action buttons.
 - **Download** — downloads assignment `.py` files into per-assignment subdirectories.
 - **Edit** — opens the notebook in a new `marimo edit --sandbox` session.
