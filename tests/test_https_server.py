@@ -5,12 +5,13 @@ import json
 import pytest
 import requests
 
+from mograder.auth import INSTRUCTOR_USER, generate_secret, make_token
 from mograder.https_server import run_server_background
 
 
 @pytest.fixture()
 def server(tmp_path):
-    """Start a server with a test assignment directory."""
+    """Start a server with a test assignment directory (no auth)."""
     # Set up directory structure
     hw1_dir = tmp_path / "hw1" / "files"
     hw1_dir.mkdir(parents=True)
@@ -20,6 +21,21 @@ def server(tmp_path):
     srv, thread = run_server_background(tmp_path, port=0)
     port = srv.server_address[1]
     yield f"http://127.0.0.1:{port}", tmp_path, srv
+    srv.shutdown()
+
+
+@pytest.fixture()
+def auth_server(tmp_path):
+    """Start a server with authentication enabled."""
+    hw1_dir = tmp_path / "hw1" / "files"
+    hw1_dir.mkdir(parents=True)
+    (hw1_dir / "homework.py").write_text("# HW1 starter code")
+
+    secret = generate_secret()
+    srv, thread = run_server_background(tmp_path, port=0, secret=secret)
+    port = srv.server_address[1]
+    base_url = f"http://127.0.0.1:{port}"
+    yield base_url, tmp_path, srv, secret
     srv.shutdown()
 
 
@@ -75,6 +91,35 @@ class TestSubmit:
             files={"file": ("solution.py", b"code")},
         )
         assert resp.status_code == 400
+
+
+class TestSubmittedDir:
+    def test_submit_writes_to_both_dirs(self, tmp_path):
+        """Submitting with submitted_dir writes to both locations."""
+        root = tmp_path / "root"
+        hw1_dir = root / "hw1" / "files"
+        hw1_dir.mkdir(parents=True)
+        (hw1_dir / "homework.py").write_text("# starter")
+
+        submitted = tmp_path / "submitted"
+        srv, thread = run_server_background(root, port=0)
+        srv.submitted_dir = submitted
+        port = srv.server_address[1]
+        base_url = f"http://127.0.0.1:{port}"
+
+        try:
+            resp = requests.post(
+                f"{base_url}/assignments/hw1/submit?user=alice",
+                files={"file": ("solution.py", b"print('answer')")},
+            )
+            assert resp.status_code == 200
+
+            # Check both locations
+            assert (root / "hw1" / "submissions" / "alice.py").exists()
+            assert (submitted / "hw1" / "alice.py").exists()
+            assert (submitted / "hw1" / "alice.py").read_bytes() == b"print('answer')"
+        finally:
+            srv.shutdown()
 
 
 class TestListSubmissions:
@@ -191,3 +236,199 @@ class TestHealthCheck:
         # requests normalizes, so test the raw path
         resp = requests.get(base_url)
         assert resp.status_code == 200
+
+
+# --- Authentication tests ---
+
+
+class TestAuthRequired:
+    """Test that endpoints reject unauthenticated requests when auth is enabled."""
+
+    def test_list_assignments_requires_auth(self, auth_server):
+        base_url, _, _, _ = auth_server
+        resp = requests.get(f"{base_url}/assignments")
+        assert resp.status_code == 401
+
+    def test_download_file_requires_auth(self, auth_server):
+        base_url, _, _, _ = auth_server
+        resp = requests.get(f"{base_url}/assignments/hw1/files/homework.py")
+        assert resp.status_code == 401
+
+    def test_submit_requires_auth(self, auth_server):
+        base_url, _, _, _ = auth_server
+        resp = requests.post(
+            f"{base_url}/assignments/hw1/submit?user=alice",
+            files={"file": ("solution.py", b"code")},
+        )
+        assert resp.status_code == 401
+
+    def test_list_submissions_requires_auth(self, auth_server):
+        base_url, _, _, _ = auth_server
+        resp = requests.get(f"{base_url}/assignments/hw1/submissions")
+        assert resp.status_code == 401
+
+    def test_upload_grades_requires_auth(self, auth_server):
+        base_url, _, _, _ = auth_server
+        resp = requests.post(
+            f"{base_url}/assignments/hw1/grades",
+            json={"grades": []},
+        )
+        assert resp.status_code == 401
+
+    def test_status_requires_auth(self, auth_server):
+        base_url, _, _, _ = auth_server
+        resp = requests.get(f"{base_url}/assignments/hw1/status?user=alice")
+        assert resp.status_code == 401
+
+    def test_health_check_no_auth(self, auth_server):
+        """Health check endpoint should not require auth."""
+        base_url, _, _, _ = auth_server
+        resp = requests.get(f"{base_url}/")
+        assert resp.status_code == 200
+
+
+class TestAuthWithToken:
+    """Test authenticated requests work correctly."""
+
+    def _headers(self, secret, username):
+        token = make_token(secret, username)
+        return {"Authorization": f"Bearer {token}"}
+
+    def test_student_can_list_assignments(self, auth_server):
+        base_url, _, _, secret = auth_server
+        resp = requests.get(
+            f"{base_url}/assignments", headers=self._headers(secret, "alice")
+        )
+        assert resp.status_code == 200
+
+    def test_student_can_download_file(self, auth_server):
+        base_url, _, _, secret = auth_server
+        resp = requests.get(
+            f"{base_url}/assignments/hw1/files/homework.py",
+            headers=self._headers(secret, "alice"),
+        )
+        assert resp.status_code == 200
+
+    def test_student_can_submit_as_self(self, auth_server):
+        base_url, _, _, secret = auth_server
+        resp = requests.post(
+            f"{base_url}/assignments/hw1/submit?user=alice",
+            files={"file": ("solution.py", b"code")},
+            headers=self._headers(secret, "alice"),
+        )
+        assert resp.status_code == 200
+
+    def test_student_cannot_submit_as_other(self, auth_server):
+        base_url, _, _, secret = auth_server
+        resp = requests.post(
+            f"{base_url}/assignments/hw1/submit?user=bob",
+            files={"file": ("solution.py", b"code")},
+            headers=self._headers(secret, "alice"),
+        )
+        assert resp.status_code == 403
+
+    def test_student_can_check_own_status(self, auth_server):
+        base_url, _, _, secret = auth_server
+        resp = requests.get(
+            f"{base_url}/assignments/hw1/status?user=alice",
+            headers=self._headers(secret, "alice"),
+        )
+        assert resp.status_code == 200
+
+    def test_student_cannot_check_other_status(self, auth_server):
+        base_url, _, _, secret = auth_server
+        resp = requests.get(
+            f"{base_url}/assignments/hw1/status?user=bob",
+            headers=self._headers(secret, "alice"),
+        )
+        assert resp.status_code == 403
+
+    def test_student_cannot_list_submissions(self, auth_server):
+        base_url, _, _, secret = auth_server
+        resp = requests.get(
+            f"{base_url}/assignments/hw1/submissions",
+            headers=self._headers(secret, "alice"),
+        )
+        assert resp.status_code == 403
+
+    def test_student_cannot_upload_grades(self, auth_server):
+        base_url, _, _, secret = auth_server
+        resp = requests.post(
+            f"{base_url}/assignments/hw1/grades",
+            json={"grades": []},
+            headers=self._headers(secret, "alice"),
+        )
+        assert resp.status_code == 403
+
+
+class TestInstructorAuth:
+    """Test instructor token grants full access."""
+
+    def _headers(self, secret):
+        token = make_token(secret, INSTRUCTOR_USER)
+        return {"Authorization": f"Bearer {token}"}
+
+    def test_instructor_can_list_submissions(self, auth_server):
+        base_url, _, _, secret = auth_server
+        resp = requests.get(
+            f"{base_url}/assignments/hw1/submissions",
+            headers=self._headers(secret),
+        )
+        assert resp.status_code == 200
+
+    def test_instructor_can_upload_grades(self, auth_server):
+        base_url, tmp_path, _, secret = auth_server
+        (tmp_path / "hw1").mkdir(exist_ok=True)
+        resp = requests.post(
+            f"{base_url}/assignments/hw1/grades",
+            json={"grades": [{"username": "alice", "grade": 90}]},
+            headers=self._headers(secret),
+        )
+        assert resp.status_code == 200
+
+    def test_instructor_can_submit_as_any_user(self, auth_server):
+        base_url, _, _, secret = auth_server
+        resp = requests.post(
+            f"{base_url}/assignments/hw1/submit?user=alice",
+            files={"file": ("solution.py", b"code")},
+            headers=self._headers(secret),
+        )
+        assert resp.status_code == 200
+
+    def test_instructor_can_check_any_status(self, auth_server):
+        base_url, _, _, secret = auth_server
+        resp = requests.get(
+            f"{base_url}/assignments/hw1/status?user=alice",
+            headers=self._headers(secret),
+        )
+        assert resp.status_code == 200
+
+    def test_instructor_can_download_submission(self, auth_server):
+        base_url, tmp_path, _, secret = auth_server
+        sub_dir = tmp_path / "hw1" / "submissions"
+        sub_dir.mkdir(parents=True)
+        (sub_dir / "alice.py").write_text("code")
+
+        resp = requests.get(
+            f"{base_url}/assignments/hw1/submissions/alice.py",
+            headers=self._headers(secret),
+        )
+        assert resp.status_code == 200
+
+
+class TestInvalidToken:
+    def test_invalid_token_rejected(self, auth_server):
+        base_url, _, _, _ = auth_server
+        resp = requests.get(
+            f"{base_url}/assignments",
+            headers={"Authorization": "Bearer fake:token"},
+        )
+        assert resp.status_code == 401
+
+    def test_malformed_auth_header(self, auth_server):
+        base_url, _, _, _ = auth_server
+        resp = requests.get(
+            f"{base_url}/assignments",
+            headers={"Authorization": "Basic dXNlcjpwYXNz"},
+        )
+        assert resp.status_code == 401

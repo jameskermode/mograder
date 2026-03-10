@@ -23,9 +23,16 @@ server = server.with_app(path="/", root=formgrader_path)
 serve_dir = os.environ.get("MOGRADER_SERVE_DIR", "")
 
 if serve_dir and Path(serve_dir).is_dir():
+    from mograder.auth import load_or_create_secret
     from mograder.https_server import create_starlette_routes
 
-    api_app = create_starlette_routes(Path(serve_dir))
+    course_dir = Path(os.environ.get("MOGRADER_COURSE_DIR", "."))
+    _secret = load_or_create_secret(course_dir)
+    api_app = create_starlette_routes(
+        Path(serve_dir),
+        submitted_dir=course_dir / "submitted",
+        secret=_secret,
+    )
     marimo_app = server.build()
 
     # Route /assignments* to API, everything else to formgrader

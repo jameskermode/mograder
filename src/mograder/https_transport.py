@@ -12,12 +12,20 @@ from mograder.models import RemoteAssignment, RemoteStatus, RemoteSubmission
 class HTTPSTransport:
     """Transport backed by the mograder HTTPS assignment server."""
 
-    def __init__(self, base_url: str, user: str = ""):
+    def __init__(self, base_url: str, user: str = "", token: str = ""):
         self.base_url = base_url.rstrip("/")
         self.user = user
+        self.token = token
+
+    def _headers(self) -> dict[str, str]:
+        if self.token:
+            return {"Authorization": f"Bearer {self.token}"}
+        return {}
 
     def list_assignments(self) -> list[RemoteAssignment]:
-        resp = requests.get(f"{self.base_url}/assignments", timeout=30)
+        resp = requests.get(
+            f"{self.base_url}/assignments", headers=self._headers(), timeout=30
+        )
         resp.raise_for_status()
         data = resp.json()
         return [
@@ -39,7 +47,7 @@ class HTTPSTransport:
         ]
 
     def download_file(self, url: str, dest: Path) -> Path:
-        resp = requests.get(url, stream=True, timeout=60)
+        resp = requests.get(url, headers=self._headers(), stream=True, timeout=60)
         resp.raise_for_status()
         dest.parent.mkdir(parents=True, exist_ok=True)
         with open(dest, "wb") as f:
@@ -53,6 +61,7 @@ class HTTPSTransport:
                 f"{self.base_url}/assignments/{assignment}/submit",
                 params={"user": self.user},
                 files={"file": (filepath.name, f)},
+                headers=self._headers(),
                 timeout=60,
             )
         resp.raise_for_status()
@@ -62,7 +71,9 @@ class HTTPSTransport:
 
     def get_submissions(self, assignment: str) -> list[RemoteSubmission]:
         resp = requests.get(
-            f"{self.base_url}/assignments/{assignment}/submissions", timeout=30
+            f"{self.base_url}/assignments/{assignment}/submissions",
+            headers=self._headers(),
+            timeout=30,
         )
         resp.raise_for_status()
         data = resp.json()
@@ -88,6 +99,7 @@ class HTTPSTransport:
         resp = requests.post(
             f"{self.base_url}/assignments/{assignment}/grades",
             json={"grades": grades, "workflow_state": workflow_state},
+            headers=self._headers(),
             timeout=30,
         )
         resp.raise_for_status()
@@ -99,6 +111,7 @@ class HTTPSTransport:
         resp = requests.get(
             f"{self.base_url}/assignments/{assignment}/status",
             params={"user": self.user},
+            headers=self._headers(),
             timeout=30,
         )
         resp.raise_for_status()

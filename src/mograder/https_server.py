@@ -45,7 +45,7 @@ class AssignmentHandler(BaseHTTPRequestHandler):
     def _add_cors_headers(self):
         self.send_header("Access-Control-Allow-Origin", "*")
         self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-        self.send_header("Access-Control-Allow-Headers", "Content-Type")
+        self.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization")
 
     def _send_json(self, data, status=200):
         body = json.dumps(data).encode()
@@ -71,6 +71,56 @@ class AssignmentHandler(BaseHTTPRequestHandler):
     def _send_error(self, status, message):
         self._send_json({"error": message}, status=status)
 
+    def _authenticate(self) -> str | None:
+        """Verify the Authorization header. Returns username or None.
+
+        When the server has no secret (no-auth mode), returns ``""``.
+        """
+        if self.server.secret is None:
+            return ""
+        from mograder.auth import verify_token
+
+        auth = self.headers.get("Authorization", "")
+        if not auth.startswith("Bearer "):
+            return None
+        return verify_token(self.server.secret, auth[7:])
+
+    def _require_auth(self) -> str | None:
+        """Return username or send 401 and return None."""
+        user = self._authenticate()
+        if user is None:
+            self._send_error(401, "Authentication required")
+            return None
+        return user
+
+    def _require_instructor(self) -> bool:
+        """Return True if authenticated as instructor, else send error."""
+        from mograder.auth import is_instructor
+
+        user = self._require_auth()
+        if user is None:
+            return False
+        if self.server.secret is not None and not is_instructor(user):
+            self._send_error(403, "Instructor access required")
+            return False
+        return True
+
+    def _require_user_match(self, target_user: str) -> bool:
+        """Return True if token user matches *target_user* or is instructor."""
+        from mograder.auth import is_instructor
+
+        user = self._require_auth()
+        if user is None:
+            return False
+        if (
+            self.server.secret is not None
+            and user != target_user
+            and not is_instructor(user)
+        ):
+            self._send_error(403, "Token user does not match request user")
+            return False
+        return True
+
     def do_OPTIONS(self):
         self.send_response(204)
         self._add_cors_headers()
@@ -84,21 +134,31 @@ class AssignmentHandler(BaseHTTPRequestHandler):
         if path in ("", "/"):
             self._send_json({"status": "ok"})
         elif path == "/assignments":
+            if self._require_auth() is None:
+                return
             self._handle_list_assignments()
         elif path.startswith("/assignments/"):
             parts = path.split("/")
             # /assignments/<name>/files/<file>
             if len(parts) == 5 and parts[3] == "files":
+                if self._require_auth() is None:
+                    return
                 self._handle_download_file(parts[2], parts[4])
             # /assignments/<name>/submissions/<file>
             elif len(parts) == 5 and parts[3] == "submissions":
+                if not self._require_instructor():
+                    return
                 self._handle_download_submission(parts[2], parts[4])
             # /assignments/<name>/submissions
             elif len(parts) == 4 and parts[3] == "submissions":
+                if not self._require_instructor():
+                    return
                 self._handle_list_submissions(parts[2])
             # /assignments/<name>/status
             elif len(parts) == 4 and parts[3] == "status":
                 user = qs.get("user", [None])[0]
+                if user and not self._require_user_match(user):
+                    return
                 self._handle_status(parts[2], user)
             else:
                 self._send_error(404, "Not found")
@@ -118,9 +178,13 @@ class AssignmentHandler(BaseHTTPRequestHandler):
         # /assignments/<name>/submit
         if len(parts) == 4 and parts[3] == "submit":
             user = qs.get("user", [None])[0]
+            if user and not self._require_user_match(user):
+                return
             self._handle_submit(parts[2], user)
         # /assignments/<name>/grades
         elif len(parts) == 4 and parts[3] == "grades":
+            if not self._require_instructor():
+                return
             self._handle_upload_grades(parts[2])
         else:
             self._send_error(404, "Not found")
@@ -180,6 +244,13 @@ class AssignmentHandler(BaseHTTPRequestHandler):
         sub_dir.mkdir(parents=True, exist_ok=True)
         dest = sub_dir / f"{user}.py"
         dest.write_bytes(file_data)
+
+        # Also write to nbgrader-convention submitted/ dir if configured
+        if self.server.submitted_dir is not None:
+            nb_dir = self.server.submitted_dir / assignment
+            nb_dir.mkdir(parents=True, exist_ok=True)
+            (nb_dir / f"{user}.py").write_bytes(file_data)
+
         self._send_json({"status": "ok", "filename": dest.name})
 
     def _handle_list_submissions(self, assignment: str):
@@ -258,8 +329,17 @@ class AssignmentHandler(BaseHTTPRequestHandler):
 class AssignmentServer(HTTPServer):
     """HTTPServer subclass that stores the root directory."""
 
-    def __init__(self, root_dir: Path, server_address, handler_class):
+    def __init__(
+        self,
+        root_dir: Path,
+        server_address,
+        handler_class,
+        submitted_dir: Path | None = None,
+        secret: str | None = None,
+    ):
         self.root_dir = root_dir
+        self.submitted_dir = submitted_dir
+        self.secret = secret
         super().__init__(server_address, handler_class)
 
 
@@ -281,32 +361,56 @@ def _extract_multipart_file(body: bytes, boundary: bytes) -> bytes | None:
 
 
 def create_server(
-    root_dir: Path, host: str = "127.0.0.1", port: int = 0
+    root_dir: Path,
+    host: str = "127.0.0.1",
+    port: int = 0,
+    submitted_dir: Path | None = None,
+    secret: str | None = None,
 ) -> AssignmentServer:
     """Create an AssignmentServer on *host*:*port*.
 
     Use ``port=0`` to let the OS pick a free port.
     The actual port is available as ``server.server_address[1]``.
+
+    If *secret* is given, all endpoints require a valid HMAC token.
     """
-    server = AssignmentServer(root_dir, (host, port), AssignmentHandler)
+    server = AssignmentServer(
+        root_dir,
+        (host, port),
+        AssignmentHandler,
+        submitted_dir=submitted_dir,
+        secret=secret,
+    )
     return server
 
 
 def run_server_background(
-    root_dir: Path, host: str = "127.0.0.1", port: int = 0
+    root_dir: Path,
+    host: str = "127.0.0.1",
+    port: int = 0,
+    secret: str | None = None,
 ) -> tuple[AssignmentServer, threading.Thread]:
     """Start a server in a daemon thread. Returns (server, thread)."""
-    server = create_server(root_dir, host, port)
+    server = create_server(root_dir, host, port, secret=secret)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
     return server, thread
 
 
-def create_starlette_routes(root_dir: Path):
+def create_starlette_routes(
+    root_dir: Path,
+    submitted_dir: Path | None = None,
+    secret: str | None = None,
+):
     """Create a Starlette app serving the assignment API.
 
     Same endpoints as ``AssignmentHandler`` but as async Starlette routes.
     Import is deferred so the stdlib server path doesn't require starlette.
+
+    If *submitted_dir* is given, submissions are also written to
+    ``submitted_dir/<assignment>/<user>.py`` (nbgrader convention).
+
+    If *secret* is given, all endpoints require a valid HMAC token.
     """
     from starlette.applications import Starlette
     from starlette.requests import Request
@@ -318,7 +422,7 @@ def create_starlette_routes(root_dir: Path):
     def _cors(response: Response) -> Response:
         response.headers["Access-Control-Allow-Origin"] = "*"
         response.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
-        response.headers["Access-Control-Allow-Headers"] = "Content-Type"
+        response.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization"
         return response
 
     def _json(data, status=200):
@@ -329,7 +433,49 @@ def create_starlette_routes(root_dir: Path):
             return _json({"error": f"Not found: {path.name}"}, 404)
         return _cors(Response(path.read_bytes(), media_type="application/octet-stream"))
 
+    def _auth_user(request: Request) -> str | None:
+        """Verify token, return username or None."""
+        if secret is None:
+            return ""
+        from mograder.auth import verify_token
+
+        auth = request.headers.get("authorization", "")
+        if not auth.startswith("Bearer "):
+            return None
+        return verify_token(secret, auth[7:])
+
+    def _check_auth(request: Request) -> Response | None:
+        """Return error response if not authenticated, else None."""
+        if _auth_user(request) is None:
+            return _json({"error": "Authentication required"}, 401)
+        return None
+
+    def _check_instructor(request: Request) -> Response | None:
+        """Return error response if not instructor, else None."""
+        from mograder.auth import is_instructor
+
+        user = _auth_user(request)
+        if user is None:
+            return _json({"error": "Authentication required"}, 401)
+        if secret is not None and not is_instructor(user):
+            return _json({"error": "Instructor access required"}, 403)
+        return None
+
+    def _check_user_match(request: Request, target_user: str) -> Response | None:
+        """Return error response if token user doesn't match, else None."""
+        from mograder.auth import is_instructor
+
+        user = _auth_user(request)
+        if user is None:
+            return _json({"error": "Authentication required"}, 401)
+        if secret is not None and user != target_user and not is_instructor(user):
+            return _json({"error": "Token user does not match request user"}, 403)
+        return None
+
     async def list_assignments(request: Request):
+        err = _check_auth(request)
+        if err:
+            return err
         manifest_path = root / "assignments.json"
         if manifest_path.is_file():
             data = json.loads(manifest_path.read_text())
@@ -350,11 +496,17 @@ def create_starlette_routes(root_dir: Path):
         return _json(data)
 
     async def download_file(request: Request):
+        err = _check_auth(request)
+        if err:
+            return err
         name = request.path_params["name"]
         filename = request.path_params["file"]
         return _file(root / name / "files" / filename)
 
     async def download_submission(request: Request):
+        err = _check_instructor(request)
+        if err:
+            return err
         name = request.path_params["name"]
         filename = request.path_params["file"]
         return _file(root / name / "submissions" / filename)
@@ -364,6 +516,9 @@ def create_starlette_routes(root_dir: Path):
         user = request.query_params.get("user")
         if not user:
             return _json({"error": "Missing 'user' query parameter"}, 400)
+        err = _check_user_match(request, user)
+        if err:
+            return err
 
         content_type = request.headers.get("content-type", "")
         if "multipart/form-data" in content_type:
@@ -382,9 +537,19 @@ def create_starlette_routes(root_dir: Path):
         sub_dir.mkdir(parents=True, exist_ok=True)
         dest = sub_dir / f"{user}.py"
         dest.write_bytes(file_data)
+
+        # Also write to nbgrader-convention submitted/ dir if configured
+        if submitted_dir is not None:
+            nb_dir = submitted_dir / name
+            nb_dir.mkdir(parents=True, exist_ok=True)
+            (nb_dir / f"{user}.py").write_bytes(file_data)
+
         return _json({"status": "ok", "filename": dest.name})
 
     async def list_submissions(request: Request):
+        err = _check_instructor(request)
+        if err:
+            return err
         name = request.path_params["name"]
         sub_dir = root / name / "submissions"
         result = []
@@ -401,6 +566,9 @@ def create_starlette_routes(root_dir: Path):
         return _json(result)
 
     async def upload_grades(request: Request):
+        err = _check_instructor(request)
+        if err:
+            return err
         name = request.path_params["name"]
         body = await request.body()
         try:
@@ -429,6 +597,9 @@ def create_starlette_routes(root_dir: Path):
         user = request.query_params.get("user")
         if not user:
             return _json({"error": "Missing 'user' query parameter"}, 400)
+        err = _check_user_match(request, user)
+        if err:
+            return err
 
         sub_dir = root / name / "submissions"
         submitted = (sub_dir / f"{user}.py").is_file() if sub_dir.is_dir() else False

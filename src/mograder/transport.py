@@ -38,6 +38,7 @@ def build_transport(config) -> Transport:
     transport_type = getattr(config, "transport", "moodle")
 
     if transport_type == "https":
+        from mograder.auth import load_cached_https_token
         from mograder.https_transport import HTTPSTransport
 
         url = getattr(config, "https_url", None)
@@ -46,7 +47,21 @@ def build_transport(config) -> Transport:
                 "HTTPS transport selected but no URL configured. "
                 "Set [https] url in mograder.toml"
             )
-        return HTTPSTransport(url)
+        # Token resolution: config > env var > cache
+        token = getattr(config, "https_token", None) or ""
+        user = ""
+        if not token:
+            import os
+
+            token = os.environ.get("MOGRADER_HTTPS_TOKEN", "")
+        if not token:
+            cached = load_cached_https_token(url)
+            if cached:
+                token = cached["token"]
+                user = cached.get("user", "")
+        if token and not user and ":" in token:
+            user = token.split(":", 1)[0]
+        return HTTPSTransport(url, user=user, token=token)
 
     if transport_type == "moodle":
         from mograder.moodle_api import MoodleAPIClient, load_cached_token

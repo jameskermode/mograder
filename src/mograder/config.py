@@ -23,6 +23,7 @@ class MograderConfig:
     moodle_assignments: tuple[dict, ...] = ()
     # [https]
     https_url: str | None = None
+    https_token: str | None = None
     # [defaults]
     jobs: int = 4
     timeout: int = 300
@@ -77,6 +78,7 @@ def load_config(course_dir: Path) -> MograderConfig:
         moodle_course_id=moodle.get("course_id"),
         moodle_assignments=moodle_assignments,
         https_url=https.get("url"),
+        https_token=https.get("token"),
         jobs=defaults.get("jobs", 4),
         timeout=defaults.get("timeout", 300),
         no_edit=defaults.get("no_edit", defaults.get("headless", False)),

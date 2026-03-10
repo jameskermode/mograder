@@ -1541,12 +1541,56 @@ def https_group(ctx):
 cli.add_command(https_group, "https")
 
 
+def _resolve_https_token(config, token_opt: str | None) -> str:
+    """Resolve HTTPS token: CLI flag > env var > cache > config > empty."""
+    if token_opt:
+        return token_opt
+    env_tok = os.environ.get("MOGRADER_HTTPS_TOKEN", "")
+    if env_tok:
+        return env_tok
+    from mograder.auth import load_cached_https_token
+
+    url = config.https_url or ""
+    if url:
+        cached = load_cached_https_token(url)
+        if cached:
+            return cached["token"]
+    return config.https_token or ""
+
+
+def _user_from_token(token: str) -> str:
+    """Extract username from a token string."""
+    if ":" in token:
+        return token.split(":", 1)[0]
+    return ""
+
+
+@https_group.command("login")
+@click.option("--token", required=True, help="HTTPS auth token")
+@click.option("--url", default=None, help="Server URL (overrides config)")
+@click.pass_context
+def https_login(ctx, token, url):
+    """Cache an HTTPS authentication token."""
+    from mograder.auth import save_cached_https_token
+
+    config = ctx.obj["config"]
+    url = url or config.https_url
+    if not url:
+        raise click.UsageError(
+            "No HTTPS URL configured. Provide --url or set [https] url in mograder.toml"
+        )
+    user = _user_from_token(token)
+    save_cached_https_token(url, token, user)
+    click.echo(f"Token cached for {url} (user: {user})")
+
+
 @https_group.command("fetch")
 @click.argument("assignment", required=False, default=None)
 @click.option(
     "--list", "list_assignments", is_flag=True, help="List available assignments"
 )
 @click.option("--url", default=None, help="Server URL (overrides config)")
+@click.option("--token", default=None, help="Auth token (overrides cached token)")
 @click.option(
     "-o",
     "--output-dir",
@@ -1555,7 +1599,7 @@ cli.add_command(https_group, "https")
     help="Output directory (default: current dir)",
 )
 @click.pass_context
-def https_fetch(ctx, assignment, list_assignments, url, output_dir):
+def https_fetch(ctx, assignment, list_assignments, url, token, output_dir):
     """Download assignment files from an HTTPS server."""
     from mograder.https_transport import HTTPSTransport
     from mograder.transport_commands import do_fetch
@@ -1566,7 +1610,8 @@ def https_fetch(ctx, assignment, list_assignments, url, output_dir):
         raise click.UsageError(
             "No HTTPS URL configured. Provide --url or set [https] url in mograder.toml"
         )
-    transport = HTTPSTransport(url)
+    token = _resolve_https_token(config, token)
+    transport = HTTPSTransport(url, token=token)
     do_fetch(transport, assignment, Path(output_dir), list_only=list_assignments)
 
 
@@ -1574,10 +1619,13 @@ def https_fetch(ctx, assignment, list_assignments, url, output_dir):
 @click.argument("file", type=click.Path(exists=True, path_type=Path))
 @click.option("-a", "--assignment", required=True, help="Assignment name or ID")
 @click.option("--url", default=None, help="Server URL (overrides config)")
-@click.option("--user", required=True, help="Username for submission")
+@click.option("--token", default=None, help="Auth token (overrides cached token)")
+@click.option(
+    "--user", default=None, help="Username (deprecated — extracted from token)"
+)
 @click.option("--dry-run", is_flag=True, help="Show what would happen")
 @click.pass_context
-def https_submit(ctx, file, assignment, url, user, dry_run):
+def https_submit(ctx, file, assignment, url, token, user, dry_run):
     """Submit a .py notebook to an HTTPS assignment server."""
     from mograder.https_transport import HTTPSTransport
     from mograder.transport_commands import do_submit
@@ -1588,13 +1636,19 @@ def https_submit(ctx, file, assignment, url, user, dry_run):
         raise click.UsageError(
             "No HTTPS URL configured. Provide --url or set [https] url in mograder.toml"
         )
-    transport = HTTPSTransport(url, user=user)
+    token = _resolve_https_token(config, token)
+    if not user:
+        user = _user_from_token(token)
+    if not user:
+        raise click.UsageError("No user specified. Provide --token or --user.")
+    transport = HTTPSTransport(url, user=user, token=token)
     do_submit(transport, file, assignment, dry_run=dry_run)
 
 
 @https_group.command("fetch-submissions")
 @click.argument("assignment")
 @click.option("--url", default=None, help="Server URL (overrides config)")
+@click.option("--token", default=None, help="Instructor auth token")
 @click.option(
     "-o",
     "--output-dir",
@@ -1603,7 +1657,7 @@ def https_submit(ctx, file, assignment, url, user, dry_run):
     help="Output directory",
 )
 @click.pass_context
-def https_fetch_submissions(ctx, assignment, url, output_dir):
+def https_fetch_submissions(ctx, assignment, url, token, output_dir):
     """Download all submissions from an HTTPS server (instructor)."""
     from mograder.https_transport import HTTPSTransport
     from mograder.transport_commands import do_fetch_submissions
@@ -1614,7 +1668,8 @@ def https_fetch_submissions(ctx, assignment, url, output_dir):
         raise click.UsageError(
             "No HTTPS URL configured. Provide --url or set [https] url in mograder.toml"
         )
-    transport = HTTPSTransport(url)
+    token = _resolve_https_token(config, token)
+    transport = HTTPSTransport(url, token=token)
     if output_dir is None:
         output_dir = Path(config.submitted_dir) / assignment
     do_fetch_submissions(transport, assignment, Path(output_dir))
@@ -1623,6 +1678,7 @@ def https_fetch_submissions(ctx, assignment, url, output_dir):
 @https_group.command("upload-grades")
 @click.argument("assignment")
 @click.option("--url", default=None, help="Server URL (overrides config)")
+@click.option("--token", default=None, help="Instructor auth token")
 @click.option(
     "--grades-csv",
     type=click.Path(exists=True, path_type=Path),
@@ -1631,7 +1687,7 @@ def https_fetch_submissions(ctx, assignment, url, output_dir):
 )
 @click.option("--dry-run", is_flag=True, help="Show what would happen")
 @click.pass_context
-def https_upload_grades(ctx, assignment, url, grades_csv, dry_run):
+def https_upload_grades(ctx, assignment, url, token, grades_csv, dry_run):
     """Upload grades to an HTTPS assignment server."""
     import csv
 
@@ -1644,7 +1700,8 @@ def https_upload_grades(ctx, assignment, url, grades_csv, dry_run):
         raise click.UsageError(
             "No HTTPS URL configured. Provide --url or set [https] url in mograder.toml"
         )
-    transport = HTTPSTransport(url)
+    token = _resolve_https_token(config, token)
+    transport = HTTPSTransport(url, token=token)
 
     # Read grades from CSV
     with open(grades_csv) as f:
@@ -1656,9 +1713,12 @@ def https_upload_grades(ctx, assignment, url, grades_csv, dry_run):
 @https_group.command("feedback")
 @click.argument("assignment")
 @click.option("--url", default=None, help="Server URL (overrides config)")
-@click.option("--user", required=True, help="Username to check status for")
+@click.option("--token", default=None, help="Auth token (overrides cached token)")
+@click.option(
+    "--user", default=None, help="Username (deprecated — extracted from token)"
+)
 @click.pass_context
-def https_feedback(ctx, assignment, url, user):
+def https_feedback(ctx, assignment, url, token, user):
     """Check submission status and view grade/feedback."""
     from mograder.https_transport import HTTPSTransport
     from mograder.transport_commands import do_status
@@ -1669,7 +1729,10 @@ def https_feedback(ctx, assignment, url, user):
         raise click.UsageError(
             "No HTTPS URL configured. Provide --url or set [https] url in mograder.toml"
         )
-    transport = HTTPSTransport(url, user=user)
+    token = _resolve_https_token(config, token)
+    if not user:
+        user = _user_from_token(token)
+    transport = HTTPSTransport(url, user=user, token=token)
     do_status(transport, assignment)
 
 
@@ -1696,12 +1759,41 @@ def https_feedback(ctx, assignment, url, user):
     default=None,
     help="Host to bind to (default: 0.0.0.0 if $PORT set, else 127.0.0.1)",
 )
-def serve(directory, port, host):
+@click.option(
+    "--no-auth",
+    is_flag=True,
+    help="Disable authentication (for local testing)",
+)
+@click.option(
+    "--generate-tokens",
+    type=click.Path(path_type=Path),
+    default=None,
+    help="Read usernames from FILE, print tokens, then exit",
+)
+def serve(directory, port, host, no_auth, generate_tokens):
     """Start a lightweight assignment server.
 
     Serves assignments from DIRECTORY (default: current dir).
     """
+    from mograder.auth import INSTRUCTOR_USER, load_or_create_secret, make_token
     from mograder.https_server import create_server
+
+    secret = None
+    if not no_auth:
+        secret = load_or_create_secret(directory)
+
+    if generate_tokens is not None:
+        if secret is None:
+            secret = load_or_create_secret(directory)
+        usernames = [
+            line.strip()
+            for line in generate_tokens.read_text().splitlines()
+            if line.strip()
+        ]
+        for username in usernames:
+            click.echo(f"{username}: {make_token(secret, username)}")
+        click.echo(f"\ninstructor: {make_token(secret, INSTRUCTOR_USER)}")
+        return
 
     env_port = os.environ.get("PORT")
     if port is None:
@@ -1709,10 +1801,14 @@ def serve(directory, port, host):
     if host is None:
         host = "0.0.0.0" if env_port else "127.0.0.1"
 
-    server = create_server(directory, host=host, port=port)
+    server = create_server(directory, host=host, port=port, secret=secret)
     actual_port = server.server_address[1]
     click.echo(f"Serving assignments from {directory.resolve()}")
     click.echo(f"  URL: http://{host}:{actual_port}")
+    if secret:
+        click.echo("  Authentication: enabled")
+    else:
+        click.echo("  Authentication: disabled (--no-auth)")
     click.echo("Press Ctrl+C to stop.")
     try:
         server.serve_forever()

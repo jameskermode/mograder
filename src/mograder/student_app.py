@@ -24,6 +24,10 @@ def _():
         save_submission_record,
     )
     from mograder.config import load_config
+    from mograder.auth import (
+        load_cached_https_token,
+        save_cached_https_token,
+    )
     from mograder.moodle_api import (
         MoodleAPIClient,
         MoodleAPIError,
@@ -51,11 +55,13 @@ def _():
         get_submission_status,
         is_cache_stale,
         load_cached_results,
+        load_cached_https_token,
         load_cached_token,
         mo,
         re,
         run_notebook,
         save_cached_results,
+        save_cached_https_token,
         save_cached_token,
         save_submission_record,
         sp,
@@ -66,16 +72,20 @@ def _():
 
 # --- State ---
 @app.cell
-def _(CONFIG, IS_HTTPS, load_cached_token, mo):
+def _(CONFIG, IS_HTTPS, load_cached_https_token, load_cached_token, mo):
     get_action_log, set_action_log = mo.state("")
     get_report_path, set_report_path = mo.state("")
     get_refresh, set_refresh = mo.state(0)
     get_pending, set_pending = mo.state(None)
 
-    # Initialize token from cache if available (HTTPS needs no token)
+    # Initialize token from cache if available
     _initial_token = ""
     if IS_HTTPS:
-        _initial_token = "_https_"
+        _url = CONFIG.https_url
+        if _url:
+            _cached_tok = load_cached_https_token(_url)
+            if _cached_tok:
+                _initial_token = _cached_tok["token"]
     else:
         _url = CONFIG.moodle_url
         if _url:
@@ -109,6 +119,7 @@ def _(
     build_transport,
     get_token,
     mo,
+    save_cached_https_token,
     save_cached_token,
     set_action_log,
     set_token,
@@ -145,7 +156,7 @@ def _(
     _has_assignments = bool(_assignments_cfg or https_assignments)
 
     if IS_HTTPS:
-        if _has_assignments:
+        if get_token():
             mo.output.replace(
                 mo.hstack(
                     [mo.md("# mograder student"), mo.md(f"`{COURSE_DIR}`")],
@@ -153,7 +164,34 @@ def _(
                     align="center",
                 )
             )
-        # else: error already shown above
+        else:
+
+            def handle_https_login(token_str):
+                token_str = token_str.strip()
+                if not token_str:
+                    return
+                _user = token_str.split(":", 1)[0] if ":" in token_str else ""
+                _url = CONFIG.https_url or ""
+                if _url:
+                    save_cached_https_token(_url, token_str, _user)
+                set_token(token_str)
+                set_action_log(f"Logged in as **{_user}**")
+
+            token_input = mo.ui.text(
+                label="HTTPS token",
+                kind="password",
+                full_width=True,
+                on_change=handle_https_login,
+            )
+            mo.output.replace(
+                mo.vstack(
+                    [
+                        mo.md("# mograder student"),
+                        mo.md("Paste the token provided by your instructor."),
+                        token_input,
+                    ]
+                )
+            )
     elif not moodle_url or not _has_assignments:
         mo.output.replace(
             mo.callout(
@@ -383,12 +421,11 @@ def _(
         _act = pending["action"]
         _token = get_token()
         if IS_HTTPS:
-            import os as _os
-
             _transport = build_transport(CONFIG)
-            _transport.user = _os.environ.get(
-                "GITHUB_USER", _os.environ.get("USER", "student")
-            )
+            # Override with the token from the UI if present
+            if _token:
+                _transport.token = _token
+                _transport.user = _token.split(":", 1)[0] if ":" in _token else ""
             _client = None
         else:
             _transport = None
