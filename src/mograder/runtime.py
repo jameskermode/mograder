@@ -44,7 +44,8 @@ def check(label, checks):
     """
     failures = [msg for ok, msg in checks if not ok]
     if not checks:
-        _write_sidecar(label, "warn", [])
+        # Don't write to sidecar for empty-check guards (e.g. mo.stop() calls).
+        # The real check with actual tests follows and will write its result.
         return mo.callout(mo.md(f"**{label}** — waiting for your code"), kind="warn")
     if failures:
         _write_sidecar(label, "danger", failures)
@@ -98,7 +99,7 @@ class Grader:
             badge = ""
 
         if not checks:
-            _write_sidecar(label, "warn", [])
+            # Don't write to sidecar for empty-check guards (e.g. mo.stop() calls).
             return _mo.callout(
                 _mo.md(f"{badge}**{label}** — waiting for your code"), kind="warn"
             )
