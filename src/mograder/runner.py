@@ -152,6 +152,11 @@ def run_notebook(
             cmd.append("--no-sandbox")
 
         env = {**os.environ, "MOGRADER_SIDECAR_PATH": str(sidecar_path)}
+        # Ensure ~/.local/bin is on PATH so marimo can find uv for sandboxed
+        # notebooks (e.g. when running under systemd with a minimal PATH).
+        local_bin = str(Path.home() / ".local" / "bin")
+        if local_bin not in env.get("PATH", "").split(os.pathsep):
+            env["PATH"] = local_bin + os.pathsep + env.get("PATH", "")
         proc = subprocess.run(
             cmd,
             capture_output=True,
