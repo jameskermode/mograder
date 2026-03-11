@@ -13,7 +13,10 @@ echo "=== Installing dependencies ==="
 ssh $HOST "cd $REMOTE_DIR && \$HOME/.local/bin/uv sync --extra grader --extra asgi"
 
 echo "=== Rebuilding demo data ==="
+# Preserve the secret so existing tokens survive a redeploy
+ssh $HOST "cd $REMOTE_DIR && cp -f demo/formgrader-course/.mograder-secret /tmp/.mograder-secret-backup 2>/dev/null || true"
 ssh $HOST "cd $REMOTE_DIR && PYTHON=.venv/bin/python MOGRADER=.venv/bin/mograder bash demo/setup_formgrader_demo.sh"
+ssh $HOST "cd $REMOTE_DIR && cp -f /tmp/.mograder-secret-backup demo/formgrader-course/.mograder-secret 2>/dev/null || true"
 
 echo "=== Restarting service ==="
 ssh $HOST "sudo systemctl restart mograder-demo"
