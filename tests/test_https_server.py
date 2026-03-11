@@ -618,3 +618,99 @@ class TestRegistration:
             headers={"Authorization": f"Bearer {token}"},
         )
         assert resp2.status_code == 403
+
+
+# --- release_dir tests (flat layout, no files/ subdir) ---
+
+
+@pytest.fixture()
+def release_server(tmp_path):
+    """Start a server with release_dir (flat layout) and separate grades_dir."""
+    root = tmp_path / "root"
+    root.mkdir()
+    release = tmp_path / "release"
+    hw1_release = release / "hw1"
+    hw1_release.mkdir(parents=True)
+    (hw1_release / "homework.py").write_text("# HW1 flat layout")
+    (hw1_release / "data.csv").write_text("x,y\n3,4\n")
+
+    submitted = tmp_path / "submitted"
+    grades = tmp_path / "grades"
+
+    srv, thread = run_server_background(
+        root, port=0, release_dir=release, submitted_dir=submitted, grades_dir=grades
+    )
+    port = srv.server_address[1]
+    yield f"http://127.0.0.1:{port}", tmp_path, srv, release, grades
+    srv.shutdown()
+
+
+class TestReleaseDirAutoDiscover:
+    def test_auto_discover_flat_layout(self, release_server):
+        base_url, _, _, _, _ = release_server
+        resp = requests.get(f"{base_url}/assignments")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert len(data) == 1
+        assert data[0]["name"] == "hw1"
+        assert len(data[0]["files"]) == 2
+        filenames = {f["filename"] for f in data[0]["files"]}
+        assert filenames == {"homework.py", "data.csv"}
+
+    def test_download_from_flat_layout(self, release_server):
+        base_url, _, _, _, _ = release_server
+        resp = requests.get(f"{base_url}/assignments/hw1/files/homework.py")
+        assert resp.status_code == 200
+        assert b"HW1 flat layout" in resp.content
+
+    def test_download_missing_from_flat_layout(self, release_server):
+        base_url, _, _, _, _ = release_server
+        resp = requests.get(f"{base_url}/assignments/hw1/files/nope.py")
+        assert resp.status_code == 404
+
+
+class TestGradesDir:
+    def test_upload_grades_to_separate_dir(self, release_server):
+        base_url, _, _, _, grades_dir = release_server
+        grades = [{"username": "alice", "grade": 88, "feedback": "Nice"}]
+        resp = requests.post(
+            f"{base_url}/assignments/hw1/grades",
+            json={"grades": grades},
+        )
+        assert resp.status_code == 200
+        grades_file = grades_dir / "hw1" / "grades.json"
+        assert grades_file.exists()
+        saved = json.loads(grades_file.read_text())
+        assert saved[0]["grade"] == 88
+
+    def test_status_reads_from_grades_dir(self, release_server):
+        base_url, _, _, _, grades_dir = release_server
+        # Upload grades first
+        grades = [{"username": "alice", "grade": 92, "feedback": "Great!"}]
+        requests.post(
+            f"{base_url}/assignments/hw1/grades",
+            json={"grades": grades},
+        )
+        resp = requests.get(f"{base_url}/assignments/hw1/status?user=alice")
+        data = resp.json()
+        assert data["graded"] is True
+        assert data["grade"] == "92"
+
+    def test_empty_release_dir_skipped(self, tmp_path):
+        """Directories with no files should not appear in assignment list."""
+        root = tmp_path / "root"
+        root.mkdir()
+        release = tmp_path / "release"
+        empty_assignment = release / "empty-hw"
+        empty_assignment.mkdir(parents=True)
+        # Also add a subdirectory (not a file)
+        (empty_assignment / "subdir").mkdir()
+
+        srv, thread = run_server_background(root, port=0, release_dir=release)
+        port = srv.server_address[1]
+        try:
+            resp = requests.get(f"http://127.0.0.1:{port}/assignments")
+            data = resp.json()
+            assert len(data) == 0
+        finally:
+            srv.shutdown()

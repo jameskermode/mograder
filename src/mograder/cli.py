@@ -1782,6 +1782,12 @@ def https_feedback(ctx, assignment, url, token, user):
     default=None,
     help="Read enrollment code from FILE",
 )
+@click.option(
+    "--release-dir",
+    type=click.Path(exists=True, path_type=Path),
+    default=None,
+    help="Serve files from RELEASE_DIR/<assignment>/<file> (flat layout, no files/ subdir)",
+)
 def serve(
     directory,
     port,
@@ -1790,6 +1796,7 @@ def serve(
     generate_tokens,
     enrollment_code,
     enrollment_code_file,
+    release_dir,
 ):
     """Start a lightweight assignment server.
 
@@ -1829,10 +1836,15 @@ def serve(
     if host is None:
         host = "0.0.0.0" if env_port else "127.0.0.1"
 
+    # Auto-detect release_dir if not specified
+    if release_dir is None and (directory / "release").is_dir():
+        release_dir = directory / "release"
+
     server = create_server(
         directory,
         host=host,
         port=port,
+        release_dir=release_dir,
         secret=secret,
         enrollment_code=enrollment_code,
     )

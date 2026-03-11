@@ -171,3 +171,58 @@ class TestHTTPSTransportAuth:
     def test_headers_empty_when_no_token(self):
         t = HTTPSTransport("http://example.com")
         assert t._headers() == {}
+
+
+@pytest.fixture()
+def release_transport_server(tmp_path):
+    """Start server with release_dir (flat layout) + create transport."""
+    root = tmp_path / "root"
+    root.mkdir()
+    release = tmp_path / "release"
+    hw1_release = release / "hw1"
+    hw1_release.mkdir(parents=True)
+    (hw1_release / "homework.py").write_text("# flat starter code")
+
+    submitted = tmp_path / "submitted"
+    grades = tmp_path / "grades"
+
+    srv, thread = run_server_background(
+        root, port=0, release_dir=release, submitted_dir=submitted, grades_dir=grades
+    )
+    port = srv.server_address[1]
+    base_url = f"http://127.0.0.1:{port}"
+    transport = HTTPSTransport(base_url, user="alice")
+    yield transport, tmp_path, grades
+    srv.shutdown()
+
+
+class TestHTTPSTransportReleaseDir:
+    def test_list_returns_flat_assignments(self, release_transport_server):
+        transport, _, _ = release_transport_server
+        assignments = transport.list_assignments()
+        assert len(assignments) == 1
+        assert assignments[0].name == "hw1"
+
+    def test_download_flat_file(self, release_transport_server, tmp_path):
+        transport, _, _ = release_transport_server
+        assignments = transport.list_assignments()
+        url = assignments[0].files[0]["url"]
+        dest = tmp_path / "output" / "homework.py"
+        transport.download_file(url, dest)
+        assert dest.exists()
+        assert "flat starter code" in dest.read_text()
+
+    def test_grades_in_separate_dir(self, release_transport_server):
+        transport, _, grades_dir = release_transport_server
+        # Upload via transport would need instructor token, test via direct HTTP
+        import requests
+
+        assignments = transport.list_assignments()
+        assert len(assignments) == 1
+        grades = [{"username": "alice", "grade": 95}]
+        resp = requests.post(
+            f"{transport.base_url}/assignments/hw1/grades",
+            json={"grades": grades},
+        )
+        assert resp.status_code == 200
+        assert (grades_dir / "hw1" / "grades.json").exists()

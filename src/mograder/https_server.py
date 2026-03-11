@@ -14,6 +14,16 @@ Serves from a directory structure::
         <user>_<timestamp>.py                  <- timestamped submissions
         <user>.py -> <user>_<timestamp>.py     <- symlink to latest
 
+Alternative layout with ``release_dir`` and ``grades_dir``::
+
+    release_dir/
+      <assignment>/
+        <filename>.py                          <- assignment files (flat, no files/ subdir)
+
+    grades_dir/
+      <assignment>/
+        grades.json                            <- uploaded grades
+
 Endpoints::
 
     POST /register                                 -> self-service token (needs enrollment code)
@@ -244,22 +254,41 @@ class AssignmentHandler(BaseHTTPRequestHandler):
         else:
             # Auto-discover from directory structure
             data = []
-            for d in sorted(self.root.iterdir()):
-                if d.is_dir() and (d / "files").is_dir():
-                    files = []
-                    for f in sorted((d / "files").iterdir()):
-                        if f.is_file():
-                            files.append(
-                                {
-                                    "filename": f.name,
-                                    "url": f"/assignments/{d.name}/files/{f.name}",
-                                }
-                            )
-                    data.append({"name": d.name, "id": d.name, "files": files})
+            if self.server.release_dir is not None:
+                # Flat layout: release_dir/<assignment>/<file>
+                for d in sorted(self.server.release_dir.iterdir()):
+                    if d.is_dir():
+                        files = []
+                        for f in sorted(d.iterdir()):
+                            if f.is_file():
+                                files.append(
+                                    {
+                                        "filename": f.name,
+                                        "url": f"/assignments/{d.name}/files/{f.name}",
+                                    }
+                                )
+                        if files:
+                            data.append({"name": d.name, "id": d.name, "files": files})
+            else:
+                for d in sorted(self.root.iterdir()):
+                    if d.is_dir() and (d / "files").is_dir():
+                        files = []
+                        for f in sorted((d / "files").iterdir()):
+                            if f.is_file():
+                                files.append(
+                                    {
+                                        "filename": f.name,
+                                        "url": f"/assignments/{d.name}/files/{f.name}",
+                                    }
+                                )
+                        data.append({"name": d.name, "id": d.name, "files": files})
         self._send_json(data)
 
     def _handle_download_file(self, assignment: str, filename: str):
-        file_path = self.root / assignment / "files" / filename
+        if self.server.release_dir is not None:
+            file_path = self.server.release_dir / assignment / filename
+        else:
+            file_path = self.root / assignment / "files" / filename
         self._send_file(file_path)
 
     def _handle_download_submission(self, assignment: str, filename: str):
@@ -316,7 +345,8 @@ class AssignmentHandler(BaseHTTPRequestHandler):
             self._send_error(400, "Invalid JSON")
             return
 
-        grades_path = self.root / assignment / "grades.json"
+        grades_dir = self.server.grades_dir or self.root
+        grades_path = grades_dir / assignment / "grades.json"
         grades_path.parent.mkdir(parents=True, exist_ok=True)
 
         # Merge with existing grades if any
@@ -342,7 +372,8 @@ class AssignmentHandler(BaseHTTPRequestHandler):
         sub_dir = self.server.submitted_dir / assignment
         submitted = (sub_dir / f"{user}.py").exists() if sub_dir.is_dir() else False
 
-        grades_path = self.root / assignment / "grades.json"
+        grades_dir = self.server.grades_dir or self.root
+        grades_path = grades_dir / assignment / "grades.json"
         grade = None
         feedback_text = ""
         graded = False
@@ -408,11 +439,15 @@ class AssignmentServer(HTTPServer):
         server_address,
         handler_class,
         submitted_dir: Path | None = None,
+        release_dir: Path | None = None,
+        grades_dir: Path | None = None,
         secret: str | None = None,
         enrollment_code: str | None = None,
     ):
         self.root_dir = root_dir
         self.submitted_dir = submitted_dir if submitted_dir is not None else root_dir
+        self.release_dir = release_dir.resolve() if release_dir is not None else None
+        self.grades_dir = grades_dir.resolve() if grades_dir is not None else None
         self.secret = secret
         self.enrollment_code = enrollment_code
         super().__init__(server_address, handler_class)
@@ -440,6 +475,8 @@ def create_server(
     host: str = "127.0.0.1",
     port: int = 0,
     submitted_dir: Path | None = None,
+    release_dir: Path | None = None,
+    grades_dir: Path | None = None,
     secret: str | None = None,
     enrollment_code: str | None = None,
 ) -> AssignmentServer:
@@ -447,6 +484,13 @@ def create_server(
 
     Use ``port=0`` to let the OS pick a free port.
     The actual port is available as ``server.server_address[1]``.
+
+    If *release_dir* is given, assignment files are served from
+    ``release_dir/<assignment>/<file>`` instead of
+    ``root_dir/<assignment>/files/<file>``.
+
+    If *grades_dir* is given, ``grades.json`` is stored in
+    ``grades_dir/<assignment>/grades.json`` instead of under *root_dir*.
 
     If *secret* is given, all endpoints require a valid HMAC token.
     If *enrollment_code* is given, ``POST /register`` is enabled.
@@ -456,6 +500,8 @@ def create_server(
         (host, port),
         AssignmentHandler,
         submitted_dir=submitted_dir,
+        release_dir=release_dir,
+        grades_dir=grades_dir,
         secret=secret,
         enrollment_code=enrollment_code,
     )
@@ -468,6 +514,8 @@ def run_server_background(
     port: int = 0,
     secret: str | None = None,
     submitted_dir: Path | None = None,
+    release_dir: Path | None = None,
+    grades_dir: Path | None = None,
     enrollment_code: str | None = None,
 ) -> tuple[AssignmentServer, threading.Thread]:
     """Start a server in a daemon thread. Returns (server, thread)."""
@@ -476,6 +524,8 @@ def run_server_background(
         host,
         port,
         submitted_dir=submitted_dir,
+        release_dir=release_dir,
+        grades_dir=grades_dir,
         secret=secret,
         enrollment_code=enrollment_code,
     )
@@ -487,6 +537,8 @@ def run_server_background(
 def create_starlette_routes(
     root_dir: Path,
     submitted_dir: Path | None = None,
+    release_dir: Path | None = None,
+    grades_dir: Path | None = None,
     secret: str | None = None,
     enrollment_code: str | None = None,
 ):
@@ -500,6 +552,13 @@ def create_starlette_routes(
     ``<user>.py`` pointing to the latest.  Defaults to *root_dir* if
     *submitted_dir* is not given.
 
+    If *release_dir* is given, assignment files are served from
+    ``release_dir/<assignment>/<file>`` instead of
+    ``root_dir/<assignment>/files/<file>``.
+
+    If *grades_dir* is given, ``grades.json`` is stored in
+    ``grades_dir/<assignment>/grades.json`` instead of under *root_dir*.
+
     If *secret* is given, all endpoints require a valid HMAC token.
     """
     from starlette.applications import Starlette
@@ -511,6 +570,8 @@ def create_starlette_routes(
     resolved_submitted_dir = (
         submitted_dir if submitted_dir is not None else root_dir
     ).resolve()
+    resolved_release_dir = release_dir.resolve() if release_dir is not None else None
+    resolved_grades_dir = grades_dir.resolve() if grades_dir is not None else None
 
     def _cors(response: Response) -> Response:
         response.headers["Access-Control-Allow-Origin"] = "*"
@@ -574,18 +635,33 @@ def create_starlette_routes(
             data = json.loads(manifest_path.read_text())
         else:
             data = []
-            for d in sorted(root.iterdir()):
-                if d.is_dir() and (d / "files").is_dir():
-                    files = []
-                    for f in sorted((d / "files").iterdir()):
-                        if f.is_file():
-                            files.append(
-                                {
-                                    "filename": f.name,
-                                    "url": f"/assignments/{d.name}/files/{f.name}",
-                                }
-                            )
-                    data.append({"name": d.name, "id": d.name, "files": files})
+            if resolved_release_dir is not None:
+                for d in sorted(resolved_release_dir.iterdir()):
+                    if d.is_dir():
+                        files = []
+                        for f in sorted(d.iterdir()):
+                            if f.is_file():
+                                files.append(
+                                    {
+                                        "filename": f.name,
+                                        "url": f"/assignments/{d.name}/files/{f.name}",
+                                    }
+                                )
+                        if files:
+                            data.append({"name": d.name, "id": d.name, "files": files})
+            else:
+                for d in sorted(root.iterdir()):
+                    if d.is_dir() and (d / "files").is_dir():
+                        files = []
+                        for f in sorted((d / "files").iterdir()):
+                            if f.is_file():
+                                files.append(
+                                    {
+                                        "filename": f.name,
+                                        "url": f"/assignments/{d.name}/files/{f.name}",
+                                    }
+                                )
+                        data.append({"name": d.name, "id": d.name, "files": files})
         return _json(data)
 
     async def download_file(request: Request):
@@ -594,6 +670,8 @@ def create_starlette_routes(
             return err
         name = request.path_params["name"]
         filename = request.path_params["file"]
+        if resolved_release_dir is not None:
+            return _file(resolved_release_dir / name / filename)
         return _file(root / name / "files" / filename)
 
     async def download_submission(request: Request):
@@ -660,7 +738,8 @@ def create_starlette_routes(
         except json.JSONDecodeError:
             return _json({"error": "Invalid JSON"}, 400)
 
-        grades_path = root / name / "grades.json"
+        _grades_root = resolved_grades_dir or root
+        grades_path = _grades_root / name / "grades.json"
         grades_path.parent.mkdir(parents=True, exist_ok=True)
 
         existing = []
@@ -688,7 +767,8 @@ def create_starlette_routes(
         sub_dir = resolved_submitted_dir / name
         submitted = (sub_dir / f"{user}.py").exists() if sub_dir.is_dir() else False
 
-        grades_path = root / name / "grades.json"
+        _grades_root = resolved_grades_dir or root
+        grades_path = _grades_root / name / "grades.json"
         grade = None
         feedback_text = ""
         graded = False

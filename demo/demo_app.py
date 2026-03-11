@@ -2,7 +2,6 @@
 
 Environment variables:
     MOGRADER_COURSE_DIR       — course directory for formgrader (default: ".")
-    MOGRADER_SERVE_DIR        — directory for assignment API (optional)
     MOGRADER_ENROLLMENT_CODE  — enrollment passphrase for student self-registration
 """
 
@@ -21,18 +20,19 @@ server = marimo.create_asgi_app(include_code=True)
 server = server.with_app(path="/", root=formgrader_path)
 
 # Check if we should also serve the assignment API
-serve_dir = os.environ.get("MOGRADER_SERVE_DIR", "")
+course_dir = Path(os.environ.get("MOGRADER_COURSE_DIR", "."))
 
-if serve_dir and Path(serve_dir).is_dir():
+if (course_dir / "release").is_dir():
     from mograder.auth import is_instructor, load_or_create_secret, verify_token
     from mograder.https_server import create_starlette_routes
 
-    course_dir = Path(os.environ.get("MOGRADER_COURSE_DIR", "."))
     _secret = load_or_create_secret(course_dir)
     _enrollment_code = os.environ.get("MOGRADER_ENROLLMENT_CODE") or None
     api_app = create_starlette_routes(
-        Path(serve_dir),
+        course_dir,
+        release_dir=course_dir / "release",
         submitted_dir=course_dir / "submitted",
+        grades_dir=course_dir / ".mograder" / "server",
         secret=_secret,
         enrollment_code=_enrollment_code,
     )

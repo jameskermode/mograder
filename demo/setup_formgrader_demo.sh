@@ -51,20 +51,12 @@ cp examples/moodle_worksheet.csv "$COURSE/import/demo-assignment.csv"
 echo "=== Importing student names ==="
 (cd "$COURSE" && $MOGRADER import-students import/demo-assignment.csv)
 
-echo "=== Restructuring release for assignment server ==="
-# Assignment server expects: <assignment>/files/<file>.py
-for d in "$COURSE"/release/*/; do
-    name=$(basename "$d")
-    mkdir -p "$d/files"
-    mv "$d"/*.py "$d/files/" 2>/dev/null || true
-done
-
 # Copy release notebooks with submit cells from demo/course if available
 if [ -d demo/course ]; then
     for d in demo/course/*/; do
         name=$(basename "$d")
-        if [ -d "$d/files" ]; then
-            cp "$d"/files/*.py "$COURSE/release/$name/files/" 2>/dev/null || true
+        if [ -d "$COURSE/release/$name" ]; then
+            cp "$d"/*.py "$COURSE/release/$name/" 2>/dev/null || true
         fi
     done
 fi

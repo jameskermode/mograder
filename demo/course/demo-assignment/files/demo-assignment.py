@@ -200,7 +200,6 @@ def _(grader):
     return
 
 
-
 @app.cell(hide_code=True)
 def _(mo):
     # === MOGRADER: SUBMIT ===
@@ -214,7 +213,13 @@ def _(mo):
 def _(submit_btn, submit_username, mo):
     mo.stop(not submit_btn.value or not submit_username.value)
     from mograder.remote import submit as submit_fn
-    submit_result = submit_fn("https://mograder-demo.jrkermode.uk", "demo-assignment", __file__, submit_username.value)
+
+    submit_result = submit_fn(
+        "https://mograder-demo.jrkermode.uk",
+        "demo-assignment",
+        __file__,
+        submit_username.value,
+    )
     mo.callout(mo.md(f"**Submitted!** Status: {submit_result}"), kind="success")
     return
 
