@@ -7,7 +7,7 @@ There are three ways to work on assignments. Pick whichever suits you best:
 | Setup | Install uv (2 commands) | One click | None |
 | Platforms | macOS, Linux, Windows | Any browser | Any browser |
 | Best for | Full offline workflow | Windows users, quick start | Light editing, no install |
-| Validate | Yes | Yes | No |
+| Validate | Yes | Yes | Via assessment cell |
 
 ## Option 1: Local install
 
@@ -95,7 +95,7 @@ If you're using [Molab](https://molab.marimo.io), no local installation is requi
 5. Download the completed `.py` file from Molab
 6. Submit via the Moodle web interface or `mograder https submit`
 
-> **Note:** Molab does not support the **Validate** button — you won't be able to check your work against the assignment's test cases before submitting.
+> **Note:** Molab does not support the mograder **Validate** button, but you can still check your work before submitting. Each assignment notebook contains a self-assessment cell near the end — run it to see which checks pass or fail (e.g. "3/5 PASS"). This is the same information the Validate button shows; the button is just a convenience wrapper. Make sure the self-assessment cell output looks correct before downloading and submitting your notebook.
 
 ### Molab with HTTPS transport
 
