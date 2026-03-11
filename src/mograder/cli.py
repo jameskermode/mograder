@@ -127,18 +127,53 @@ def cli(ctx):
     "--validate", is_flag=True, help="Only validate markers, don't generate output"
 )
 @click.option(
+    "--no-validate",
+    is_flag=True,
+    help="Skip source notebook validation (running checks)",
+)
+@click.option(
     "--submit-url",
     default=None,
     help="Inject a submit cell with this server URL into release notebooks",
 )
 @click.pass_context
-def generate(ctx, files, output_dir, dry_run, validate, submit_url):
+def generate(ctx, files, output_dir, dry_run, validate, no_validate, submit_url):
     """Strip solutions from source notebooks to produce release versions."""
     config = ctx.obj["config"]
     if output_dir is None:
         output_dir = _infer_output_dir(
             files[0], config.source_dir, config.release_dir, config.release_dir
         )
+
+    # Pre-run validation: execute source notebooks and check results
+    if no_validate and not validate and not dry_run:
+        click.echo("WARNING: skipping source validation (--no-validate)")
+    elif not validate and not dry_run:
+        from .runner import run_notebook
+
+        validation_ok = True
+        for filepath in files:
+            if filepath.suffix != ".py":
+                continue
+            click.echo(f"VALIDATE: {_rel(filepath)} ... ", nl=False)
+            result = run_notebook(filepath)
+            if not result.export_ok:
+                click.echo(f"FAIL (export error: {result.export_error})")
+                validation_ok = False
+                continue
+            if result.cell_errors > 0:
+                click.echo(f"FAIL ({result.cell_errors} cell errors)")
+                validation_ok = False
+                continue
+            failed = [c for c in result.checks if c.status != "success"]
+            if failed:
+                labels = ", ".join(c.label for c in failed)
+                click.echo(f"FAIL ({len(failed)} checks: {labels})")
+                validation_ok = False
+                continue
+            click.echo("OK")
+        if not validation_ok:
+            sys.exit(1)
 
     success = True
     processed_dirs: set[Path] = set()

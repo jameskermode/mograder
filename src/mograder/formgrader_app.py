@@ -225,11 +225,14 @@ def _(
             _src = str(_a.source_path)
             _out = str(COURSE_DIR / DIR_NAMES.release)
             _n3 = _a.name
+            _gen_cmd = ["generate", _src, "-o", _out]
+            if MOGRADER_CONFIG.no_actions:
+                _gen_cmd.append("--no-validate")
             _gen.append(
                 mo.ui.button(
                     label="\u2192",
-                    on_change=lambda _, s=_src, o=_out, n=_n3: set_pending_action(
-                        {"cmd": ["generate", s, "-o", o], "label": f"generate {n}"}
+                    on_change=lambda _, cmd=_gen_cmd, n=_n3: set_pending_action(
+                        {"cmd": cmd, "label": f"generate {n}"}
                     ),
                     tooltip="Generate",
                 )
