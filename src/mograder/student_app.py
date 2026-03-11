@@ -166,13 +166,23 @@ def _(
                 )
             )
         else:
-            username_input = mo.ui.text(label="Username", full_width=True)
+            import os as _os
+
+            detected_user = _os.environ.get("GITHUB_USER") or _os.environ.get(
+                "USER", ""
+            )
+            username_input = mo.ui.text(
+                label="Username",
+                value=detected_user,
+                disabled=bool(detected_user),
+                full_width=True,
+            )
             enrollment_input = mo.ui.text(
                 label="Enrollment code", kind="password", full_width=True
             )
 
             def handle_https_register(_):
-                user = username_input.value.strip()
+                user = detected_user or username_input.value.strip()
                 code = enrollment_input.value.strip()
                 if not user or not code:
                     set_action_log("Enter both username and enrollment code")
