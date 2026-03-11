@@ -125,7 +125,6 @@ def _(
     save_cached_https_token,
     save_cached_token,
     set_action_log,
-    set_refresh,
     set_token,
 ):
     moodle_url = CONFIG.moodle_url
@@ -210,7 +209,6 @@ def _(
                     tok = result["token"]
                     save_cached_https_token(CONFIG.https_url, tok, user)
                     set_token(tok)
-                    set_refresh(lambda v: v + 1)
                     set_action_log(f"Registered and logged in as **{user}**")
                 except Exception as exc:
                     set_action_log(f"Registration failed: {exc}")
@@ -228,7 +226,6 @@ def _(
                 if _url:
                     save_cached_https_token(_url, token_str, _user)
                 set_token(token_str)
-                set_refresh(lambda v: v + 1)
                 set_action_log(f"Logged in as **{_user}**")
 
             token_input = mo.ui.text(
