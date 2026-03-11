@@ -25,6 +25,7 @@ def _():
     )
     from mograder.config import load_config
     from mograder.auth import (
+        clear_cached_https_token,
         load_cached_https_token,
         save_cached_https_token,
     )
@@ -49,6 +50,7 @@ def _():
         MoodleAPIError,
         Path,
         build_transport,
+        clear_cached_https_token,
         create_shared_sandbox,
         datetime,
         format_check_summary,
@@ -117,6 +119,7 @@ def _(
     MoodleAPIClient,
     MoodleAPIError,
     build_transport,
+    clear_cached_https_token,
     get_token,
     mo,
     save_cached_https_token,
@@ -131,7 +134,7 @@ def _(
     # For HTTPS transport, fetch assignments from the server if not in config
     _assignments_cfg = CONFIG.assignments or CONFIG.moodle_assignments
     https_assignments = ()
-    if IS_HTTPS and not _assignments_cfg:
+    if IS_HTTPS and not _assignments_cfg and get_token():
         try:
             _transport = build_transport(CONFIG)
             _remote = _transport.list_assignments()
@@ -147,12 +150,25 @@ def _(
                 for a in _remote
             )
         except Exception as _exc:
-            mo.output.replace(
-                mo.callout(
-                    mo.md(f"Failed to fetch assignments from server: {_exc}"),
-                    kind="danger",
-                )
+            import requests as _requests
+
+            _is_auth_error = (
+                isinstance(_exc, _requests.HTTPError)
+                and _exc.response is not None
+                and _exc.response.status_code in (401, 403)
             )
+            if _is_auth_error:
+                # Stale token — clear cache and reset so login UI appears
+                clear_cached_https_token()
+                set_token("")
+                set_action_log("Session expired — please log in again.")
+            else:
+                mo.output.replace(
+                    mo.callout(
+                        mo.md(f"Failed to fetch assignments from server: {_exc}"),
+                        kind="danger",
+                    )
+                )
 
     _has_assignments = bool(_assignments_cfg or https_assignments)
 
