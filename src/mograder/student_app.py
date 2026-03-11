@@ -521,13 +521,22 @@ def _(
             _path = pending["path"]
             _name = pending["name"]
             _cmd = [sys.executable, "-m", "marimo", "edit", "--sandbox", _path]
-            if CONFIG.headless_edit:
-                import os as _os
+            import os as _os
+
+            _is_remote = bool(
+                _os.environ.get("CODESPACES")
+                or _os.environ.get("SSH_CONNECTION")
+                or CONFIG.headless_edit
+            )
+            if _is_remote:
                 import re as _re
                 import threading as _threading
                 from urllib.parse import urlparse as _urlparse
 
-                _cmd.extend(["--headless", "--host", "0.0.0.0"])
+                if _os.environ.get("CODESPACES"):
+                    _cmd.extend(["--headless", "--host", "0.0.0.0"])
+                else:
+                    _cmd.append("--headless")
                 _proc = sp.Popen(_cmd, stdout=sp.PIPE, stderr=sp.STDOUT, text=True)
                 _url_box = []
                 _found = _threading.Event()
