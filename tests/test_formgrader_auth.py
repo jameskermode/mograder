@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import re
+
 import pytest
 from starlette.middleware.sessions import SessionMiddleware
 from starlette.requests import Request
@@ -45,6 +47,7 @@ def _build_app(secret: str):
         username = verify_token(secret, token)
         if username and is_instructor(username):
             request.session["authenticated"] = True
+            request.session["remember"] = bool(form.get("remember"))
             return RedirectResponse("/", status_code=303)
         return HTMLResponse(_LOGIN_HTML.format(error="Invalid"), status_code=403)
 
@@ -110,7 +113,40 @@ def _build_app(secret: str):
                 return
         await marimo_stub(scope, receive, send)
 
-    return SessionMiddleware(InstructorAuthMiddleware(router), secret_key=secret)
+    _PERSISTENT_MAX_AGE = 90 * 24 * 60 * 60
+
+    class RememberMeMiddleware:
+        def __init__(self, app: ASGIApp) -> None:
+            self.app = app
+
+        async def __call__(self, scope: Scope, receive: Receive, send: Send):
+            if scope["type"] != "http":
+                await self.app(scope, receive, send)
+                return
+
+            async def send_wrapper(message):
+                if message["type"] == "http.response.start":
+                    session = scope.get("session", {})
+                    remember = session.get("remember", False)
+                    if not remember:
+                        headers = list(message.get("headers", []))
+                        new_headers = []
+                        for k, v in headers:
+                            if k == b"set-cookie" and b"session=" in v:
+                                v = re.sub(rb"; Max-Age=\d+", b"", v)
+                                v = re.sub(rb"; expires=[^;]+", b"", v, flags=re.I)
+                            new_headers.append((k, v))
+                        message = {**message, "headers": new_headers}
+                await send(message)
+
+            await self.app(scope, receive, send_wrapper)
+
+    session_app = SessionMiddleware(
+        InstructorAuthMiddleware(router),
+        secret_key=secret,
+        max_age=_PERSISTENT_MAX_AGE,
+    )
+    return RememberMeMiddleware(session_app)
 
 
 @pytest.fixture()
@@ -195,3 +231,19 @@ class TestFormgraderAuth:
         resp = client.get("/some/deep/path")
         assert resp.status_code == 303
         assert resp.headers["location"] == "/login"
+
+    def test_login_without_remember_sets_session_cookie(self, client, secret):
+        """Without 'remember', cookie should have no Max-Age (session-only)."""
+        token = make_token(secret, INSTRUCTOR_USER)
+        resp = client.post("/login", data={"token": token})
+        cookie_header = resp.headers.get("set-cookie", "")
+        assert "session=" in cookie_header
+        assert "Max-Age" not in cookie_header
+
+    def test_login_with_remember_sets_persistent_cookie(self, client, secret):
+        """With 'remember' checked, cookie should have Max-Age."""
+        token = make_token(secret, INSTRUCTOR_USER)
+        resp = client.post("/login", data={"token": token, "remember": "1"})
+        cookie_header = resp.headers.get("set-cookie", "")
+        assert "session=" in cookie_header
+        assert "Max-Age" in cookie_header

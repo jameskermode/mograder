@@ -75,6 +75,9 @@ if serve_dir and Path(serve_dir).is_dir():
       <label for="token">Instructor token:</label>
       <input type="text" id="token" name="token" required
              placeholder="__instructor__:abc123..." autocomplete="off">
+      <label style="display:block; margin-bottom:1rem">
+        <input type="checkbox" name="remember" value="1"> Remember me
+      </label>
       <button type="submit">Log in</button>
     </form>
   </div>
@@ -90,6 +93,7 @@ if serve_dir and Path(serve_dir).is_dir():
         username = verify_token(_secret, token)
         if username and is_instructor(username):
             request.session["authenticated"] = True
+            request.session["remember"] = bool(form.get("remember"))
             return RedirectResponse("/", status_code=303)
         error_msg = '<p class="error">Invalid token or not an instructor.</p>'
         return HTMLResponse(_LOGIN_HTML.format(error=error_msg), status_code=403)
@@ -152,10 +156,56 @@ if serve_dir and Path(serve_dir).is_dir():
                 return
         await marimo_app(scope, receive, send)
 
-    # Stack: SessionMiddleware → AuthMiddleware → router
-    app = SessionMiddleware(
-        _InstructorAuthMiddleware(_router), secret_key=_secret
+    _PERSISTENT_MAX_AGE = 90 * 24 * 60 * 60  # 90 days
+
+    class _RememberMeMiddleware:
+        """Strip Max-Age from session cookie when 'remember' is not set.
+
+        When remember is set, SessionMiddleware's max_age applies (90 days).
+        When not set, omitting Max-Age makes it a session cookie (expires
+        when browser closes).
+        """
+
+        def __init__(self, app: ASGIApp) -> None:
+            self.app = app
+
+        async def __call__(self, scope: Scope, receive: Receive, send: Send):
+            if scope["type"] != "http":
+                await self.app(scope, receive, send)
+                return
+
+            remember = False
+
+            async def send_wrapper(message):
+                nonlocal remember
+                if message["type"] == "http.response.start":
+                    session = scope.get("session", {})
+                    remember = session.get("remember", False)
+                    if not remember:
+                        headers = list(message.get("headers", []))
+                        new_headers = []
+                        for k, v in headers:
+                            if k == b"set-cookie" and b"session=" in v:
+                                # Remove Max-Age and Expires to make session-only
+                                import re
+
+                                v = re.sub(rb"; Max-Age=\d+", b"", v)
+                                v = re.sub(rb"; expires=[^;]+", b"", v, flags=re.I)
+                            new_headers.append((k, v))
+                        message = {**message, "headers": new_headers}
+                await send(message)
+
+            await self.app(scope, receive, send_wrapper)
+
+    # Stack: RememberMe → SessionMiddleware → AuthMiddleware → router
+    # RememberMe must wrap SessionMiddleware so it can intercept the
+    # Set-Cookie header that SessionMiddleware adds.
+    _session_app = SessionMiddleware(
+        _InstructorAuthMiddleware(_router),
+        secret_key=_secret,
+        max_age=_PERSISTENT_MAX_AGE,
     )
+    app = _RememberMeMiddleware(_session_app)
 
 else:
     app = server.build()
