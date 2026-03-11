@@ -23,6 +23,8 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = [
+    "httpx",
+    "python-multipart>=0.0.6",
     "pytest",
     "pytest-cov",
     "pytest-playwright",

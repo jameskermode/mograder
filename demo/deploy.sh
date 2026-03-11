@@ -24,6 +24,26 @@ ssh $HOST "sudo systemctl status mograder-demo --no-pager -l | head -15"
 
 echo ""
 echo "=== Verifying ==="
-curl -sf https://mograder-demo.jrkermode.uk/assignments | python3 -m json.tool
+# Formgrader root should redirect to login (303) when unauthenticated
+ROOT_STATUS=$(curl -s -o /dev/null -w "%{http_code}" https://mograder-demo.jrkermode.uk/)
+if [ "$ROOT_STATUS" = "303" ]; then
+    echo "Root check: OK (303 redirect to /login)"
+else
+    echo "WARNING: Expected 303, got $ROOT_STATUS"
+fi
+# Login page should return 200
+LOGIN_STATUS=$(curl -s -o /dev/null -w "%{http_code}" https://mograder-demo.jrkermode.uk/login)
+if [ "$LOGIN_STATUS" = "200" ]; then
+    echo "Login page: OK (200)"
+else
+    echo "WARNING: Expected 200, got $LOGIN_STATUS"
+fi
+# Assignments endpoint should require Bearer auth (401)
+AUTH_STATUS=$(curl -s -o /dev/null -w "%{http_code}" https://mograder-demo.jrkermode.uk/assignments)
+if [ "$AUTH_STATUS" = "401" ]; then
+    echo "Auth check: OK (401 for unauthenticated)"
+else
+    echo "WARNING: Expected 401, got $AUTH_STATUS"
+fi
 echo ""
 echo "Deploy complete: https://mograder-demo.jrkermode.uk"

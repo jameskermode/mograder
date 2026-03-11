@@ -54,10 +54,11 @@ uvx mograder student
 
 If you're working on [Molab](https://molab.marimo.io) (no install needed, but Validate is not available):
 
-1. Download the notebook from Moodle (or via `uvx mograder https fetch`)
-2. Upload to Molab — dependencies install automatically
-3. Work on the notebook in your browser
-4. Download and submit via Moodle (or via `uvx mograder https submit`)
+1. Cache your auth token (one time): `uvx mograder https login --token <YOUR_TOKEN> --url <SERVER_URL>`
+2. Download the notebook: `uvx mograder https fetch "hw1" -o hw1/` (or from Moodle)
+3. Upload to Molab — dependencies install automatically
+4. Work on the notebook in your browser
+5. Download and submit: `uvx mograder https submit hw1/homework.py -a "hw1"` (or via Moodle)
 
 ## Troubleshooting
 
