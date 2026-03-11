@@ -19,11 +19,11 @@ $PYTHON examples/generate_spoof.py
 
 echo "=== Autograding demo-holistic ==="
 $MOGRADER autograde examples/submitted/demo-holistic/*.py \
-  --source examples/source/demo-holistic/demo-holistic.py
+  --source examples/source/demo-holistic/demo-holistic.py --jobs 1
 
 echo "=== Autograding demo-assignment ==="
 $MOGRADER autograde examples/submitted/demo-assignment/*.py \
-  --source examples/source/demo-assignment/demo-assignment.py
+  --source examples/source/demo-assignment/demo-assignment.py --jobs 1
 
 echo "=== Simulating GTA grading ==="
 $PYTHON examples/generate_spoof.py --postprocess
