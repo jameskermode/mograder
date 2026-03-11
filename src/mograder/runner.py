@@ -150,6 +150,11 @@ def run_notebook(
         ]
         if sandbox_dir is not None:
             cmd.append("--no-sandbox")
+        else:
+            # Use --sandbox so marimo installs inline deps without prompting.
+            # Without this, marimo may prompt interactively via click.confirm()
+            # when stdin is a tty, causing the process to hang.
+            cmd.append("--sandbox")
 
         env = {**os.environ, "MOGRADER_SIDECAR_PATH": str(sidecar_path)}
         # Ensure ~/.local/bin is on PATH so marimo can find uv for sandboxed
@@ -163,6 +168,7 @@ def run_notebook(
             text=True,
             timeout=timeout,
             env=env,
+            stdin=subprocess.DEVNULL,
         )
 
         if proc.returncode != 0 and not tmp_path.exists():
