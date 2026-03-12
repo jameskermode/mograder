@@ -42,7 +42,7 @@ def _():
         _cached = load_cached_token(MOGRADER_CONFIG.moodle_url)
         if _cached:
             MOODLE_READY = True
-    _moodle_assign_names = {
+    moodle_assign_names = {
         a["name"]
         for a in (MOGRADER_CONFIG.assignments or MOGRADER_CONFIG.moodle_assignments)
     }
@@ -55,7 +55,7 @@ def _():
         MOGRADER_CONFIG,
         MOODLE_READY,
         Path,
-        _moodle_assign_names,
+        moodle_assign_names,
         io,
         mo,
         os,
@@ -132,7 +132,7 @@ def _(
     DIR_NAMES,
     MOGRADER_CONFIG,
     MOODLE_READY,
-    _moodle_assign_names,
+    moodle_assign_names,
     assignments,
     io,
     mo,
@@ -344,7 +344,7 @@ def _(
 
         # Fetch submissions from Moodle
         _sub_out = str(COURSE_DIR / DIR_NAMES.submitted / _a.name)
-        if MOODLE_READY and _a.name in _moodle_assign_names:
+        if MOODLE_READY and _a.name in moodle_assign_names:
             _n_fetch = _a.name
             _fetch_sub_list.append(
                 mo.ui.button(
@@ -368,7 +368,7 @@ def _(
         # Upload grades & feedback to Moodle
         _fb_dir_path = COURSE_DIR / DIR_NAMES.feedback / _a.name
         _has_feedback = _fb_dir_path.is_dir() and any(_fb_dir_path.glob("*.html"))
-        if MOODLE_READY and _a.name in _moodle_assign_names and _has_feedback:
+        if MOODLE_READY and _a.name in moodle_assign_names and _has_feedback:
             _n_up = _a.name
             _fb_d = str(_fb_dir_path)
             _upload_fb_list.append(
