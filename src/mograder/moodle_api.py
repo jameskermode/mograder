@@ -104,8 +104,11 @@ class MoodleAPIClient:
                 f.write(chunk)
         return dest
 
-    def upload_file(self, filepath: Path) -> int:
+    def upload_file(self, filepath: Path, itemid: int = 0) -> int:
         """Upload a file to the user's draft area.
+
+        When *itemid* is 0 (default), a new draft area is created.
+        Pass a non-zero *itemid* to append to an existing draft area.
 
         Returns the draft area itemid.
         """
@@ -114,7 +117,7 @@ class MoodleAPIClient:
                 self.upload_endpoint,
                 params={"token": self.token},
                 files={"file_1": (filepath.name, f)},
-                data={"itemid": 0},
+                data={"itemid": itemid},
                 timeout=60,
             )
         resp.raise_for_status()
@@ -125,6 +128,32 @@ class MoodleAPIClient:
                 error_code=result.get("errorcode"),
             )
         return result[0]["itemid"]
+
+    def upload_files_to_draft(self, filepaths: list[Path]) -> int:
+        """Upload multiple files to a single draft area.
+
+        Returns the draft area itemid.
+        """
+        if not filepaths:
+            raise ValueError("No files to upload")
+        itemid = 0
+        for fp in filepaths:
+            itemid = self.upload_file(fp, itemid=itemid)
+        return itemid
+
+    def update_introattachments(self, cmid: int, draft_itemid: int) -> None:
+        """Attach a draft area to an assignment's introattachments.
+
+        Uses ``core_course_edit_module`` to update the assignment module.
+        Raises ``MoodleAPIError`` if the API call fails (e.g. insufficient
+        permissions).
+        """
+        self._call(
+            "core_course_edit_module",
+            action="update",
+            id=cmid,
+            **{"introattachments": draft_itemid},
+        )
 
     def save_submission(self, assignment_id: int, item_id: int) -> None:
         """Save a file submission draft for an assignment."""

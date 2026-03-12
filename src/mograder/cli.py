@@ -1009,6 +1009,107 @@ def moodle_upload_feedback(
     click.echo(f"Uploaded {len(grade_payloads)} grade(s) to '{match['name']}'")
 
 
+@moodle_group.command("upload")
+@click.argument("assignment")
+@click.argument("files", nargs=-1, type=click.Path(exists=True, path_type=Path))
+@_add_moodle_api_options
+@click.option("--dry-run", is_flag=True, help="Show what would be uploaded")
+@click.option(
+    "--draft-only",
+    is_flag=True,
+    help="Upload to draft area only, print itemid without attaching",
+)
+@click.pass_context
+def moodle_upload(ctx, assignment, files, course_id, url, token, dry_run, draft_only):
+    """Upload release files to a Moodle assignment as introattachments.
+
+    Files are zipped into <assignment>.zip before uploading.
+    If no FILES are given, auto-discovers from release/<assignment>/.
+    """
+    import zipfile
+
+    from mograder.moodle_api import (
+        MoodleAPIClient,
+        MoodleAPIError,
+        find_assignment,
+        resolve_credentials,
+    )
+
+    config = ctx.obj["config"]
+    url, token = resolve_credentials(url, token, config)
+    cid = _get_course_id(course_id, config)
+    client = MoodleAPIClient(url, token)
+
+    match = find_assignment(client, cid, assignment)
+
+    # Auto-discover release files if none given
+    if not files:
+        release_dir = Path(config.release_dir) / assignment
+        if not release_dir.is_dir():
+            raise click.UsageError(
+                f"No files specified and release directory not found: {release_dir}"
+            )
+        files = sorted(f for f in release_dir.iterdir() if f.is_file())
+        if not files:
+            raise click.UsageError(f"No files found in {release_dir}")
+
+    if dry_run:
+        click.echo(
+            f"Would zip and upload to '{match['name']}' "
+            f"(cmid={match['cmid']}) as {assignment}.zip:"
+        )
+        for f in files:
+            click.echo(f"  {_rel(f)}")
+        return
+
+    # Zip files into a temp file
+    zip_name = f"{assignment}.zip"
+    tmp = tempfile.mkdtemp()
+    zip_path = Path(tmp) / zip_name
+    with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
+        for f in files:
+            zf.write(f, Path(f).name)
+    click.echo(f"Zipped {len(files)} file(s) into {zip_name}")
+    for f in files:
+        click.echo(f"  {_rel(f)}")
+
+    # Upload zip to draft area
+    draft_itemid = client.upload_file(zip_path)
+    click.echo(f"Uploaded {zip_name} (draft itemid: {draft_itemid})")
+
+    # Clean up temp file
+    zip_path.unlink()
+    os.rmdir(tmp)
+
+    if draft_only:
+        click.echo(
+            "Draft-only mode: file uploaded but not attached.\n"
+            "Use this itemid in the Moodle assignment edit form to select the file."
+        )
+        return
+
+    # Try to attach to assignment
+    cmid = match.get("cmid")
+    if not cmid:
+        click.echo(
+            "WARNING: no cmid found for this assignment — cannot attach automatically.\n"
+            f"Use draft itemid {draft_itemid} in the Moodle edit form.",
+            err=True,
+        )
+        return
+
+    try:
+        client.update_introattachments(cmid, draft_itemid)
+        click.echo(f"Attached to '{match['name']}' as introattachments.")
+    except MoodleAPIError as e:
+        click.echo(
+            f"WARNING: could not attach files automatically: {e}\n"
+            f"Files are uploaded to draft area (itemid={draft_itemid}).\n"
+            "Open the assignment edit form in Moodle and select the pre-uploaded file.",
+            err=True,
+        )
+
+
 @moodle_group.command("feedback")
 @click.argument("assignment")
 @_add_moodle_api_options

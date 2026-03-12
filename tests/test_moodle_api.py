@@ -1058,3 +1058,271 @@ class TestExtractTokenFromSsoUrl:
         url = f"moodlemobile://token={payload}"
         with pytest.raises(MoodleAPIError, match="Unexpected token format"):
             extract_token_from_sso_url(url)
+
+
+# ---------------------------------------------------------------------------
+# upload_file with itemid, upload_files_to_draft, update_introattachments
+# ---------------------------------------------------------------------------
+
+
+class TestUploadFileItemid:
+    def test_upload_file_passes_nonzero_itemid(self, tmp_path):
+        client = MoodleAPIClient("https://moodle.example.com", "tok")
+        test_file = tmp_path / "notebook.py"
+        test_file.write_text("print('hello')")
+
+        mock_resp = MagicMock()
+        mock_resp.json.return_value = [{"itemid": 555, "filename": "notebook.py"}]
+        mock_resp.raise_for_status = MagicMock()
+        with patch("requests.post", return_value=mock_resp) as mock_post:
+            item_id = client.upload_file(test_file, itemid=555)
+        assert item_id == 555
+        # Verify itemid was passed in the request data
+        call_data = mock_post.call_args
+        assert call_data.kwargs["data"]["itemid"] == 555
+
+    def test_upload_file_default_itemid_zero(self, tmp_path):
+        client = MoodleAPIClient("https://moodle.example.com", "tok")
+        test_file = tmp_path / "notebook.py"
+        test_file.write_text("print('hello')")
+
+        mock_resp = MagicMock()
+        mock_resp.json.return_value = [{"itemid": 123, "filename": "notebook.py"}]
+        mock_resp.raise_for_status = MagicMock()
+        with patch("requests.post", return_value=mock_resp) as mock_post:
+            item_id = client.upload_file(test_file)
+        assert item_id == 123
+        call_data = mock_post.call_args
+        assert call_data.kwargs["data"]["itemid"] == 0
+
+
+class TestUploadFilesToDraft:
+    def test_chains_calls_and_returns_final_itemid(self, tmp_path):
+        client = MoodleAPIClient("https://moodle.example.com", "tok")
+        f1 = tmp_path / "a.py"
+        f2 = tmp_path / "b.py"
+        f1.write_text("a")
+        f2.write_text("b")
+
+        # First call creates draft (itemid=0 → returns 100)
+        # Second call appends (itemid=100 → returns 100)
+        with patch.object(client, "upload_file", side_effect=[100, 100]) as mock_upload:
+            result = client.upload_files_to_draft([f1, f2])
+        assert result == 100
+        assert mock_upload.call_count == 2
+        mock_upload.assert_any_call(f1, itemid=0)
+        mock_upload.assert_any_call(f2, itemid=100)
+
+    def test_empty_list_raises(self):
+        client = MoodleAPIClient("https://moodle.example.com", "tok")
+        with pytest.raises(ValueError, match="No files"):
+            client.upload_files_to_draft([])
+
+
+class TestUpdateIntroattachments:
+    def test_calls_edit_module(self):
+        client = MoodleAPIClient("https://moodle.example.com", "tok")
+        with patch.object(client, "_call", return_value={}) as mock_call:
+            client.update_introattachments(42, 999)
+        mock_call.assert_called_once_with(
+            "core_course_edit_module",
+            action="update",
+            id=42,
+            introattachments=999,
+        )
+
+    def test_raises_on_api_error(self):
+        client = MoodleAPIClient("https://moodle.example.com", "tok")
+        with patch.object(
+            client, "_call", side_effect=MoodleAPIError("Access denied", "nopermission")
+        ):
+            with pytest.raises(MoodleAPIError, match="Access denied"):
+                client.update_introattachments(42, 999)
+
+
+# ---------------------------------------------------------------------------
+# moodle upload CLI tests
+# ---------------------------------------------------------------------------
+
+
+class TestMoodleUploadCLI:
+    """Tests for ``moodle upload`` — zips release files before uploading."""
+
+    def _capture_zip(self, monkeypatch, tmp_path):
+        """Helper: patch upload_file to capture the zip path and verify contents."""
+        captured = {}
+
+        def fake_upload(self_client, filepath, itemid=0):
+            import zipfile
+
+            captured["path"] = filepath
+            captured["itemid_arg"] = itemid
+            with zipfile.ZipFile(filepath) as zf:
+                captured["namelist"] = zf.namelist()
+            return 999
+
+        monkeypatch.setattr(
+            "mograder.moodle_api.MoodleAPIClient.upload_file", fake_upload
+        )
+        return captured
+
+    def test_dry_run(self, monkeypatch, tmp_path):
+        _mock_config(monkeypatch)
+        f1 = tmp_path / "notebook.py"
+        f1.write_text("print('hello')")
+
+        assignment = {
+            "id": 10,
+            "cmid": 42,
+            "name": "Demo",
+            "duedate": 0,
+            "introattachments": [],
+        }
+        with patch(
+            "mograder.moodle_api.MoodleAPIClient.get_assignments",
+            return_value=[assignment],
+        ):
+            runner = CliRunner()
+            result = runner.invoke(
+                cli,
+                ["moodle", "upload", "Demo", str(f1), "-c", "1", "--dry-run"],
+            )
+        assert result.exit_code == 0, result.output
+        assert "Would zip and upload" in result.output
+        assert "Demo.zip" in result.output
+        assert "notebook.py" in result.output
+
+    def test_explicit_files_zipped(self, monkeypatch, tmp_path):
+        _mock_config(monkeypatch)
+        f1 = tmp_path / "a.py"
+        f2 = tmp_path / "data.csv"
+        f1.write_text("a")
+        f2.write_text("x,y\n1,2\n")
+
+        assignment = {
+            "id": 10,
+            "cmid": 42,
+            "name": "Demo",
+            "duedate": 0,
+            "introattachments": [],
+        }
+        captured = self._capture_zip(monkeypatch, tmp_path)
+        with (
+            patch(
+                "mograder.moodle_api.MoodleAPIClient.get_assignments",
+                return_value=[assignment],
+            ),
+            patch(
+                "mograder.moodle_api.MoodleAPIClient.update_introattachments",
+            ) as mock_attach,
+        ):
+            runner = CliRunner()
+            result = runner.invoke(
+                cli,
+                ["moodle", "upload", "Demo", str(f1), str(f2), "-c", "1"],
+            )
+        assert result.exit_code == 0, result.output
+        assert "Attached" in result.output
+        mock_attach.assert_called_once_with(42, 999)
+        # Verify zip contained both files
+        assert sorted(captured["namelist"]) == ["a.py", "data.csv"]
+        assert captured["path"].name == "Demo.zip"
+
+    def test_auto_discover_release_files(self, monkeypatch, tmp_path):
+        _mock_config(monkeypatch)
+        monkeypatch.chdir(tmp_path)
+
+        # Create release/Demo/notebook.py
+        release_dir = tmp_path / "release" / "Demo"
+        release_dir.mkdir(parents=True)
+        nb = release_dir / "notebook.py"
+        nb.write_text("print('hello')")
+
+        assignment = {
+            "id": 10,
+            "cmid": 42,
+            "name": "Demo",
+            "duedate": 0,
+            "introattachments": [],
+        }
+        captured = self._capture_zip(monkeypatch, tmp_path)
+        with (
+            patch(
+                "mograder.moodle_api.MoodleAPIClient.get_assignments",
+                return_value=[assignment],
+            ),
+            patch(
+                "mograder.moodle_api.MoodleAPIClient.update_introattachments",
+            ),
+        ):
+            runner = CliRunner()
+            result = runner.invoke(
+                cli,
+                ["moodle", "upload", "Demo", "-c", "1"],
+            )
+        assert result.exit_code == 0, result.output
+        assert captured["namelist"] == ["notebook.py"]
+
+    def test_draft_only(self, monkeypatch, tmp_path):
+        _mock_config(monkeypatch)
+        f1 = tmp_path / "a.py"
+        f1.write_text("a")
+
+        assignment = {
+            "id": 10,
+            "cmid": 42,
+            "name": "Demo",
+            "duedate": 0,
+            "introattachments": [],
+        }
+        self._capture_zip(monkeypatch, tmp_path)
+        with (
+            patch(
+                "mograder.moodle_api.MoodleAPIClient.get_assignments",
+                return_value=[assignment],
+            ),
+            patch(
+                "mograder.moodle_api.MoodleAPIClient.update_introattachments",
+            ) as mock_attach,
+        ):
+            runner = CliRunner()
+            result = runner.invoke(
+                cli,
+                ["moodle", "upload", "Demo", str(f1), "-c", "1", "--draft-only"],
+            )
+        assert result.exit_code == 0, result.output
+        mock_attach.assert_not_called()
+        assert "Draft-only mode" in result.output
+        assert "999" in result.output
+
+    def test_attach_failure_fallback(self, monkeypatch, tmp_path):
+        _mock_config(monkeypatch)
+        f1 = tmp_path / "a.py"
+        f1.write_text("a")
+
+        assignment = {
+            "id": 10,
+            "cmid": 42,
+            "name": "Demo",
+            "duedate": 0,
+            "introattachments": [],
+        }
+        self._capture_zip(monkeypatch, tmp_path)
+        with (
+            patch(
+                "mograder.moodle_api.MoodleAPIClient.get_assignments",
+                return_value=[assignment],
+            ),
+            patch(
+                "mograder.moodle_api.MoodleAPIClient.update_introattachments",
+                side_effect=MoodleAPIError("Access denied", "nopermission"),
+            ),
+        ):
+            runner = CliRunner()
+            result = runner.invoke(
+                cli,
+                ["moodle", "upload", "Demo", str(f1), "-c", "1"],
+            )
+        assert result.exit_code == 0, result.output
+        assert "could not attach" in result.output
+        assert "999" in result.output
