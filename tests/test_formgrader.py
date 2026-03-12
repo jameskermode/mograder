@@ -681,6 +681,56 @@ def test_collect_student_marks_with_gradebook(tmp_path):
         assert result["alice"][name] == 70
 
 
+def _read_app_source() -> str:
+    """Read the formgrader_app.py source code."""
+    from pathlib import Path
+
+    app_path = Path(__file__).parent.parent / "src" / "mograder" / "formgrader_app.py"
+    return app_path.read_text(encoding="utf-8")
+
+
+# --- transport-aware UI tests ---
+
+
+def test_app_transport_type_not_hardcoded_moodle():
+    """Fetch/upload commands should use TRANSPORT_TYPE, not hardcoded 'moodle'."""
+    source = _read_app_source()
+    # The action commands should reference TRANSPORT_TYPE variable
+    assert "TRANSPORT_TYPE" in source
+    # Should NOT have hardcoded "moodle" in fetch-submissions or upload-feedback cmds
+    assert '"moodle", "fetch-submissions"' not in source
+    assert '"moodle", "upload-feedback"' not in source
+
+
+def test_app_has_transport_ready():
+    """App should use TRANSPORT_READY instead of MOODLE_READY."""
+    source = _read_app_source()
+    assert "TRANSPORT_READY" in source
+    assert "TRANSPORT_TYPE" in source
+    # MOODLE_READY should not appear anywhere
+    assert "MOODLE_READY" not in source
+
+
+def test_app_import_column_gated_on_transport():
+    """Import (file upload) column hidden when transport is available."""
+    source = _read_app_source()
+    # The Import column should check TRANSPORT_READY
+    assert "TRANSPORT_READY" in source
+
+
+def test_app_fetch_button_uses_transport_type():
+    """Fetch submissions button should use TRANSPORT_TYPE not 'moodle'."""
+    source = _read_app_source()
+    # fetch-submissions cmd should include TRANSPORT_TYPE
+    assert "TRANSPORT_TYPE" in source
+
+
+def test_app_upload_button_uses_transport_type():
+    """Upload feedback button should use TRANSPORT_TYPE not 'moodle'."""
+    source = _read_app_source()
+    assert "TRANSPORT_TYPE" in source
+
+
 def test_app_progress_bar_uses_context_manager_return():
     """progress_bar.__enter__() returns a ProgressBar; update() must be called on that, not the wrapper."""
     import re

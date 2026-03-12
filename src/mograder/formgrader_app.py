@@ -23,7 +23,11 @@ def _():
     from mograder.gradebook import Gradebook
     from mograder.moodle_api import load_cached_token
 
+    import socket
+
     COURSE_DIR = Path(os.environ.get("MOGRADER_COURSE_DIR", ".")).resolve()
+    # Resolve mograder binary from same venv as running Python
+    MOGRADER_BIN = str(Path(sys.executable).parent / "mograder")
     MOGRADER_CONFIG = load_config(COURSE_DIR)
     DIR_NAMES = DirNames(
         source=MOGRADER_CONFIG.source_dir,
@@ -37,24 +41,54 @@ def _():
     _gb_path = COURSE_DIR / MOGRADER_CONFIG.gradebook
     GRADEBOOK = Gradebook(_gb_path) if _gb_path.is_file() else None
 
-    MOODLE_READY = False
-    if MOGRADER_CONFIG.moodle_url and MOGRADER_CONFIG.moodle_course_id:
-        _cached = load_cached_token(MOGRADER_CONFIG.moodle_url)
-        if _cached:
-            MOODLE_READY = True
+    TRANSPORT_TYPE = MOGRADER_CONFIG.transport  # "moodle" or "https"
+    TRANSPORT_READY = False
+    if TRANSPORT_TYPE == "moodle":
+        if MOGRADER_CONFIG.moodle_url and MOGRADER_CONFIG.moodle_course_id:
+            _cached = load_cached_token(MOGRADER_CONFIG.moodle_url)
+            if _cached:
+                TRANSPORT_READY = True
+    elif TRANSPORT_TYPE == "https":
+        if MOGRADER_CONFIG.https_url:
+            TRANSPORT_READY = True  # HTTPS transport doesn't require pre-auth
     moodle_assign_names = {
         a["name"]
         for a in (MOGRADER_CONFIG.assignments or MOGRADER_CONFIG.moodle_assignments)
     }
+
+    def is_instructor() -> bool:
+        """Check if the current user is an instructor.
+
+        Reads user identity from mo.app_meta().request.user, which is
+        populated by TrustedProxyAuth middleware in ASGI mode.
+        Defaults to True for local/non-ASGI use (no middleware).
+        """
+        req = mo.app_meta().request
+        user = req.user if req else {}
+        return user.get("is_instructor", True)
+
+    def get_user_display() -> str:
+        """Return 'username@host' for display in the navbar."""
+        req = mo.app_meta().request
+        user = req.user if req else {}
+        username = user.get("username", "")
+        if not username:
+            username = os.environ.get("USER", "local")
+        hostname = socket.gethostname().split(".")[0]
+        return f"{username}@{hostname}"
 
     return (
         COURSE_DIR,
         DIR_NAMES,
         GRADEBOOK,
         Gradebook,
+        MOGRADER_BIN,
         MOGRADER_CONFIG,
-        MOODLE_READY,
+        TRANSPORT_READY,
+        TRANSPORT_TYPE,
         Path,
+        get_user_display,
+        is_instructor,
         moodle_assign_names,
         io,
         mo,
@@ -131,10 +165,12 @@ def _(
     COURSE_DIR,
     DIR_NAMES,
     MOGRADER_CONFIG,
-    MOODLE_READY,
+    TRANSPORT_READY,
+    TRANSPORT_TYPE,
     moodle_assign_names,
     assignments,
     io,
+    is_instructor,
     mo,
     set_action_log,
     set_pending_action,
@@ -210,15 +246,18 @@ def _(
             _rel_btns_list.append(mo.md("\u2013"))
             _rel_dl_list.append(None)
 
-        # Import — file upload for CSV + ZIP
-        _imp_list.append(
-            mo.ui.file(
-                filetypes=[".csv", ".zip"],
-                multiple=True,
-                label="📥",
-                kind="button",
+        # Import — file upload for CSV + ZIP (hidden when sync transport available)
+        if not TRANSPORT_READY:
+            _imp_list.append(
+                mo.ui.file(
+                    filetypes=[".csv", ".zip"],
+                    multiple=True,
+                    label="📥",
+                    kind="button",
+                )
             )
-        )
+        else:
+            _imp_list.append(mo.md(""))
 
         # Generate
         if _a.source_path:
@@ -337,43 +376,46 @@ def _(
         else:
             _fb_zip_dl_list.append(None)
 
-        # Autograded upload — ZIP file upload per assignment
-        _auto_upload_list.append(
-            mo.ui.file(
-                filetypes=[".zip"],
-                multiple=False,
-                label="📤",
-                kind="button",
+        # Autograded upload — ZIP file upload per assignment (hidden when sync available)
+        if not TRANSPORT_READY:
+            _auto_upload_list.append(
+                mo.ui.file(
+                    filetypes=[".zip"],
+                    multiple=False,
+                    label="📤",
+                    kind="button",
+                )
             )
-        )
+        else:
+            _auto_upload_list.append(mo.md(""))
 
-        # Fetch submissions from Moodle
+        # Fetch submissions via transport (instructor only)
         _sub_out = str(COURSE_DIR / DIR_NAMES.submitted / _a.name)
-        if MOODLE_READY and _a.name in moodle_assign_names:
+        if TRANSPORT_READY and _a.name in moodle_assign_names and is_instructor():
             _n_fetch = _a.name
             _fetch_sub_list.append(
                 mo.ui.button(
                     label="⬇",
                     on_change=lambda _, n=_n_fetch, o=_sub_out: set_pending_action(
                         {
-                            "cmd": ["moodle", "fetch-submissions", n, "-o", o],
+                            "cmd": [TRANSPORT_TYPE, "fetch-submissions", n, "-o", o],
                             "label": f"fetch submissions {n}",
                         }
                     ),
-                    tooltip="Fetch submissions from Moodle",
+                    tooltip="Fetch submissions",
                 )
             )
         else:
             _fetch_sub_list.append(
                 mo.ui.button(
-                    label="⬇", disabled=True, tooltip="Fetch submissions from Moodle"
+                    label="⬇", disabled=True, tooltip="Fetch submissions"
                 )
             )
 
-        # Upload grades & feedback to Moodle
+        # Upload grades & feedback via transport (instructor only)
         _fb_dir_path = COURSE_DIR / DIR_NAMES.feedback / _a.name
         _has_feedback = _fb_dir_path.is_dir() and any(_fb_dir_path.glob("*.html"))
-        if MOODLE_READY and _a.name in moodle_assign_names and _has_feedback:
+        if TRANSPORT_READY and _a.name in moodle_assign_names and _has_feedback and is_instructor():
             _n_up = _a.name
             _fb_d = str(_fb_dir_path)
             _upload_fb_list.append(
@@ -382,7 +424,7 @@ def _(
                     on_change=lambda _, n=_n_up, d=_fb_d: set_pending_action(
                         {
                             "cmd": [
-                                "moodle",
+                                TRANSPORT_TYPE,
                                 "upload-feedback",
                                 n,
                                 "--feedback-dir",
@@ -391,7 +433,7 @@ def _(
                             "label": f"upload feedback {n}",
                         }
                     ),
-                    tooltip="Upload grades & feedback to Moodle",
+                    tooltip="Upload grades & feedback",
                 )
             )
         else:
@@ -399,7 +441,7 @@ def _(
                 mo.ui.button(
                     label="⬆",
                     disabled=True,
-                    tooltip="Upload grades & feedback to Moodle",
+                    tooltip="Upload grades & feedback",
                 )
             )
 
@@ -423,11 +465,13 @@ def _(
         if any(e is not None for e in _fb_zip_dl_list)
         else None
     )
-    imp_uploads = mo.ui.array(_imp_list)
+    _imp_ui = [e for e in _imp_list if not isinstance(e, mo.Html)]
+    imp_uploads = mo.ui.array(_imp_ui) if _imp_ui else mo.ui.array([])
     gen_btns = mo.ui.array(_gen)
     auto_btns = mo.ui.array(_auto)
     fb_btns = mo.ui.array(_fb)
-    auto_uploads = mo.ui.array(_auto_upload_list)
+    _auto_upload_ui = [e for e in _auto_upload_list if not isinstance(e, mo.Html)]
+    auto_uploads = mo.ui.array(_auto_upload_ui) if _auto_upload_ui else mo.ui.array([])
     fetch_sub_btns = mo.ui.array(_fetch_sub_list)
     upload_fb_btns = mo.ui.array(_upload_fb_list)
 
@@ -463,12 +507,15 @@ def _(
             )
             _rel_idx += 1
 
-        # Submitted column: count + fetch button
-        _sub_cell = mo.hstack(
-            [mo.md(str(_a.num_submitted)), fetch_sub_btns[_i]],
-            justify="start",
-            gap=0.25,
-        )
+        # Submitted column: count + fetch button (sync), or count only (file mode)
+        if TRANSPORT_READY:
+            _sub_cell = mo.hstack(
+                [mo.md(str(_a.num_submitted)), fetch_sub_btns[_i]],
+                justify="start",
+                gap=0.25,
+            )
+        else:
+            _sub_cell = mo.md(str(_a.num_submitted))
 
         # Feedback column: text only
         _fb_text = (
@@ -503,31 +550,33 @@ def _(
 
         _name = _a.name
 
-        _rows.append(
-            {
-                "Assignment": mo.md(_name),
-                "Source": _src_cell,
-                "→": gen_btns[_i],
-                "Release": _rel_combined,
-                "Import": imp_uploads[_i],
-                "Submitted": _sub_cell,
-                "→ ": auto_btns[_i],
-                "Graded": mo.hstack(
-                    [
-                        mo.md(
-                            f"{_a.num_graded}/{_a.num_autograded}"
-                            if _a.num_autograded
-                            else "\u2013"
-                        ),
-                        auto_uploads[_i],
-                    ],
-                    justify="start",
-                    gap=0.25,
-                ),
-                "Export": _export_cell,
-                "Feedback": mo.md(_fb_text),
-            }
+        _graded_text = (
+            f"{_a.num_graded}/{_a.num_autograded}"
+            if _a.num_autograded
+            else "\u2013"
         )
+
+        _row = {
+            "Assignment": mo.md(_name),
+            "Source": _src_cell,
+            "→": gen_btns[_i],
+            "Release": _rel_combined,
+        }
+        if not TRANSPORT_READY:
+            _row["Import"] = _imp_list[_i]
+        _row["Submitted"] = _sub_cell
+        _row["→ "] = auto_btns[_i]
+        if not TRANSPORT_READY:
+            _row["Graded"] = mo.hstack(
+                [mo.md(_graded_text), _auto_upload_list[_i]],
+                justify="start",
+                gap=0.25,
+            )
+        else:
+            _row["Graded"] = mo.md(_graded_text)
+        _row["Export"] = _export_cell
+        _row["Feedback"] = mo.md(_fb_text)
+        _rows.append(_row)
 
     assignments_content = (
         mo.ui.table(_rows, selection=None)
@@ -1119,7 +1168,9 @@ def _(
     else:
         grading_scheme = mo.md("")
 
-    # Feedback validation (uses initial value; save function enforces reactively)
+    # Feedback validation — use the initial text directly, not
+    # grading_feedback_input.value (reading .value in the cell that
+    # created the element is forbidden in ASGI mode)
     _fb_text = (_feedback_text or "") if grading_current_sub is not None else ""
     _sentence_count = _count_sentences(_fb_text)
     if _fb_text and _sentence_count < 3:
@@ -1399,6 +1450,7 @@ def _(
     COURSE_DIR,
     action_log_content,
     assignments_content,
+    get_user_display,
     grading_content,
     mo,
     new_btn,
@@ -1421,7 +1473,11 @@ def _(
     mo.vstack(
         [
             mo.hstack(
-                [mo.md("# mograder"), refresh_btn, mo.md(f"`{COURSE_DIR}`")],
+                [
+                    mo.md("# mograder"),
+                    refresh_btn,
+                    mo.md(f"`{get_user_display()}:{COURSE_DIR}`"),
+                ],
                 justify="space-between",
                 align="center",
             ),
@@ -1442,6 +1498,7 @@ def _(
 @app.cell
 def _(
     COURSE_DIR,
+    MOGRADER_BIN,
     get_pending_action,
     mo,
     set_action_log,
@@ -1488,7 +1545,11 @@ def _(
         _cmd, _label = _action["cmd"], _action["label"]
         # Compound action: list of sub-commands to run sequentially
         _is_compound = _cmd and isinstance(_cmd[0], list)
-        _is_autograde = not _is_compound and _cmd and _cmd[0] == "autograde"
+        # Commands that support --progress with JSON events on stderr
+        _PROGRESS_CMDS = {"autograde", "generate"}
+        _has_progress = (
+            not _is_compound and _cmd and _cmd[0] in _PROGRESS_CMDS
+        )
 
         try:
             if _is_compound:
@@ -1496,9 +1557,11 @@ def _(
                 _overall_ok = True
                 with mo.status.spinner(title=_label, remove_on_exit=True):
                     for _sub_cmd in _cmd:
-                        _sub_auto = _sub_cmd and _sub_cmd[0] == "autograde"
-                        if _sub_auto:
-                            _full = ["mograder"] + _sub_cmd + ["--progress"]
+                        _sub_has_progress = (
+                            _sub_cmd and _sub_cmd[0] in _PROGRESS_CMDS
+                        )
+                        if _sub_has_progress:
+                            _full = [MOGRADER_BIN] + _sub_cmd + ["--progress"]
                             _p = sp.Popen(
                                 _full,
                                 stdout=sp.PIPE,
@@ -1514,7 +1577,7 @@ def _(
                             ).strip()
                         else:
                             _p = sp.run(
-                                ["mograder"] + _sub_cmd,
+                                [MOGRADER_BIN] + _sub_cmd,
                                 capture_output=True,
                                 text=True,
                                 timeout=600,
@@ -1532,8 +1595,8 @@ def _(
                     set_action_log(f"**{_label}** — done.{_code}")
                 else:
                     set_action_log(f"**{_label}** — failed.{_code}")
-            elif _is_autograde:
-                _full_cmd = ["mograder"] + _cmd + ["--progress"]
+            elif _has_progress:
+                _full_cmd = [MOGRADER_BIN] + _cmd + ["--progress"]
                 _proc = sp.Popen(
                     _full_cmd,
                     stdout=sp.PIPE,
@@ -1568,6 +1631,12 @@ def _(
                             _bar_inner.update(
                                 increment=0, subtitle="running source notebook…"
                             )
+                    elif _msg.get("event") == "check" and _bar_inner is not None:
+                        _icon = "\u2705" if _msg.get("status") == "PASS" else "\u274c"
+                        _bar_inner.update(
+                            increment=0,
+                            subtitle=f"{_icon} {_msg['label']}",
+                        )
                     elif _msg.get("event") == "progress" and _bar_inner is not None:
                         _bar_inner.update(subtitle=f"{_msg['notebook']}")
                     elif _msg.get("event") == "results":
@@ -1628,7 +1697,7 @@ def _(
             else:
                 with mo.status.spinner(title=_label, remove_on_exit=True):
                     _proc = sp.run(
-                        ["mograder"] + _cmd,
+                        [MOGRADER_BIN] + _cmd,
                         capture_output=True,
                         text=True,
                         timeout=600,
