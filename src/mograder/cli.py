@@ -301,7 +301,7 @@ def validate(ctx, file, timeout):
 
 
 @cli.command()
-@click.argument("files", nargs=-1, required=False)
+@click.argument("assignments", nargs=-1, required=False, metavar="[ASSIGNMENTS]...")
 @click.option(
     "--source",
     "source_path",
@@ -351,7 +351,7 @@ def validate(ctx, file, timeout):
 @click.pass_context
 def autograde(
     ctx,
-    files,
+    assignments,
     source_path,
     csv_path,
     moodle_csv_path,
@@ -361,7 +361,11 @@ def autograde(
     output_dir,
     progress,
 ):
-    """Run notebooks and inject grading cells for GTA review."""
+    """Run notebooks and inject grading cells for GTA review.
+
+    ASSIGNMENTS can be assignment names (e.g. "A1") which are auto-expanded
+    to submitted/A1/*.py, or explicit file paths.
+    """
     config = ctx.obj["config"]
 
     # Moodle extraction mode: extract submissions from ZIP + CSV
@@ -402,6 +406,8 @@ def autograde(
             "ERROR: --moodle-csv and --moodle-zip must be used together", err=True
         )
         sys.exit(1)
+    else:
+        files = assignments
 
     if files and not _moodle_submitted_dir:
         files = _resolve_assignments(files, config.submitted_dir)
