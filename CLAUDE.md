@@ -38,6 +38,22 @@ course/
   feedback/assignment-name/student.html        ← exported HTML feedback
 ```
 
+### CLI argument resolution
+
+`generate`, `autograde`, and `feedback` accept either assignment names or file paths:
+
+```bash
+# Name-based (resolved via directory convention)
+mograder generate demo-assignment
+mograder autograde demo-assignment
+mograder feedback demo-assignment
+
+# Path-based (backward compatible)
+mograder generate source/demo-assignment/demo-assignment.py
+```
+
+An argument is treated as an assignment name if it contains no `/` and doesn't end with `.py`. Names are resolved to `*.py` files in the appropriate base directory (`source_dir`, `submitted_dir`, or `autograded_dir`).
+
 ### Module responsibilities
 
 - **`runtime.py`** — Runtime helpers imported by notebooks. `check()` for holistic grading, `Grader` class for per-question marks with reactive score tracking via `mo.state`.

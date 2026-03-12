@@ -43,6 +43,44 @@ def _infer_output_dir(
     return Path(fallback)
 
 
+def _resolve_assignments(
+    args: tuple[str | Path, ...],
+    base_dir: str,
+) -> tuple[Path, ...]:
+    """Resolve assignment names or file paths to .py files.
+
+    An arg without path separators or .py suffix is treated as an
+    assignment name and expanded to <base_dir>/<name>/*.py.
+    Otherwise it's treated as a file path.
+    """
+    resolved = []
+    for arg in args:
+        s = str(arg)
+        if "/" not in s and os.sep not in s and not s.endswith(".py"):
+            d = Path(base_dir) / s
+            if not d.is_dir():
+                raise click.UsageError(f"Assignment directory not found: {d}")
+            py = sorted(d.glob("*.py"))
+            if not py:
+                raise click.UsageError(f"No .py files in {d}")
+            resolved.extend(py)
+        else:
+            p = Path(s)
+            if not p.exists():
+                raise click.UsageError(f"File not found: {p}")
+            resolved.append(p)
+    return tuple(resolved)
+
+
+def _find_source_for_assignment(assignment_name: str, source_dir: str) -> Path | None:
+    """Find the source notebook for an assignment by directory name."""
+    d = Path(source_dir) / assignment_name
+    if not d.is_dir():
+        return None
+    py = sorted(d.glob("*.py"))
+    return py[0] if py else None
+
+
 def _find_source(submitted_path: Path, source_dir: str = "source") -> Path | None:
     """Auto-discover the source notebook for a submitted file.
 
@@ -112,9 +150,7 @@ def cli(ctx):
 
 
 @cli.command()
-@click.argument(
-    "files", nargs=-1, required=True, type=click.Path(exists=True, path_type=Path)
-)
+@click.argument("files", nargs=-1, required=True)
 @click.option(
     "-o",
     "--output-dir",
@@ -140,10 +176,14 @@ def cli(ctx):
 def generate(ctx, files, output_dir, dry_run, validate, no_validate, submit_url):
     """Strip solutions from source notebooks to produce release versions."""
     config = ctx.obj["config"]
+    files = _resolve_assignments(files, config.source_dir)
     if output_dir is None:
-        output_dir = _infer_output_dir(
-            files[0], config.source_dir, config.release_dir, config.release_dir
-        )
+        # Infer the base release dir — the loop below adds assignment subdirs
+        grandparent = files[0].parent.parent
+        if grandparent.name == config.source_dir:
+            output_dir = grandparent.parent / config.release_dir
+        else:
+            output_dir = Path(config.release_dir)
 
     # Pre-run validation: execute source notebooks and check results
     if no_validate and not validate and not dry_run:
@@ -215,9 +255,7 @@ def generate(ctx, files, output_dir, dry_run, validate, no_validate, submit_url)
 
 
 @cli.command()
-@click.argument(
-    "files", nargs=-1, required=False, type=click.Path(exists=True, path_type=Path)
-)
+@click.argument("files", nargs=-1, required=False)
 @click.option(
     "--source",
     "source_path",
@@ -319,6 +357,9 @@ def autograde(
         )
         sys.exit(1)
 
+    if files and not _moodle_submitted_dir:
+        files = _resolve_assignments(files, config.submitted_dir)
+
     notebooks = [f for f in files if f.suffix == ".py"]
     if not notebooks:
         click.echo("ERROR: no valid .py files found", err=True)
@@ -335,6 +376,10 @@ def autograde(
     # Auto-discover source notebook if not given
     if source_path is None:
         found = _find_source(notebooks[0], source_dir=config.source_dir)
+        if not found:
+            found = _find_source_for_assignment(
+                notebooks[0].parent.name, config.source_dir
+            )
         if found:
             source_path = found
             click.echo(f"Auto-discovered source: {_rel(source_path)}")
@@ -532,9 +577,7 @@ def autograde(
 
 
 @cli.command()
-@click.argument(
-    "files", nargs=-1, required=True, type=click.Path(exists=True, path_type=Path)
-)
+@click.argument("files", nargs=-1, required=True)
 @click.option(
     "-o",
     "--output-dir",
@@ -556,6 +599,7 @@ def autograde(
 def feedback_cmd(ctx, files, output_dir, grades_csv, timeout, jobs):
     """Export graded notebooks to HTML and aggregate grades."""
     config = ctx.obj["config"]
+    files = _resolve_assignments(files, config.autograded_dir)
     notebooks = [f for f in files if f.suffix == ".py"]
     if not notebooks:
         click.echo("ERROR: no valid .py files found", err=True)

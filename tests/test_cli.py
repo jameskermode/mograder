@@ -5,7 +5,13 @@ from click.testing import CliRunner
 
 import json
 
-from mograder.cli import _find_source, _infer_output_dir, cli
+from mograder.cli import (
+    _find_source,
+    _find_source_for_assignment,
+    _infer_output_dir,
+    _resolve_assignments,
+    cli,
+)
 from mograder.models import CheckResult, NotebookResult
 
 
@@ -485,3 +491,173 @@ def test_import_students(tmp_path, monkeypatch):
         lookup = gb.get_name_lookup()
         assert lookup["alice"] == "Alice Smith"
         assert lookup["bob"] == "Bob Jones"
+
+
+# -- _resolve_assignments helper ----------------------------------------------
+
+
+def test_resolve_assignments_name(tmp_path):
+    """Assignment name resolves to .py files in the directory."""
+    d = tmp_path / "source" / "hw1"
+    d.mkdir(parents=True)
+    (d / "hw1.py").write_text("# nb")
+    result = _resolve_assignments(("hw1",), str(tmp_path / "source"))
+    assert result == (d / "hw1.py",)
+
+
+def test_resolve_assignments_path(tmp_path):
+    """File paths pass through unchanged."""
+    nb = tmp_path / "staff.py"
+    nb.write_text("# nb")
+    result = _resolve_assignments((str(nb),), "source")
+    assert result == (nb,)
+
+
+def test_resolve_assignments_nonexistent_dir(tmp_path):
+    """Non-existent assignment directory raises UsageError."""
+    import click
+
+    try:
+        _resolve_assignments(("nosuch",), str(tmp_path / "source"))
+        assert False, "should have raised"
+    except click.UsageError as e:
+        assert "not found" in str(e)
+
+
+def test_resolve_assignments_empty_dir(tmp_path):
+    """Empty assignment directory raises UsageError."""
+    import click
+
+    d = tmp_path / "source" / "empty"
+    d.mkdir(parents=True)
+    try:
+        _resolve_assignments(("empty",), str(tmp_path / "source"))
+        assert False, "should have raised"
+    except click.UsageError as e:
+        assert "No .py files" in str(e)
+
+
+def test_find_source_for_assignment(tmp_path):
+    """_find_source_for_assignment finds .py in source/<name>/."""
+    d = tmp_path / "source" / "hw1"
+    d.mkdir(parents=True)
+    src = d / "hw1.py"
+    src.write_text("# source")
+    assert _find_source_for_assignment("hw1", str(tmp_path / "source")) == src
+
+
+def test_find_source_for_assignment_not_found(tmp_path):
+    assert _find_source_for_assignment("nope", str(tmp_path / "source")) is None
+
+
+# -- Name-based CLI invocation ------------------------------------------------
+
+
+@patch("mograder.markers.process_file")
+def test_generate_assignment_name(mock_pf, tmp_path, monkeypatch):
+    """generate accepts an assignment name instead of a file path."""
+    monkeypatch.chdir(tmp_path)
+    d = tmp_path / "source" / "hw1"
+    d.mkdir(parents=True)
+    (d / "hw1.py").write_text("# nb")
+    mock_pf.return_value = True
+
+    runner = CliRunner()
+    result = runner.invoke(cli, ["generate", "hw1", "--no-validate"])
+    assert result.exit_code == 0, result.output
+    mock_pf.assert_called_once()
+
+
+@patch("mograder.markers.process_file")
+def test_generate_backward_compat(mock_pf, tmp_path):
+    """generate still works with explicit file paths."""
+    nb = tmp_path / "staff.py"
+    nb.write_text("# notebook")
+    mock_pf.return_value = True
+
+    runner = CliRunner()
+    result = runner.invoke(
+        cli, ["generate", str(nb), "-o", str(tmp_path / "out"), "--no-validate"]
+    )
+    assert result.exit_code == 0
+    mock_pf.assert_called_once()
+
+
+@patch("mograder.markers.process_file")
+def test_generate_multiple_assignments(mock_pf, tmp_path, monkeypatch):
+    """generate accepts multiple assignment names."""
+    monkeypatch.chdir(tmp_path)
+    for name in ("hw1", "hw2"):
+        d = tmp_path / "source" / name
+        d.mkdir(parents=True)
+        (d / f"{name}.py").write_text("# nb")
+    mock_pf.return_value = True
+
+    runner = CliRunner()
+    result = runner.invoke(cli, ["generate", "hw1", "hw2", "--no-validate"])
+    assert result.exit_code == 0, result.output
+    assert mock_pf.call_count == 2
+
+
+def test_generate_nonexistent_assignment_error(tmp_path, monkeypatch):
+    """generate gives a clear error for non-existent assignment name."""
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "source").mkdir()
+
+    runner = CliRunner()
+    result = runner.invoke(cli, ["generate", "nosuch"])
+    assert result.exit_code != 0
+    assert "not found" in result.output
+
+
+@patch("mograder.cells.inject_grading_cells")
+@patch("mograder.runner.run_batch")
+def test_autograde_assignment_name(mock_batch, mock_inject, tmp_path, monkeypatch):
+    """autograde accepts an assignment name and auto-discovers source."""
+    monkeypatch.chdir(tmp_path)
+    # Create submitted/hw1/alice.py
+    sub_dir = tmp_path / "submitted" / "hw1"
+    sub_dir.mkdir(parents=True)
+    nb = sub_dir / "alice.py"
+    nb.write_text(
+        "import marimo\napp = marimo.App()\n\nif __name__ == '__main__':\n    app.run()\n"
+    )
+    # Create source/hw1/hw1.py (different filename than submission)
+    src_dir = tmp_path / "source" / "hw1"
+    src_dir.mkdir(parents=True)
+    (src_dir / "hw1.py").write_text(
+        "import marimo\napp = marimo.App()\n\nif __name__ == '__main__':\n    app.run()\n"
+    )
+
+    mock_batch.return_value = [
+        NotebookResult(
+            path=nb,
+            checks=[CheckResult("Q1", "success")],
+            cell_errors=0,
+        )
+    ]
+    mock_inject.return_value = nb.read_text().splitlines(keepends=True)
+
+    runner = CliRunner()
+    result = runner.invoke(cli, ["autograde", "hw1"])
+    assert result.exit_code == 0, result.output
+    assert "Auto-discovered source" in result.output
+
+
+@patch("mograder.feedback.export_feedback_html")
+@patch("mograder.feedback.collect_grades")
+def test_feedback_assignment_name(mock_grades, mock_export, tmp_path, monkeypatch):
+    """feedback accepts an assignment name."""
+    monkeypatch.chdir(tmp_path)
+    d = tmp_path / "autograded" / "hw1"
+    d.mkdir(parents=True)
+    nb = d / "alice.py"
+    nb.write_text("# graded")
+
+    mock_grades.return_value = [{"student": "alice", "mark": 72, "feedback": "Good"}]
+    mock_export.return_value = tmp_path / "feedback" / "hw1" / "alice.html"
+
+    runner = CliRunner()
+    result = runner.invoke(cli, ["feedback", "hw1"])
+    assert result.exit_code == 0, result.output
+    assert "1/1 notebooks have been graded" in result.output

@@ -120,10 +120,13 @@ The formgrader reads `mograder.toml` from the course directory for directory nam
 Strip solution blocks from source notebooks:
 
 ```bash
-mograder generate source/hw1/hw1.py -o release/
-mograder generate source/hw1/hw1.py --dry-run    # preview only
-mograder generate source/hw1/hw1.py --validate   # check markers only
+mograder generate hw1                             # by assignment name
+mograder generate source/hw1/hw1.py -o release/   # by file path
+mograder generate hw1 --dry-run                   # preview only
+mograder generate hw1 --validate                  # check markers only
 ```
+
+Arguments without `/` or `.py` suffix are treated as assignment names and resolved to files in the source directory.
 
 Source notebooks use markers to delimit solutions:
 
@@ -140,9 +143,10 @@ Solution blocks are replaced with `# YOUR CODE HERE` / `pass` in the release ver
 Run student notebooks and prepare grading copies with injected feedback cells:
 
 ```bash
+mograder autograde hw1                            # by assignment name
 mograder autograde submitted/hw1/*.py -o autograded/hw1/
 mograder autograde submitted/hw1/*.py --source source/hw1/hw1.py --csv results.csv
-mograder autograde submitted/hw1/*.py -j 8 --timeout 600
+mograder autograde hw1 -j 8 --timeout 600
 ```
 
 When `--source` is provided (or auto-discovered from a sibling `source/` directory), mograder performs an integrity check — tampered check cells or marks definitions are reinjected from the source before execution. Default values for `-j` and `--timeout` can be set in `mograder.toml` (see [Configuration](#configuration)).
@@ -162,8 +166,9 @@ This extracts submissions from the ZIP (mapping participant IDs to usernames via
 Export graded notebooks to HTML and aggregate marks:
 
 ```bash
+mograder feedback hw1                             # by assignment name
 mograder feedback autograded/hw1/*.py -o feedback/hw1/
-mograder feedback autograded/hw1/*.py --grades-csv grades.csv
+mograder feedback hw1 --grades-csv grades.csv
 ```
 
 ### Import student names
