@@ -290,6 +290,10 @@ class MoodleAPIClient:
                 ),
                 "plugindata[assignfeedbackcomments_editor][format]": 1,
             }
+            feedback_file = g.get("feedback_file")
+            if feedback_file:
+                draft_itemid = self.upload_file(Path(feedback_file))
+                params["plugindata[files_filemanager]"] = draft_itemid
             self._call("mod_assign_save_grade", **params)
 
 

@@ -1055,6 +1055,22 @@ def moodle_upload_feedback(
             )
             sys.exit(1)
 
+    # Auto-discover feedback directory if not provided
+    if feedback_dir is None:
+        # Try feedback/<assignment>/ matching the assignment name pattern
+        for a in config.assignments:
+            if a["name"] == match["name"]:
+                candidate = Path.cwd() / config.feedback_dir / assignment
+                if candidate.is_dir() and any(candidate.glob("*.html")):
+                    feedback_dir = candidate
+                    click.echo(f"Using feedback from {_rel(feedback_dir)}")
+                break
+        if feedback_dir is None:
+            candidate = Path.cwd() / config.feedback_dir / assignment
+            if candidate.is_dir() and any(candidate.glob("*.html")):
+                feedback_dir = candidate
+                click.echo(f"Using feedback from {_rel(feedback_dir)}")
+
     # Map usernames → Moodle user IDs
     participants = client.list_participants(assignment_id)
     username_to_uid = {p["username"]: p["id"] for p in participants}
@@ -1070,18 +1086,20 @@ def moodle_upload_feedback(
         if mark is None:
             continue
         fb_text = gdata.get("feedback", "")
+        fb_file = None
 
-        # Read HTML feedback if feedback_dir provided
+        # Attach HTML feedback file if available
         if feedback_dir:
             html_file = Path(feedback_dir) / f"{username}.html"
             if html_file.is_file():
-                fb_text = html_file.read_text()
+                fb_file = str(html_file)
 
         grade_payloads.append(
             {
                 "userid": uid,
                 "grade": mark,
                 "feedback": fb_text,
+                "feedback_file": fb_file,
             }
         )
 
