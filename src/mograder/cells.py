@@ -12,6 +12,36 @@ MARKS_MARKER = "# === MOGRADER: MARKS ==="
 SCORES_MARKER = "# MOGRADER_SCORES_CELL"
 
 
+def extract_marking_scale(source_lines: list[str]) -> str | None:
+    """Extract the Marking Scale admonition from a source notebook.
+
+    Looks for ``/// details | Marking Scale`` ... ``///`` block in markdown cells.
+    Returns the markdown content (without the admonition wrapper), or None.
+    """
+    import textwrap
+
+    text = "".join(source_lines)
+    match = re.search(
+        r"///\s*details\s*\|\s*Marking Scale\s*\n(.*?)\n\s*///",
+        text,
+        re.DOTALL,
+    )
+    if not match:
+        return None
+    content = match.group(1)
+    lines = content.splitlines()
+    # Skip directive lines (e.g. "    type: info") and blank lines at start
+    start = 0
+    for i, line in enumerate(lines):
+        stripped = line.strip()
+        if stripped.startswith("type:") or not stripped:
+            start = i + 1
+        else:
+            break
+    body = "\n".join(lines[start:])
+    return textwrap.dedent(body).strip() or None
+
+
 def parse_marks_metadata(source_lines: list[str]) -> dict[str, int | float] | None:
     """Extract marks metadata from a notebook.
 

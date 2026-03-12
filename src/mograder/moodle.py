@@ -9,6 +9,39 @@ from datetime import datetime
 from pathlib import Path
 
 
+def markdown_to_plaintext(text: str) -> str:
+    """Strip markdown formatting from text, producing clean plain text."""
+    if not text:
+        return text
+    from markdown_it import MarkdownIt
+
+    md = MarkdownIt()
+    tokens = md.parse(text)
+    parts: list[str] = []
+    in_list = 0
+    for token in tokens:
+        if token.children:
+            for child in token.children:
+                if child.type in ("text", "code_inline"):
+                    parts.append(child.content)
+                elif child.type == "softbreak":
+                    parts.append("\n")
+        elif token.type in ("text", "code_block", "fence"):
+            parts.append(token.content)
+        # Track list nesting to avoid double newlines
+        if token.tag in ("ul", "ol"):
+            in_list += token.nesting  # +1 open, -1 close
+        # Add newline after block-level closing tags (skip <p> inside lists)
+        if token.nesting == -1:
+            if token.tag in ("h1", "h2", "h3", "h4", "h5", "h6"):
+                parts.append("\n")
+            elif token.tag == "li":
+                parts.append("\n")
+            elif token.tag == "p" and not in_list:
+                parts.append("\n")
+    return "".join(parts).strip()
+
+
 @dataclass
 class MergeResult:
     """Tracks merge outcomes."""

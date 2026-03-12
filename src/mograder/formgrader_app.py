@@ -946,11 +946,54 @@ def _(get_grading_index, grading_subs):
 
 
 @app.cell
-def _(GRADEBOOK, grading_assignment_name, grading_current_sub, mo, set_grading_inputs):
+def _(
+    COURSE_DIR,
+    DIR_NAMES,
+    GRADEBOOK,
+    assignments,
+    grading_assignment_name,
+    grading_current_sub,
+    mo,
+    set_grading_inputs,
+):
+    import re as _re
+    from mograder.cells import extract_marking_scale as _extract_scale
     from mograder.cells import parse_auto_marks as _parse_auto
     from mograder.cells import parse_gta_feedback as _parse_fb
 
+    def _count_sentences(text: str) -> int:
+        """Count sentences (sequences ending with .!? followed by space or end)."""
+        if not text.strip():
+            return 0
+        sentences = _re.split(r"[.!?]+(?:\s|$)", text.strip())
+        return len([s for s in sentences if s.strip()])
+
+    # Extract marking scale from source notebook via AssignmentInfo.source_path.
+    # Assignment names may differ between source/ and autograded/ dirs
+    # (e.g. source/ES98E-A1-Intro-to-SciML vs autograded/A1), so try:
+    # 1. Exact name match, 2. Name contained in source name, 3. Direct path
+    _scale_text = None
+    _source_path = None
+    if grading_assignment_name:
+        for _a in assignments:
+            if _a.source_path and (
+                _a.name == grading_assignment_name or grading_assignment_name in _a.name
+            ):
+                _source_path = _a.source_path
+                break
+        # Fall back to direct directory lookup
+        if _source_path is None:
+            _src_dir = COURSE_DIR / DIR_NAMES.source / grading_assignment_name
+            if _src_dir.is_dir():
+                _src_files = list(_src_dir.glob("*.py"))
+                if _src_files:
+                    _source_path = _src_files[0]
+    if _source_path and _source_path.is_file():
+        _scale_text = _extract_scale(_source_path.read_text().splitlines(keepends=True))
+
     # Create mark + feedback inputs, re-reading from DB or .py file for fresh data
+    _marks_meta = None
+    _auto_max = 0
     if grading_current_sub is not None and grading_current_sub.autograded_path:
         _mark = None
         _feedback_text = ""
@@ -987,17 +1030,36 @@ def _(GRADEBOOK, grading_assignment_name, grading_current_sub, mo, set_grading_i
             _assign = GRADEBOOK.get_assignment(grading_assignment_name)
             if _assign:
                 _max_mark = int(_assign["max_mark"])
+                _marks_meta = _assign.get("marks_metadata")
 
-        _auto = _auto_mark or 0
-        _manual_max = _max_mark - _auto
+        # Compute auto_max (marks available for auto-graded questions)
+        if _marks_meta and _auto_mark is not None:
+            _db_sub2 = (
+                GRADEBOOK.get_submission(
+                    grading_assignment_name, grading_current_sub.student
+                )
+                if GRADEBOOK
+                else None
+            )
+            if _db_sub2:
+                _check_keys = {
+                    c["label"].split(":")[0].strip() for c in _db_sub2["check_results"]
+                }
+                _auto_max = sum(v for k, v in _marks_meta.items() if k in _check_keys)
+            else:
+                _auto_max = 0
+        else:
+            _auto_max = 0
+
+        _manual_available = _max_mark - _auto_max
         _current_mark = int(_mark or 0)
 
         grading_mark_input = mo.ui.slider(
             start=0,
-            stop=max(_manual_max, 1),
+            stop=100,
             step=1,
-            value=min(_current_mark, _manual_max),
-            label=f"Manual mark (/{_manual_max})",
+            value=min(_current_mark, 100),
+            label="Manual mark (/100)",
             show_value=True,
         )
         grading_feedback_input = mo.ui.text_area(
@@ -1007,16 +1069,61 @@ def _(GRADEBOOK, grading_assignment_name, grading_current_sub, mo, set_grading_i
             full_width=True,
             debounce=300,
         )
-        grading_auto_info = (
-            f"**Auto marks:** {_auto_mark}" if _auto_mark is not None else ""
-        )
+
+        # Total mark display
+        if _auto_mark is not None and _manual_available > 0:
+            _manual_contribution = round(_current_mark / 100 * _manual_available)
+            _total_display = _auto_mark + _manual_contribution
+            grading_auto_info = (
+                f"**Auto:** {_auto_mark}/{_auto_max} | "
+                f"**Manual:** {_current_mark}/100 "
+                f"(\u2192{_manual_contribution}/{_manual_available}) | "
+                f"**Total:** {_total_display}/{_max_mark}"
+            )
+        elif _auto_mark is not None:
+            grading_auto_info = (
+                f"**Auto marks:** {_auto_mark} | **Manual:** {_current_mark}/100"
+            )
+        else:
+            grading_auto_info = f"**Manual:** {_current_mark}/100"
+
+        # Store scaling info for _save_current
+        grading_scale_info = {
+            "auto_mark": _auto_mark,
+            "auto_max": _auto_max,
+            "manual_available": _manual_available,
+            "max_mark": _max_mark,
+        }
     else:
         grading_mark_input = mo.ui.slider(
             start=0, stop=100, step=1, value=0, label="Mark", show_value=True
         )
         grading_feedback_input = mo.ui.text_area(value="", label="Feedback")
         grading_auto_info = ""
+        grading_scale_info = {
+            "auto_mark": None,
+            "auto_max": 0,
+            "manual_available": 100,
+            "max_mark": 100,
+        }
     set_grading_inputs({"mark": grading_mark_input, "feedback": grading_feedback_input})
+
+    # Marking scale accordion
+    if _scale_text:
+        grading_scheme = mo.accordion({"Marking Scale": mo.md(_scale_text)})
+    else:
+        grading_scheme = mo.md("")
+
+    # Feedback validation
+    _fb_text = grading_feedback_input.value or ""
+    _sentence_count = _count_sentences(_fb_text)
+    if _fb_text and _sentence_count < 3:
+        grading_validation = mo.callout(
+            mo.md(f"Feedback needs at least 3 sentences (currently {_sentence_count})"),
+            kind="warn",
+        )
+    else:
+        grading_validation = mo.md("")
 
     # Build form layout in the same cell that creates the inputs.
     # The creating cell does NOT re-run when the user interacts with the inputs,
@@ -1024,14 +1131,16 @@ def _(GRADEBOOK, grading_assignment_name, grading_current_sub, mo, set_grading_i
     if grading_current_sub is not None:
         grading_form = mo.vstack(
             [
+                grading_scheme,
                 mo.md(grading_auto_info) if grading_auto_info else mo.md(""),
                 mo.hstack([grading_mark_input]),
                 grading_feedback_input,
+                grading_validation,
             ]
         )
     else:
         grading_form = mo.md("_No submission selected._")
-    return (grading_form,)
+    return grading_form, grading_scale_info
 
 
 @app.cell
@@ -1050,6 +1159,7 @@ def _(
     get_grading_inputs,
     grading_assignment_name,
     grading_current_sub,
+    grading_scale_info,
     grading_show_names,
     grading_subs,
     mo,
@@ -1057,7 +1167,14 @@ def _(
     set_data_version,
     set_grading_index,
 ):
+    import re as _re
     from mograder.cells import write_gta_feedback as _write_fb
+
+    def _count_sentences(text: str) -> int:
+        if not text.strip():
+            return 0
+        sentences = _re.split(r"[.!?]+(?:\s|$)", text.strip())
+        return len([s for s in sentences if s.strip()])
 
     def _save_current():
         _inputs = get_grading_inputs()
@@ -1066,15 +1183,31 @@ def _(
             and grading_current_sub.autograded_path
             and _inputs is not None
         ):
-            _mark = _inputs["mark"].value
+            _slider_val = _inputs["mark"].value
             _feedback = _inputs["feedback"].value or ""
-            # Write to DB if available
+
+            # Enforce minimum 3-sentence feedback when mark is set
+            if _slider_val > 0 and _count_sentences(_feedback) < 3:
+                return  # Don't save — UI shows validation warning
+
+            # Scale slider (0-100) to manual contribution
+            _manual_available = grading_scale_info["manual_available"]
+            _auto_mark = grading_scale_info["auto_mark"]
+            if _manual_available > 0 and _auto_mark is not None:
+                _manual_contribution = round(_slider_val / 100 * _manual_available)
+                _total = _auto_mark + _manual_contribution
+            else:
+                _total = _slider_val
+
+            # Write to DB if available (store raw slider as manual_mark,
+            # pass computed total)
             if GRADEBOOK is not None and grading_assignment_name:
                 GRADEBOOK.save_manual_grade(
                     grading_assignment_name,
                     grading_current_sub.student,
-                    _mark,
+                    _slider_val,
                     _feedback,
+                    total_mark=_total,
                 )
             elif grading_assignment_name:
                 _gb_path = COURSE_DIR / MOGRADER_CONFIG.gradebook
@@ -1083,13 +1216,16 @@ def _(
                         _gb.save_manual_grade(
                             grading_assignment_name,
                             grading_current_sub.student,
-                            _mark,
+                            _slider_val,
                             _feedback,
+                            total_mark=_total,
                         )
                 else:
-                    _write_fb(grading_current_sub.autograded_path, _mark, _feedback)
+                    _write_fb(
+                        grading_current_sub.autograded_path, _slider_val, _feedback
+                    )
             else:
-                _write_fb(grading_current_sub.autograded_path, _mark, _feedback)
+                _write_fb(grading_current_sub.autograded_path, _slider_val, _feedback)
         set_data_version(lambda v: v + 1)
 
     def _save_and_navigate(new_idx):

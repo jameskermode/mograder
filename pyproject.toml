@@ -36,6 +36,7 @@ editor = [
 grader = [
     "seaborn",
     "matplotlib",
+    "markdown-it-py",
 ]
 asgi = [
     "starlette>=0.37.2",

@@ -1085,7 +1085,7 @@ def moodle_upload_feedback(
         mark = gdata.get("mark")
         if mark is None:
             continue
-        fb_text = gdata.get("feedback", "")
+        fb_text = moodle.markdown_to_plaintext(gdata.get("feedback", ""))
         fb_file = None
 
         # Attach HTML feedback file if available

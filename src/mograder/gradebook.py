@@ -158,8 +158,14 @@ class Gradebook:
         student: str,
         manual_mark: float | None,
         feedback: str = "",
+        total_mark: float | None = None,
     ) -> None:
-        """Save GTA manual grade and feedback, recomputing total."""
+        """Save GTA manual grade and feedback.
+
+        If *total_mark* is provided it is used directly (e.g. after scaling
+        a 0-100 slider to the manual portion). Otherwise total is computed
+        as ``auto_mark + manual_mark``.
+        """
         now = datetime.now().isoformat()
 
         # Get current auto_mark
@@ -169,13 +175,16 @@ class Gradebook:
         ).fetchone()
 
         if row is not None:
-            auto_mark = row["auto_mark"]
-            if manual_mark is not None and auto_mark is not None:
-                total = auto_mark + manual_mark
-            elif manual_mark is not None:
-                total = manual_mark
+            if total_mark is not None:
+                total = total_mark
             else:
-                total = None
+                auto_mark = row["auto_mark"]
+                if manual_mark is not None and auto_mark is not None:
+                    total = auto_mark + manual_mark
+                elif manual_mark is not None:
+                    total = manual_mark
+                else:
+                    total = None
 
             self._conn.execute(
                 """
@@ -186,7 +195,7 @@ class Gradebook:
                 (manual_mark, feedback, total, now, assignment, student),
             )
         else:
-            total = manual_mark
+            total = total_mark if total_mark is not None else manual_mark
             self._conn.execute(
                 """
                 INSERT INTO submissions
