@@ -255,6 +255,52 @@ def generate(ctx, files, output_dir, dry_run, validate, no_validate, submit_url)
 
 
 @cli.command()
+@click.argument("file", type=click.Path(exists=True, path_type=Path))
+@click.option(
+    "--timeout",
+    type=int,
+    default=300,
+    help="Timeout per notebook in seconds",
+)
+@click.pass_context
+def validate(ctx, file, timeout):
+    """Run a notebook in a sandbox and report check results."""
+    from mograder.runner import create_shared_sandbox, run_notebook
+
+    click.echo(f"Installing dependencies...")
+    sandbox = create_shared_sandbox(file)
+    click.echo(f"Running {_rel(file)}...")
+    result = run_notebook(
+        file, sandbox_dir=sandbox, timeout=timeout, html_dir=file.parent
+    )
+
+    if not result.export_ok:
+        click.echo(f"FAILED: {result.export_error}", err=True)
+        sys.exit(1)
+
+    if result.cell_errors > 0:
+        click.echo(f"  {result.cell_errors} cell error(s)")
+
+    if not result.checks:
+        click.echo("No checks found")
+        sys.exit(0)
+
+    passed = sum(1 for c in result.checks if c.status == "success")
+    total = len(result.checks)
+    for c in result.checks:
+        icon = "PASS" if c.status == "success" else "FAIL"
+        click.echo(f"  {icon}: {c.label}")
+        for msg in c.details:
+            click.echo(f"        {msg}")
+
+    click.echo(f"\n{passed}/{total} checks passed")
+    if result.html_path:
+        click.echo(f"Report: {result.html_path}")
+    if passed < total:
+        sys.exit(1)
+
+
+@cli.command()
 @click.argument("files", nargs=-1, required=False)
 @click.option(
     "--source",
