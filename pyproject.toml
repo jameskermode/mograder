@@ -29,6 +29,7 @@ dev = [
     "pytest-cov",
     "pytest-playwright",
     "ruff",
+    "markdown-it-py",
 ]
 editor = [
     "marimo[sandbox]>=0.19",
