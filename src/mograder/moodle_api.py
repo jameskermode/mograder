@@ -274,23 +274,23 @@ class MoodleAPIClient:
         """Save grades for multiple students.
 
         Each grade dict should have: userid, grade, feedback (text).
+        Uses the singular save_grade API for broader token compatibility.
         """
-        params: dict = {
-            "assignmentid": assignment_id,
-        }
-        for i, g in enumerate(grades):
-            params[f"grades[{i}][userid]"] = g["userid"]
-            params[f"grades[{i}][grade]"] = g["grade"]
-            params[f"grades[{i}][attemptnumber]"] = g.get("attemptnumber", -1)
-            params[f"grades[{i}][addattempt]"] = 0
-            params[f"grades[{i}][workflowstate]"] = workflow_state
-            params[f"grades[{i}][plugindata][assignfeedbackcomments_editor][text]"] = (
-                g.get("feedback", "")
-            )
-            params[
-                f"grades[{i}][plugindata][assignfeedbackcomments_editor][format]"
-            ] = 1  # HTML
-        self._call("mod_assign_save_grades", **params)
+        for g in grades:
+            params: dict = {
+                "assignmentid": assignment_id,
+                "userid": g["userid"],
+                "grade": g["grade"],
+                "attemptnumber": g.get("attemptnumber", -1),
+                "addattempt": 0,
+                "workflowstate": workflow_state,
+                "applytoall": 0,
+                "plugindata[assignfeedbackcomments_editor][text]": g.get(
+                    "feedback", ""
+                ),
+                "plugindata[assignfeedbackcomments_editor][format]": 1,
+            }
+            self._call("mod_assign_save_grade", **params)
 
 
 def resolve_credentials(

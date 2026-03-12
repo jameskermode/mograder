@@ -44,7 +44,7 @@ class MoodleTransport:
         match = find_assignment(self.client, self.course_id, assignment)
         assignment_id = match["id"]
         participants = self.client.list_participants(assignment_id)
-        user_map = {p["id"]: p["username"] for p in participants}
+        user_map = {p["id"]: p["username"] or f"user_{p['id']}" for p in participants}
         raw = self.client.get_submissions(assignment_id)
         result = []
         for sub in raw:
