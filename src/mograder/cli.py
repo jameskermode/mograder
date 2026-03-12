@@ -1058,23 +1058,20 @@ def moodle_upload_feedback(
 @click.argument("files", nargs=-1, type=click.Path(exists=True, path_type=Path))
 @_add_moodle_api_options
 @click.option("--dry-run", is_flag=True, help="Show what would be uploaded")
-@click.option(
-    "--draft-only",
-    is_flag=True,
-    help="Upload to draft area only, print itemid without attaching",
-)
+@click.option("--open/--no-open", default=True, help="Open Moodle edit page in browser")
 @click.pass_context
-def moodle_upload(ctx, assignment, files, course_id, url, token, dry_run, draft_only):
-    """Upload release files to a Moodle assignment as introattachments.
+def moodle_upload(ctx, assignment, files, course_id, url, token, dry_run, open):
+    """Prepare release files for upload to a Moodle assignment.
 
-    Files are zipped into <assignment>.zip before uploading.
+    Files are zipped into <assignment>.zip and the Moodle assignment
+    edit page is opened for manual attachment.
     If no FILES are given, auto-discovers from release/<assignment>/.
     """
+    import webbrowser
     import zipfile
 
     from mograder.moodle_api import (
         MoodleAPIClient,
-        MoodleAPIError,
         find_assignment,
         resolve_credentials,
     )
@@ -1097,59 +1094,38 @@ def moodle_upload(ctx, assignment, files, course_id, url, token, dry_run, draft_
         if not files:
             raise click.UsageError(f"No files found in {release_dir}")
 
-    if dry_run:
-        click.echo(
-            f"Would zip and upload to '{match['name']}' "
-            f"(cmid={match['cmid']}) as {assignment}.zip:"
-        )
-        for f in files:
-            click.echo(f"  {_rel(f)}")
-        return
-
-    # Zip files into a temp file
+    # Build zip in current directory
     zip_name = f"{assignment}.zip"
-    tmp = tempfile.mkdtemp()
-    zip_path = Path(tmp) / zip_name
+    zip_path = Path(zip_name)
     with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
         for f in files:
             zf.write(f, Path(f).name)
-    click.echo(f"Zipped {len(files)} file(s) into {zip_name}")
+
+    if dry_run:
+        click.echo(
+            f"Would create {zip_name} for '{match['name']}' (cmid={match['cmid']}):"
+        )
+        for f in files:
+            click.echo(f"  {_rel(f)}")
+        zip_path.unlink()
+        return
+
+    click.echo(f"Created {zip_name} ({len(files)} file(s)):")
     for f in files:
         click.echo(f"  {_rel(f)}")
 
-    # Upload zip to draft area
-    draft_itemid = client.upload_file(zip_path)
-    click.echo(f"Uploaded {zip_name} (draft itemid: {draft_itemid})")
-
-    # Clean up temp file
-    zip_path.unlink()
-    os.rmdir(tmp)
-
-    if draft_only:
-        click.echo(
-            "Draft-only mode: file uploaded but not attached.\n"
-            "Use this itemid in the Moodle assignment edit form to select the file."
-        )
-        return
-
-    # Try to attach to assignment
+    # Build edit URL and open in browser
     cmid = match.get("cmid")
-    if not cmid:
+    if cmid:
+        edit_url = f"{url}/course/modedit.php?update={cmid}"
+        click.echo(f"\nUpload {zip_name} to the 'Additional files' section:")
+        click.echo(f"  {edit_url}")
+        if open:
+            webbrowser.open(edit_url)
+    else:
         click.echo(
-            "WARNING: no cmid found for this assignment — cannot attach automatically.\n"
-            f"Use draft itemid {draft_itemid} in the Moodle edit form.",
-            err=True,
-        )
-        return
-
-    try:
-        client.update_introattachments(cmid, draft_itemid)
-        click.echo(f"Attached to '{match['name']}' as introattachments.")
-    except MoodleAPIError as e:
-        click.echo(
-            f"WARNING: could not attach files automatically: {e}\n"
-            f"Files are uploaded to draft area (itemid={draft_itemid}).\n"
-            "Open the assignment edit form in Moodle and select the pre-uploaded file.",
+            "\nNo cmid found — open the assignment edit page manually "
+            f"and upload {zip_name} to 'Additional files'.",
             err=True,
         )
 
