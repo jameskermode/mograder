@@ -150,7 +150,7 @@ def cli(ctx):
 
 
 @cli.command()
-@click.argument("files", nargs=-1, required=True)
+@click.argument("assignments", nargs=-1, required=True, metavar="ASSIGNMENTS...")
 @click.option(
     "-o",
     "--output-dir",
@@ -173,10 +173,14 @@ def cli(ctx):
     help="Inject a submit cell with this server URL into release notebooks",
 )
 @click.pass_context
-def generate(ctx, files, output_dir, dry_run, validate, no_validate, submit_url):
-    """Strip solutions from source notebooks to produce release versions."""
+def generate(ctx, assignments, output_dir, dry_run, validate, no_validate, submit_url):
+    """Strip solutions from source notebooks to produce release versions.
+
+    ASSIGNMENTS can be assignment names (e.g. "demo-assignment") which are
+    auto-expanded to source/demo-assignment/*.py, or explicit file paths.
+    """
     config = ctx.obj["config"]
-    files = _resolve_assignments(files, config.source_dir)
+    files = _resolve_assignments(assignments, config.source_dir)
     if output_dir is None:
         # Infer the base release dir — the loop below adds assignment subdirs
         grandparent = files[0].parent.parent
@@ -629,7 +633,7 @@ def autograde(
 
 
 @cli.command()
-@click.argument("files", nargs=-1, required=True)
+@click.argument("assignments", nargs=-1, required=True, metavar="ASSIGNMENTS...")
 @click.option(
     "-o",
     "--output-dir",
@@ -648,10 +652,14 @@ def autograde(
 )
 @click.option("-j", "--jobs", type=int, default=4, help="Number of parallel workers")
 @click.pass_context
-def feedback_cmd(ctx, files, output_dir, grades_csv, timeout, jobs):
-    """Export graded notebooks to HTML and aggregate grades."""
+def feedback_cmd(ctx, assignments, output_dir, grades_csv, timeout, jobs):
+    """Export graded notebooks to HTML and aggregate grades.
+
+    ASSIGNMENTS can be assignment names (e.g. "hw1") which are auto-expanded
+    to autograded/hw1/*.py, or explicit file paths.
+    """
     config = ctx.obj["config"]
-    files = _resolve_assignments(files, config.autograded_dir)
+    files = _resolve_assignments(assignments, config.autograded_dir)
     notebooks = [f for f in files if f.suffix == ".py"]
     if not notebooks:
         click.echo("ERROR: no valid .py files found", err=True)
