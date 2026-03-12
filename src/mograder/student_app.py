@@ -544,9 +544,11 @@ def _(
                 def _drain_output():
                     for _line in _proc.stdout:
                         if not _url_box:
-                            _m = _re.search(r"https?://\S+", _line)
+                            # Match marimo's "URL:" line specifically to avoid
+                            # capturing pip/uv download URLs from --sandbox
+                            _m = _re.search(r"URL:\s+(https?://\S+)", _line)
                             if _m:
-                                _url_box.append(_m.group(0))
+                                _url_box.append(_m.group(1))
                                 _found.set()
 
                 _threading.Thread(target=_drain_output, daemon=True).start()
@@ -555,18 +557,29 @@ def _(
                     _raw_url = _url_box[0]
                     if _os.environ.get("CODESPACES"):
                         _parsed = _urlparse(_raw_url)
-                        _port = _parsed.port or 2718
-                        _cs_name = _os.environ["CODESPACE_NAME"]
-                        _cs_domain = _os.environ.get(
-                            "GITHUB_CODESPACES_PORT_FORWARDING_DOMAIN",
-                            "app.github.dev",
-                        )
-                        _url = f"https://{_cs_name}-{_port}.{_cs_domain}"
-                        if _parsed.query:
-                            _url += f"?{_parsed.query}"
+                        _port = _parsed.port
+                        if not _port:
+                            set_action_log(
+                                f"Opened **{_name}** for editing "
+                                f"(could not detect port from: {_raw_url})"
+                            )
+                        else:
+                            _cs_name = _os.environ["CODESPACE_NAME"]
+                            _cs_domain = _os.environ.get(
+                                "GITHUB_CODESPACES_PORT_FORWARDING_DOMAIN",
+                                "app.github.dev",
+                            )
+                            _url = f"https://{_cs_name}-{_port}.{_cs_domain}"
+                            if _parsed.query:
+                                _url += f"?{_parsed.query}"
+                            set_action_log(
+                                f"Opened **{_name}** for editing: [{_url}]({_url})"
+                            )
                     else:
                         _url = _raw_url
-                    set_action_log(f"Opened **{_name}** for editing: [{_url}]({_url})")
+                        set_action_log(
+                            f"Opened **{_name}** for editing: [{_url}]({_url})"
+                        )
                 else:
                     set_action_log(
                         f"Opened **{_name}** for editing (could not detect URL)"
