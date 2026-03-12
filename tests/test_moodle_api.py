@@ -193,9 +193,10 @@ class TestSaveGrades:
         ]
         with patch.object(client, "_call", return_value=[]) as mock_call:
             client.save_grades(10, grades)
-        call_kwargs = mock_call.call_args
-        # Just check the function name was correct
-        assert call_kwargs.args[0] == "mod_assign_save_grades"
+        # Uses singular save_grade API, called once per student
+        assert mock_call.call_count == 2
+        for call in mock_call.call_args_list:
+            assert call.args[0] == "mod_assign_save_grade"
 
 
 class TestDownloadFile:
