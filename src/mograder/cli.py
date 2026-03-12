@@ -271,7 +271,7 @@ def validate(ctx, file, timeout):
     """Run a notebook in a sandbox and report check results."""
     from mograder.runner import create_shared_sandbox, run_notebook
 
-    click.echo(f"Installing dependencies...")
+    click.echo("Installing dependencies...")
     sandbox = create_shared_sandbox(file)
     click.echo(f"Running {_rel(file)}...")
     result = run_notebook(
