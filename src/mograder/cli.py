@@ -903,13 +903,8 @@ def moodle_fetch(ctx, assignment, list_assignments, course_id, url, token, outpu
 
 
 @moodle_group.command("submit")
+@click.argument("assignment")
 @click.argument("file", type=click.Path(exists=True, path_type=Path))
-@click.option(
-    "-a",
-    "--assignment",
-    required=True,
-    help="Assignment name or ID",
-)
 @_add_moodle_api_options
 @click.option(
     "--no-finalize",
@@ -920,7 +915,7 @@ def moodle_fetch(ctx, assignment, list_assignments, course_id, url, token, outpu
     "--dry-run", is_flag=True, help="Show what would happen without uploading"
 )
 @click.pass_context
-def moodle_submit(ctx, file, assignment, course_id, url, token, no_finalize, dry_run):
+def moodle_submit(ctx, assignment, file, course_id, url, token, no_finalize, dry_run):
     """Upload a .py notebook as a Moodle assignment submission."""
     from mograder.moodle_api import (
         MoodleAPIClient,
@@ -1818,8 +1813,8 @@ def https_fetch(ctx, assignment, list_assignments, url, token, output_dir):
 
 
 @https_group.command("submit")
+@click.argument("assignment")
 @click.argument("file", type=click.Path(exists=True, path_type=Path))
-@click.option("-a", "--assignment", required=True, help="Assignment name or ID")
 @click.option("--url", default=None, help="Server URL (overrides config)")
 @click.option("--token", default=None, help="Auth token (overrides cached token)")
 @click.option(
@@ -1827,7 +1822,7 @@ def https_fetch(ctx, assignment, list_assignments, url, token, output_dir):
 )
 @click.option("--dry-run", is_flag=True, help="Show what would happen")
 @click.pass_context
-def https_submit(ctx, file, assignment, url, token, user, dry_run):
+def https_submit(ctx, assignment, file, url, token, user, dry_run):
     """Submit a .py notebook to an HTTPS assignment server."""
     from mograder.https_transport import HTTPSTransport
     from mograder.transport_commands import do_submit

@@ -72,7 +72,7 @@ An argument is treated as an assignment name if it contains no `/` and doesn't e
 - **`moodle_transport.py`** — `MoodleTransport` adapter wrapping `MoodleAPIClient` to implement `Transport`.
 - **`transport_commands.py`** — Shared command logic: `do_fetch`, `do_submit`, `do_fetch_submissions`, `do_upload_feedback`, `do_status`. Used by both `moodle` and `https` CLI groups.
 - **`https_server.py`** — stdlib `http.server`-based assignment server. REST endpoints for listing, downloading, submitting, grading. Directory-structure convention with auto-discovery. `create_server()` factory. Also a pytest fixture.
-- **`cli.py`** — Click CLI wiring. Commands: `generate`, `autograde`, `feedback`, `moodle` (group), `https` (group), `serve`, `student`, `formgrader`. The `moodle` group has subcommands: `export`, `fetch`, `submit`, `fetch-submissions`, `upload-feedback`, `feedback`, `sync`, `login`. The `https` group mirrors fetch/submit/feedback. `serve` starts the assignment server. Smart output directory defaults infer from nbgrader convention. `--source` auto-discovery. Integrity checking integrated into autograde.
+- **`cli.py`** — Click CLI wiring. Commands: `generate`, `validate`, `autograde`, `feedback`, `moodle` (group), `https` (group), `serve`, `student`, `formgrader`. The `moodle` group has subcommands: `export`, `fetch`, `submit`, `fetch-submissions`, `upload-feedback`, `upload`, `feedback`, `sync`, `login`. The `https` group mirrors fetch/submit/feedback. `serve` starts the assignment server. Smart output directory defaults infer from nbgrader convention. `--source` auto-discovery. Integrity checking integrated into autograde.
 
 ### Key data flow
 

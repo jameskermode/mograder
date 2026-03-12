@@ -490,9 +490,8 @@ class TestMoodleSubmitCLI:
                 [
                     "moodle",
                     "submit",
-                    str(nb),
-                    "-a",
                     "Demo",
+                    str(nb),
                     "-c",
                     "1",
                 ],
@@ -521,9 +520,8 @@ class TestMoodleSubmitCLI:
                 [
                     "moodle",
                     "submit",
-                    str(nb),
-                    "-a",
                     "Demo",
+                    str(nb),
                     "-c",
                     "1",
                     "--dry-run",
@@ -559,9 +557,8 @@ class TestMoodleSubmitCLI:
                 [
                     "moodle",
                     "submit",
-                    str(nb),
-                    "-a",
                     "Demo",
+                    str(nb),
                     "-c",
                     "1",
                     "--no-finalize",
@@ -575,9 +572,7 @@ class TestMoodleSubmitCLI:
         nb = tmp_path / "notebook.ipynb"
         nb.write_text("{}")
         runner = CliRunner()
-        result = runner.invoke(
-            cli, ["moodle", "submit", str(nb), "-a", "Demo", "-c", "1"]
-        )
+        result = runner.invoke(cli, ["moodle", "submit", "Demo", str(nb), "-c", "1"])
         assert result.exit_code != 0
 
 
@@ -1146,28 +1141,11 @@ class TestUpdateIntroattachments:
 
 
 class TestMoodleUploadCLI:
-    """Tests for ``moodle upload`` — zips release files before uploading."""
-
-    def _capture_zip(self, monkeypatch, tmp_path):
-        """Helper: patch upload_file to capture the zip path and verify contents."""
-        captured = {}
-
-        def fake_upload(self_client, filepath, itemid=0):
-            import zipfile
-
-            captured["path"] = filepath
-            captured["itemid_arg"] = itemid
-            with zipfile.ZipFile(filepath) as zf:
-                captured["namelist"] = zf.namelist()
-            return 999
-
-        monkeypatch.setattr(
-            "mograder.moodle_api.MoodleAPIClient.upload_file", fake_upload
-        )
-        return captured
+    """Tests for ``moodle upload`` — zips release files and opens edit page."""
 
     def test_dry_run(self, monkeypatch, tmp_path):
         _mock_config(monkeypatch)
+        monkeypatch.chdir(tmp_path)
         f1 = tmp_path / "notebook.py"
         f1.write_text("print('hello')")
 
@@ -1188,12 +1166,16 @@ class TestMoodleUploadCLI:
                 ["moodle", "upload", "Demo", str(f1), "-c", "1", "--dry-run"],
             )
         assert result.exit_code == 0, result.output
-        assert "Would zip and upload" in result.output
-        assert "Demo.zip" in result.output
+        assert "Would create Demo.zip" in result.output
         assert "notebook.py" in result.output
+        # Dry run should clean up the zip
+        assert not (tmp_path / "Demo.zip").exists()
 
     def test_explicit_files_zipped(self, monkeypatch, tmp_path):
+        import zipfile
+
         _mock_config(monkeypatch)
+        monkeypatch.chdir(tmp_path)
         f1 = tmp_path / "a.py"
         f2 = tmp_path / "data.csv"
         f1.write_text("a")
@@ -1206,15 +1188,12 @@ class TestMoodleUploadCLI:
             "duedate": 0,
             "introattachments": [],
         }
-        captured = self._capture_zip(monkeypatch, tmp_path)
         with (
             patch(
                 "mograder.moodle_api.MoodleAPIClient.get_assignments",
                 return_value=[assignment],
             ),
-            patch(
-                "mograder.moodle_api.MoodleAPIClient.update_introattachments",
-            ) as mock_attach,
+            patch("webbrowser.open"),
         ):
             runner = CliRunner()
             result = runner.invoke(
@@ -1222,13 +1201,18 @@ class TestMoodleUploadCLI:
                 ["moodle", "upload", "Demo", str(f1), str(f2), "-c", "1"],
             )
         assert result.exit_code == 0, result.output
-        assert "Attached" in result.output
-        mock_attach.assert_called_once_with(42, 999)
-        # Verify zip contained both files
-        assert sorted(captured["namelist"]) == ["a.py", "data.csv"]
-        assert captured["path"].name == "Demo.zip"
+        assert "Created Demo.zip" in result.output
+        assert "modedit.php?update=42" in result.output
+        # Verify zip was created with both files
+        zip_path = tmp_path / "Demo.zip"
+        assert zip_path.exists()
+        with zipfile.ZipFile(zip_path) as zf:
+            assert sorted(zf.namelist()) == ["a.py", "data.csv"]
+        zip_path.unlink()
 
     def test_auto_discover_release_files(self, monkeypatch, tmp_path):
+        import zipfile
+
         _mock_config(monkeypatch)
         monkeypatch.chdir(tmp_path)
 
@@ -1245,15 +1229,12 @@ class TestMoodleUploadCLI:
             "duedate": 0,
             "introattachments": [],
         }
-        captured = self._capture_zip(monkeypatch, tmp_path)
         with (
             patch(
                 "mograder.moodle_api.MoodleAPIClient.get_assignments",
                 return_value=[assignment],
             ),
-            patch(
-                "mograder.moodle_api.MoodleAPIClient.update_introattachments",
-            ),
+            patch("webbrowser.open"),
         ):
             runner = CliRunner()
             result = runner.invoke(
@@ -1261,10 +1242,15 @@ class TestMoodleUploadCLI:
                 ["moodle", "upload", "Demo", "-c", "1"],
             )
         assert result.exit_code == 0, result.output
-        assert captured["namelist"] == ["notebook.py"]
+        zip_path = tmp_path / "Demo.zip"
+        assert zip_path.exists()
+        with zipfile.ZipFile(zip_path) as zf:
+            assert zf.namelist() == ["notebook.py"]
+        zip_path.unlink()
 
-    def test_draft_only(self, monkeypatch, tmp_path):
+    def test_no_open(self, monkeypatch, tmp_path):
         _mock_config(monkeypatch)
+        monkeypatch.chdir(tmp_path)
         f1 = tmp_path / "a.py"
         f1.write_text("a")
 
@@ -1275,48 +1261,38 @@ class TestMoodleUploadCLI:
             "duedate": 0,
             "introattachments": [],
         }
-        self._capture_zip(monkeypatch, tmp_path)
         with (
             patch(
                 "mograder.moodle_api.MoodleAPIClient.get_assignments",
                 return_value=[assignment],
             ),
-            patch(
-                "mograder.moodle_api.MoodleAPIClient.update_introattachments",
-            ) as mock_attach,
+            patch("webbrowser.open") as mock_open,
         ):
             runner = CliRunner()
             result = runner.invoke(
                 cli,
-                ["moodle", "upload", "Demo", str(f1), "-c", "1", "--draft-only"],
+                ["moodle", "upload", "Demo", str(f1), "-c", "1", "--no-open"],
             )
         assert result.exit_code == 0, result.output
-        mock_attach.assert_not_called()
-        assert "Draft-only mode" in result.output
-        assert "999" in result.output
+        mock_open.assert_not_called()
+        assert "modedit.php?update=42" in result.output
+        (tmp_path / "Demo.zip").unlink()
 
-    def test_attach_failure_fallback(self, monkeypatch, tmp_path):
+    def test_no_cmid_fallback(self, monkeypatch, tmp_path):
         _mock_config(monkeypatch)
+        monkeypatch.chdir(tmp_path)
         f1 = tmp_path / "a.py"
         f1.write_text("a")
 
         assignment = {
             "id": 10,
-            "cmid": 42,
             "name": "Demo",
             "duedate": 0,
             "introattachments": [],
         }
-        self._capture_zip(monkeypatch, tmp_path)
-        with (
-            patch(
-                "mograder.moodle_api.MoodleAPIClient.get_assignments",
-                return_value=[assignment],
-            ),
-            patch(
-                "mograder.moodle_api.MoodleAPIClient.update_introattachments",
-                side_effect=MoodleAPIError("Access denied", "nopermission"),
-            ),
+        with patch(
+            "mograder.moodle_api.MoodleAPIClient.get_assignments",
+            return_value=[assignment],
         ):
             runner = CliRunner()
             result = runner.invoke(
@@ -1324,5 +1300,5 @@ class TestMoodleUploadCLI:
                 ["moodle", "upload", "Demo", str(f1), "-c", "1"],
             )
         assert result.exit_code == 0, result.output
-        assert "could not attach" in result.output
-        assert "999" in result.output
+        assert "open the assignment edit page manually" in result.output
+        (tmp_path / "Demo.zip").unlink()

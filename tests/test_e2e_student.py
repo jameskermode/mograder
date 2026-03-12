@@ -67,9 +67,8 @@ class TestE2EStudentWorkflow:
             [
                 "https",
                 "submit",
-                str(sol),
-                "-a",
                 "hw1",
+                str(sol),
                 "--url",
                 base_url,
                 "--user",
@@ -93,9 +92,8 @@ class TestE2EStudentWorkflow:
             [
                 "https",
                 "submit",
-                str(sol),
-                "-a",
                 "hw1",
+                str(sol),
                 "--url",
                 base_url,
                 "--user",
@@ -131,9 +129,8 @@ class TestE2EStudentWorkflow:
             [
                 "https",
                 "submit",
-                str(out_dir / "homework.py"),
-                "-a",
                 "hw1",
+                str(out_dir / "homework.py"),
                 "--url",
                 base_url,
                 "--user",

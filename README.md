@@ -57,28 +57,31 @@ course/
 ## Workflow
 
 1. **`mograder generate`** — `source/*.py` → `release/*.py` (strip solutions)
-2. **Students** complete and submit `.py` files
-3. **`mograder autograde`** — `submitted/*.py` → `autograded/*.py`
+2. **`mograder moodle upload`** — zip release files and open Moodle edit page for attachment
+3. **Students** complete and submit `.py` files
+4. **`mograder validate`** — run a notebook in a sandbox and report check results (student self-check)
+5. **`mograder autograde`** — `submitted/*.py` → `autograded/*.py`
    - Integrity check against source notebook (detects tampered check/marks cells)
    - Runs each notebook via `marimo export html`
    - Parses check results from HTML
    - Injects verification summary + GTA feedback cells
    - Stores results in `gradebook.db`
-4. **GTAs grade** — formgrader Grading tab or `marimo edit`
+6. **GTAs grade** — formgrader Grading tab or `marimo edit`
    - GTA sets manual mark and feedback per student
    - Grades saved to `gradebook.db`
-5. **`mograder feedback`** — `autograded/*.py` → `feedback/*.html`
+7. **`mograder feedback`** — `autograded/*.py` → `feedback/*.html`
    - Injects mark + feedback callout into existing autograde HTML
    - Removes self-assessment scores cell
-6. **`mograder moodle export`** — `gradebook.db` + `worksheet.csv` → `export/`
+8. **`mograder moodle export`** — `gradebook.db` + `worksheet.csv` → `export/`
    - Merges grades into Moodle offline grading worksheets
    - Bundles HTML feedback into a Moodle-compatible ZIP
    - Auto-imports student names into gradebook
-7. **`mograder moodle fetch`** / **`mograder moodle submit`** — students fetch assignments and submit work via Moodle API
-8. **`mograder moodle fetch-submissions`** / **`mograder moodle upload-feedback`** — instructors bulk-download submissions and push grades/feedback via Moodle API
-9. **`mograder moodle sync`** — syncs assignment metadata from Moodle into `mograder.toml` (instructor runs this, students get the config via URL or file)
-10. **`mograder student`** — launches an interactive student dashboard (Marimo app) for downloading, validating, editing, and submitting assignments
-11. **`mograder serve`** / **`mograder https *`** — lightweight HTTPS server + transport for assignment distribution without Moodle (HMAC token auth, atomic timestamped submissions)
+9. **`mograder moodle login`** — obtain and cache a Moodle API token (supports SSO)
+10. **`mograder moodle fetch`** / **`mograder moodle submit`** — students fetch assignments and submit work via Moodle API
+11. **`mograder moodle fetch-submissions`** / **`mograder moodle upload-feedback`** — instructors bulk-download submissions and push grades/feedback via Moodle API
+12. **`mograder moodle sync`** — syncs assignment metadata from Moodle into `mograder.toml` (instructor runs this, students get the config via URL or file)
+13. **`mograder student`** — launches an interactive student dashboard (Marimo app) for downloading, validating, editing, and submitting assignments
+14. **`mograder serve`** / **`mograder https *`** — lightweight HTTPS server + transport for assignment distribution without Moodle (HMAC token auth, atomic timestamped submissions)
 
 ## Installation
 
@@ -137,6 +140,17 @@ x = 42
 ```
 
 Solution blocks are replaced with `# YOUR CODE HERE` / `pass` in the release version. Auxiliary files (data, helper modules) are automatically copied from the source directory. Notebooks import `check()` from `mograder.runtime` for formative feedback, or use `Grader` for per-question marks with reactive score tracking.
+
+### Validate a notebook
+
+Run a notebook in a sandbox and report check results (useful for students to self-check before submitting):
+
+```bash
+mograder validate hw1.py
+mograder validate hw1.py --timeout 600
+```
+
+Installs dependencies in a sandbox, executes the notebook, and prints PASS/FAIL for each check. Exits with code 1 if any check fails. An HTML report is saved alongside the notebook.
 
 ### Autograde submissions
 
@@ -247,14 +261,29 @@ mograder moodle fetch-submissions "HW1" -o submitted/hw1/
 
 Downloads each student's latest `.py` submission, named by username.
 
+#### Upload release files (instructor)
+
+Zip release files and open the Moodle assignment edit page for manual attachment:
+
+```bash
+mograder moodle upload "HW1"                    # auto-discovers from release/HW1/
+mograder moodle upload "HW1" file1.py data.csv  # explicit files
+mograder moodle upload "HW1" --dry-run          # preview without creating zip
+mograder moodle upload "HW1" --no-open          # create zip without opening browser
+```
+
+Files are zipped into `<assignment>.zip` in the current directory. If no files are given, all files in `release/<assignment>/` are included. The Moodle assignment edit page is opened automatically so you can attach the zip as an introattachment.
+
 #### Upload feedback (instructor)
 
 Push grades and feedback to Moodle via the API:
 
 ```bash
-mograder moodle upload-feedback "HW1"                # from gradebook.db
-mograder moodle upload-feedback "HW1" --dry-run      # preview without pushing
+mograder moodle upload-feedback "HW1"                          # from gradebook.db
+mograder moodle upload-feedback "HW1" --dry-run                # preview without pushing
 mograder moodle upload-feedback "HW1" --grades-csv grades.csv  # from CSV
+mograder moodle upload-feedback "HW1" --feedback-dir feedback/HW1/  # with HTML feedback files
+mograder moodle upload-feedback "HW1" --workflow-state released     # make grades visible immediately
 ```
 
 #### Sync assignment metadata (instructor)
@@ -277,6 +306,18 @@ mograder moodle feedback "HW1"
 ```
 
 Shows submission status, grade (if graded), and instructor feedback text.
+
+#### Login (obtain API token)
+
+Obtain and cache a Moodle API token for subsequent commands:
+
+```bash
+mograder moodle login                    # username/password prompt
+mograder moodle login --sso              # browser-based SSO (CAS/SAML/Shibboleth)
+mograder moodle login --url https://moodle.uni.ac.uk
+```
+
+The token is cached at `~/.config/mograder/token.json`. For SSO sites, `--sso` opens the Moodle Security Keys page in your browser where you can copy the token.
 
 All Moodle API commands accept `--url` and `--token` flags, or read from `MOGRADER_MOODLE_URL` / `MOGRADER_MOODLE_TOKEN` environment variables, or from the `[moodle]` section in `mograder.toml`.
 
@@ -337,7 +378,7 @@ Students register via the student dashboard (enter username + enrollment code), 
 mograder https login --token <YOUR_TOKEN> --url https://server.example.com
 mograder https fetch --list                              # list assignments
 mograder https fetch "hw1" -o hw1/                       # download files
-mograder https submit hw1.py -a "hw1"                    # submit work
+mograder https submit "hw1" hw1.py                       # submit work
 mograder https feedback "hw1"                            # check status/grade
 ```
 
