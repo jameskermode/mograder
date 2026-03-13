@@ -1114,8 +1114,8 @@ def _(
     else:
         grading_scheme = mo.md("")
 
-    # Feedback validation
-    _fb_text = grading_feedback_input.value or ""
+    # Feedback validation (uses initial value; save function enforces reactively)
+    _fb_text = (_feedback_text or "") if grading_current_sub is not None else ""
     _sentence_count = _count_sentences(_fb_text)
     if _fb_text and _sentence_count < 3:
         grading_validation = mo.callout(
