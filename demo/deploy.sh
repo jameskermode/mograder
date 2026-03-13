@@ -6,8 +6,8 @@ set -e
 HOST=mograder-demo
 REMOTE_DIR=/home/ubuntu/mograder
 
-echo "=== Pulling latest code ==="
-ssh $HOST "cd $REMOTE_DIR && git pull"
+echo "=== Fetching and resetting to origin/main ==="
+ssh $HOST "cd $REMOTE_DIR && git fetch origin && git reset --hard origin/main"
 
 echo "=== Installing dependencies ==="
 ssh $HOST "cd $REMOTE_DIR && \$HOME/.local/bin/uv sync --extra grader --extra asgi"

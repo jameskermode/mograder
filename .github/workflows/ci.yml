@@ -55,3 +55,38 @@ jobs:
         run: |
           uv run mograder generate examples/source/demo-assignment/demo-assignment.py examples/source/demo-holistic/demo-holistic.py -o examples/release
           git diff --exit-code examples/release/
+
+  deploy-demo:
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    needs: [test, lint]
+    runs-on: ubuntu-latest
+    concurrency:
+      group: deploy-demo
+      cancel-in-progress: false
+    steps:
+      - name: Setup SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.DEMO_SSH_KEY }}" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          echo "${{ secrets.DEMO_SSH_KNOWN_HOSTS }}" > ~/.ssh/known_hosts
+
+      - name: Deploy
+        run: |
+          ssh ubuntu@mograder-demo.jrkermode.uk bash -s << 'SCRIPT'
+            set -e
+            cd /home/ubuntu/mograder
+            git fetch origin
+            git reset --hard origin/main
+            $HOME/.local/bin/uv sync --extra grader --extra asgi
+            PYTHON=.venv/bin/python MOGRADER=.venv/bin/mograder bash demo/setup_formgrader_demo.sh
+            sudo systemctl restart mograder-demo
+          SCRIPT
+
+      - name: Verify
+        run: |
+          sleep 3
+          ROOT=$(curl -s -o /dev/null -w "%{http_code}" https://mograder-demo.jrkermode.uk/)
+          API=$(curl -s -o /dev/null -w "%{http_code}" https://mograder-demo.jrkermode.uk/assignments)
+          echo "Root: $ROOT, Assignments: $API"
+          [ "$ROOT" = "200" ] && [ "$API" = "200" ] || { echo "::error::Health check failed"; exit 1; }
