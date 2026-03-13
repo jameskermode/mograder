@@ -2,6 +2,7 @@
 
 import json
 import os
+import re
 import shutil
 import sys
 import tempfile
@@ -11,6 +12,8 @@ import click
 
 from mograder import cells, feedback, integrity, markers, moodle, runner
 from mograder.gradebook import Gradebook
+
+_TIMESTAMP_RE = re.compile(r"_\d{8}T\d{6}$")
 
 
 def _rel(p: Path) -> str:
@@ -60,7 +63,7 @@ def _resolve_assignments(
             d = Path(base_dir) / s
             if not d.is_dir():
                 raise click.UsageError(f"Assignment directory not found: {d}")
-            py = sorted(d.glob("*.py"))
+            py = sorted(f for f in d.glob("*.py") if not _TIMESTAMP_RE.search(f.stem))
             if not py:
                 raise click.UsageError(f"No .py files in {d}")
             resolved.extend(py)

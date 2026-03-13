@@ -247,7 +247,12 @@ def _(
             and _sub_dir.is_dir()
             and any(_sub_dir.glob("*.py"))
         ):
-            _files = [str(f) for f in sorted(_sub_dir.glob("*.py"))]
+            import re as _re2
+
+            _TS = _re2.compile(r"_\d{8}T\d{6}$")
+            _files = [
+                str(f) for f in sorted(_sub_dir.glob("*.py")) if not _TS.search(f.stem)
+            ]
             _src_flag = ["--source", str(_a.source_path)] if _a.source_path else []
             _cmd = ["autograde"] + _files + _src_flag
             _n4 = _a.name

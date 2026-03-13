@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -15,6 +16,8 @@ from mograder.cells import (
     parse_gta_feedback,
     parse_marks_metadata,
 )
+
+_TIMESTAMP_RE = re.compile(r"_\d{8}T\d{6}$")
 
 
 @dataclass(frozen=True)
@@ -106,7 +109,11 @@ def scan_course(
     if submitted_dir.is_dir():
         for d in sorted(submitted_dir.iterdir()):
             if d.is_dir():
-                py_files = [f for f in d.iterdir() if f.suffix == ".py"]
+                py_files = [
+                    f
+                    for f in d.iterdir()
+                    if f.suffix == ".py" and not _TIMESTAMP_RE.search(f.stem)
+                ]
                 if py_files:
                     info = _ensure(d.name)
                     info.num_submitted = len(py_files)
@@ -168,7 +175,7 @@ def scan_submissions(
     sub_dir = course_dir / dn.submitted / assignment
     if sub_dir.is_dir():
         for f in sub_dir.iterdir():
-            if f.suffix == ".py":
+            if f.suffix == ".py" and not _TIMESTAMP_RE.search(f.stem):
                 info = _ensure(f.stem)
                 info.submitted_path = f
 
