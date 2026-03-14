@@ -243,7 +243,6 @@ def run_notebook(
                 stdin=subprocess.DEVNULL,
             )
             _poll_sidecar(proc, sidecar_path, timeout, on_check)
-            stdout = proc.stdout.read() if proc.stdout else ""
             stderr = proc.stderr.read() if proc.stderr else ""
         else:
             proc = subprocess.run(
@@ -254,7 +253,6 @@ def run_notebook(
                 env=env,
                 stdin=subprocess.DEVNULL,
             )
-            stdout = proc.stdout
             stderr = proc.stderr
 
         if proc.returncode != 0 and not tmp_path.exists():
