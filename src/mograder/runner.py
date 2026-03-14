@@ -114,13 +114,82 @@ def _read_sidecar(path: Path) -> list[CheckResult]:
     return results
 
 
+def _poll_sidecar(
+    proc: subprocess.Popen,
+    sidecar_path: Path,
+    timeout: int,
+    on_check: Callable[["CheckResult"], None],
+    poll_interval: float = 0.5,
+) -> None:
+    """Poll the sidecar JSONL file while *proc* runs, invoking *on_check*
+    for each new check result line that appears."""
+    import time
+
+    deadline = time.monotonic() + timeout
+    lines_read = 0
+
+    while proc.poll() is None:
+        if time.monotonic() > deadline:
+            proc.kill()
+            proc.wait()
+            raise subprocess.TimeoutExpired(proc.args, timeout)
+
+        # Read any new lines from the sidecar
+        try:
+            text = sidecar_path.read_text().strip()
+        except OSError:
+            text = ""
+        if text:
+            all_lines = text.splitlines()
+            for line in all_lines[lines_read:]:
+                try:
+                    record = json.loads(line)
+                    on_check(
+                        CheckResult(
+                            label=record["label"],
+                            status=record["status"],
+                            details=record.get("details", []),
+                        )
+                    )
+                except (json.JSONDecodeError, KeyError):
+                    pass
+            lines_read = len(all_lines)
+
+        time.sleep(poll_interval)
+
+    # Final drain — process exited, read any remaining lines
+    try:
+        text = sidecar_path.read_text().strip()
+    except OSError:
+        text = ""
+    if text:
+        for line in text.splitlines()[lines_read:]:
+            try:
+                record = json.loads(line)
+                on_check(
+                    CheckResult(
+                        label=record["label"],
+                        status=record["status"],
+                        details=record.get("details", []),
+                    )
+                )
+            except (json.JSONDecodeError, KeyError):
+                pass
+
+
 def run_notebook(
     notebook_path: Path,
     timeout: int = 300,
     html_dir: Path | None = None,
     sandbox_dir: Path | None = None,
+    on_check: Callable[[CheckResult], None] | None = None,
 ) -> NotebookResult:
-    """Execute a notebook and return its check results."""
+    """Execute a notebook and return its check results.
+
+    If *on_check* is provided, the sidecar file is polled while the
+    notebook executes and the callback is invoked for each new check
+    result as it appears (useful for live progress in the UI).
+    """
     result = NotebookResult(path=notebook_path)
 
     with tempfile.NamedTemporaryFile(suffix=".html", delete=False) as tmp:
@@ -162,18 +231,35 @@ def run_notebook(
         local_bin = str(Path.home() / ".local" / "bin")
         if local_bin not in env.get("PATH", "").split(os.pathsep):
             env["PATH"] = local_bin + os.pathsep + env.get("PATH", "")
-        proc = subprocess.run(
-            cmd,
-            capture_output=True,
-            text=True,
-            timeout=timeout,
-            env=env,
-            stdin=subprocess.DEVNULL,
-        )
+
+        if on_check is not None:
+            # Stream mode: poll sidecar for live check results
+            proc = subprocess.Popen(
+                cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                env=env,
+                stdin=subprocess.DEVNULL,
+            )
+            _poll_sidecar(proc, sidecar_path, timeout, on_check)
+            stdout = proc.stdout.read() if proc.stdout else ""
+            stderr = proc.stderr.read() if proc.stderr else ""
+        else:
+            proc = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                timeout=timeout,
+                env=env,
+                stdin=subprocess.DEVNULL,
+            )
+            stdout = proc.stdout
+            stderr = proc.stderr
 
         if proc.returncode != 0 and not tmp_path.exists():
             result.export_ok = False
-            result.export_error = proc.stderr[:500]
+            result.export_error = stderr[:500]
             return result
 
         html_content = tmp_path.read_text()
@@ -186,7 +272,7 @@ def run_notebook(
         else:
             result.checks = parse_check_results(html_content)
 
-        if "some cells failed to execute" in proc.stderr:
+        if "some cells failed to execute" in stderr:
             result.export_error = "some cells failed to execute"
 
         if html_dir is not None:

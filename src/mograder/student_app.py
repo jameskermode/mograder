@@ -520,7 +520,6 @@ def _(
         elif _act == "edit":
             _path = pending["path"]
             _name = pending["name"]
-            _cmd = [sys.executable, "-m", "marimo", "edit", "--sandbox", _path]
             import os as _os
 
             _is_remote = bool(
@@ -529,62 +528,33 @@ def _(
                 or CONFIG.headless_edit
             )
             if _is_remote:
-                import re as _re
-                import threading as _threading
-                from urllib.parse import urlparse as _urlparse
+                from mograder.edit_sessions import (
+                    spawn_headless_edit,
+                    rewrite_codespaces_url,
+                )
 
-                if _os.environ.get("CODESPACES"):
-                    _cmd.extend(["--headless", "--host", "0.0.0.0"])
-                else:
-                    _cmd.append("--headless")
-                _proc = sp.Popen(_cmd, stdout=sp.PIPE, stderr=sp.STDOUT, text=True)
-                _url_box = []
-                _found = _threading.Event()
-
-                def _drain_output():
-                    for _line in _proc.stdout:
-                        if not _url_box:
-                            # Match marimo's "URL:" line specifically to avoid
-                            # capturing pip/uv download URLs from --sandbox
-                            _m = _re.search(r"URL:\s+(https?://\S+)", _line)
-                            if _m:
-                                _url_box.append(_m.group(1))
-                                _found.set()
-
-                _threading.Thread(target=_drain_output, daemon=True).start()
-                _found.wait(timeout=30)
-                if _url_box:
-                    _raw_url = _url_box[0]
+                try:
+                    _hs = spawn_headless_edit(
+                        _path,
+                        host="0.0.0.0"
+                        if _os.environ.get("CODESPACES")
+                        else "127.0.0.1",
+                    )
                     if _os.environ.get("CODESPACES"):
-                        _parsed = _urlparse(_raw_url)
-                        _port = _parsed.port
-                        if not _port:
-                            set_action_log(
-                                f"Opened **{_name}** for editing "
-                                f"(could not detect port from: {_raw_url})"
-                            )
-                        else:
-                            _cs_name = _os.environ["CODESPACE_NAME"]
-                            _cs_domain = _os.environ.get(
-                                "GITHUB_CODESPACES_PORT_FORWARDING_DOMAIN",
-                                "app.github.dev",
-                            )
-                            _url = f"https://{_cs_name}-{_port}.{_cs_domain}"
-                            if _parsed.query:
-                                _url += f"?{_parsed.query}"
-                            set_action_log(
-                                f"Opened **{_name}** for editing: [{_url}]({_url})"
-                            )
+                        _url = rewrite_codespaces_url(_hs.url)
                     else:
-                        _url = _raw_url
-                        set_action_log(
-                            f"Opened **{_name}** for editing: [{_url}]({_url})"
-                        )
-                else:
+                        _url = _hs.url
+                    set_action_log(
+                        f"Opened **{_name}** for editing: [{_url}]({_url})"
+                    )
+                except TimeoutError:
                     set_action_log(
                         f"Opened **{_name}** for editing (could not detect URL)"
                     )
             else:
+                _cmd = [
+                    sys.executable, "-m", "marimo", "edit", "--sandbox", _path
+                ]
                 sp.Popen(_cmd)
                 set_action_log(f"Opened **{_name}** for editing")
 

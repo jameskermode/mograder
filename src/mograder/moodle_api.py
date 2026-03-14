@@ -234,6 +234,7 @@ class MoodleAPIClient:
                                         "filename": f["filename"],
                                         "fileurl": f["fileurl"],
                                         "filesize": f.get("filesize", 0),
+                                        "timemodified": f.get("timemodified", 0),
                                     }
                                 )
                 submissions.append(

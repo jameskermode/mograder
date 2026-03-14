@@ -175,8 +175,15 @@ def cli(ctx):
     default=None,
     help="Inject a submit cell with this server URL into release notebooks",
 )
+@click.option(
+    "--progress",
+    is_flag=True,
+    help="Emit JSON progress events to stderr (for formgrader UI)",
+)
 @click.pass_context
-def generate(ctx, assignments, output_dir, dry_run, validate, no_validate, submit_url):
+def generate(
+    ctx, assignments, output_dir, dry_run, validate, no_validate, submit_url, progress
+):
     """Strip solutions from source notebooks to produce release versions.
 
     ASSIGNMENTS can be assignment names (e.g. "demo-assignment") which are
@@ -193,17 +200,66 @@ def generate(ctx, assignments, output_dir, dry_run, validate, no_validate, submi
             output_dir = Path(config.release_dir)
 
     # Pre-run validation: execute source notebooks and check results
+    py_files = [f for f in files if f.suffix == ".py"]
     if no_validate and not validate and not dry_run:
         click.echo("WARNING: skipping source validation (--no-validate)")
     elif not validate and not dry_run:
-        from .runner import run_notebook
+        from .runner import create_shared_sandbox, run_notebook
+
+        if progress:
+            click.echo(
+                json.dumps({"event": "start", "total": len(py_files) + 1}),
+                err=True,
+            )
+            click.echo(json.dumps({"event": "sandbox_start"}), err=True)
 
         validation_ok = True
-        for filepath in files:
-            if filepath.suffix != ".py":
-                continue
+        shared_sandbox = None
+        for i, filepath in enumerate(py_files):
             click.echo(f"VALIDATE: {_rel(filepath)} ... ", nl=False)
-            result = run_notebook(filepath)
+            if shared_sandbox is None:
+                shared_sandbox = create_shared_sandbox(filepath)
+            if progress:
+                click.echo(
+                    json.dumps(
+                        {
+                            "event": "sandbox_done",
+                            "created": shared_sandbox is not None,
+                        }
+                    ),
+                    err=True,
+                )
+                click.echo(
+                    json.dumps(
+                        {
+                            "event": "progress",
+                            "completed": i,
+                            "total": len(py_files) + 1,
+                            "notebook": f"validating {filepath.name}",
+                        }
+                    ),
+                    err=True,
+                )
+            check_cb = None
+            if progress:
+
+                def check_cb(cr, _fp=filepath):
+                    status = "PASS" if cr.status == "success" else "FAIL"
+                    click.echo(
+                        json.dumps(
+                            {
+                                "event": "check",
+                                "notebook": _fp.name,
+                                "label": cr.label,
+                                "status": status,
+                            }
+                        ),
+                        err=True,
+                    )
+
+            result = run_notebook(
+                filepath, sandbox_dir=shared_sandbox, on_check=check_cb
+            )
             if not result.export_ok:
                 click.echo(f"FAIL (export error: {result.export_error})")
                 validation_ok = False
@@ -221,6 +277,19 @@ def generate(ctx, assignments, output_dir, dry_run, validate, no_validate, submi
             click.echo("OK")
         if not validation_ok:
             sys.exit(1)
+
+        if progress:
+            click.echo(
+                json.dumps(
+                    {
+                        "event": "progress",
+                        "completed": len(py_files),
+                        "total": len(py_files) + 1,
+                        "notebook": "stripping solutions",
+                    }
+                ),
+                err=True,
+            )
 
     success = True
     processed_dirs: set[Path] = set()
@@ -355,6 +424,11 @@ def validate(ctx, file, timeout):
     hidden=True,
     help="Emit JSON progress lines to stderr (machine-readable)",
 )
+@click.option(
+    "--force",
+    is_flag=True,
+    help="Re-autograde all submissions even if output is up to date",
+)
 @click.pass_context
 def autograde(
     ctx,
@@ -367,6 +441,7 @@ def autograde(
     timeout,
     output_dir,
     progress,
+    force,
 ):
     """Run notebooks and inject grading cells for GTA review.
 
@@ -443,6 +518,34 @@ def autograde(
             source_path = found
             click.echo(f"Auto-discovered source: {_rel(source_path)}")
 
+    # Skip submissions whose autograded output is already up to date.
+    # A submission needs re-grading if:
+    #   - the autograded .py doesn't exist, OR
+    #   - the submitted .py is newer than the autograded .py, OR
+    #   - the source notebook is newer than the autograded .py
+    if not force and not _moodle_submitted_dir:
+        _source_mtime = source_path.stat().st_mtime if source_path else 0
+        _to_grade = []
+        _skipped = 0
+        for nb in notebooks:
+            dest = output_dir / nb.name
+            if dest.is_file():
+                _dest_mtime = dest.stat().st_mtime
+                _sub_mtime = nb.stat().st_mtime
+                if _sub_mtime <= _dest_mtime and _source_mtime <= _dest_mtime:
+                    _skipped += 1
+                    continue
+            _to_grade.append(nb)
+        if _skipped:
+            click.echo(
+                f"Skipping {_skipped} up-to-date submission(s) "
+                f"(use --force to re-grade all)"
+            )
+        notebooks = _to_grade
+        if not notebooks:
+            click.echo("All submissions are up to date — nothing to do.")
+            return
+
     # Optionally run source solution first
     all_labels: list[str] = []
     marks: dict[str, int | float] | None = None
@@ -467,8 +570,29 @@ def autograde(
             )
         if shared_sandbox:
             click.echo(f"  Shared sandbox: {_rel(shared_sandbox)}")
+
+        _src_check_cb = None
+        if progress:
+
+            def _src_check_cb(cr):
+                _st = "PASS" if cr.status == "success" else "FAIL"
+                click.echo(
+                    json.dumps(
+                        {
+                            "event": "check",
+                            "notebook": source_path.name,
+                            "label": cr.label,
+                            "status": _st,
+                        }
+                    ),
+                    err=True,
+                )
+
         source_result = runner.run_notebook(
-            source_path, timeout=timeout, sandbox_dir=shared_sandbox
+            source_path,
+            timeout=timeout,
+            sandbox_dir=shared_sandbox,
+            on_check=_src_check_cb,
         )
         if source_result.checks:
             all_labels = [c.label for c in source_result.checks]
@@ -982,8 +1106,9 @@ def moodle_submit(ctx, assignment, file, course_id, url, token, no_finalize, dry
     default=None,
     help="Output directory (default: submitted/<assignment>/)",
 )
+@click.option("--force", is_flag=True, help="Re-download even if file exists")
 @click.pass_context
-def moodle_fetch_submissions(ctx, assignment, course_id, url, token, output_dir):
+def moodle_fetch_submissions(ctx, assignment, course_id, url, token, output_dir, force):
     """Bulk download all student submissions for an assignment (instructor)."""
     from mograder.transport_commands import do_fetch_submissions
 
@@ -992,7 +1117,7 @@ def moodle_fetch_submissions(ctx, assignment, course_id, url, token, output_dir)
 
     if output_dir is None:
         output_dir = Path(config.submitted_dir) / assignment
-    do_fetch_submissions(transport, assignment, Path(output_dir))
+    do_fetch_submissions(transport, assignment, Path(output_dir), force=force)
 
 
 @moodle_group.command("upload-feedback")
@@ -1653,7 +1778,8 @@ def sync(ctx, autograded_dir, remote, remote_course_dir, remote_venv_dir):
 )
 @click.option("-p", "--port", type=int, default=None, help="Port for marimo app")
 @click.option("--headless", is_flag=True, help="Don't open browser")
-def formgrader(course_dir, port, headless):
+@click.option("--base-url", default=None, help="Base URL path for reverse proxy")
+def formgrader(course_dir, port, headless, base_url):
     """Launch the formgrader dashboard for managing grading."""
     import os
     import subprocess as sp
@@ -1666,8 +1792,80 @@ def formgrader(course_dir, port, headless):
         cmd.extend(["--port", str(port)])
     if headless:
         cmd.append("--headless")
+    if base_url:
+        cmd.extend(["--base-url", base_url])
 
     click.echo(f"Launching formgrader for: {course_dir.resolve()}")
+    try:
+        proc = sp.run(cmd)
+        sys.exit(proc.returncode)
+    except KeyboardInterrupt:
+        pass
+
+
+@cli.command("formgrader-asgi")
+@click.argument(
+    "course_dir",
+    type=click.Path(exists=True, path_type=Path),
+    default=".",
+)
+@click.option("-p", "--port", type=int, default=2718, help="Port for uvicorn")
+@click.option("--host", default="0.0.0.0", help="Bind address")
+@click.option("--base-url", default="/", help="Base URL path for reverse proxy")
+@click.option(
+    "--instructors",
+    default="",
+    help="Comma-separated instructor user IDs",
+)
+@click.option(
+    "--trusted-proxies",
+    default="",
+    help="Comma-separated trusted proxy IPs",
+)
+@click.option(
+    "--reload",
+    is_flag=True,
+    help="Auto-reload on source changes (for development)",
+)
+def formgrader_asgi(
+    course_dir, port, host, base_url, instructors, trusted_proxies, reload
+):
+    """Launch the formgrader as a persistent ASGI service.
+
+    Uses uvicorn with trusted-proxy authentication middleware.
+    Intended for deployment behind a reverse proxy (e.g. on sciml).
+    """
+    import os
+    import subprocess as sp
+
+    os.environ["MOGRADER_COURSE_DIR"] = str(course_dir.resolve())
+    os.environ["MOGRADER_BASE_URL"] = base_url
+    if instructors:
+        os.environ["MOGRADER_INSTRUCTORS"] = instructors
+    if trusted_proxies:
+        os.environ["MOGRADER_TRUSTED_PROXIES"] = trusted_proxies
+
+    cmd = [
+        sys.executable,
+        "-m",
+        "uvicorn",
+        "mograder.formgrader_asgi:app",
+        "--host",
+        host,
+        "--port",
+        str(port),
+    ]
+    if reload:
+        src_dir = str(Path(__file__).parent)
+        cmd.extend(["--reload", "--reload-dir", src_dir])
+
+    click.echo(f"Launching ASGI formgrader for: {course_dir.resolve()}")
+    click.echo(f"  base-url: {base_url}")
+    click.echo(f"  bind: {host}:{port}")
+    if trusted_proxies:
+        click.echo(f"  trusted-proxies: {trusted_proxies}")
+    if reload:
+        click.echo(f"  reload: watching {src_dir}")
     try:
         proc = sp.run(cmd)
         sys.exit(proc.returncode)
@@ -1888,8 +2086,9 @@ def https_submit(ctx, assignment, file, url, token, user, dry_run):
     default=None,
     help="Output directory",
 )
+@click.option("--force", is_flag=True, help="Re-download even if file exists")
 @click.pass_context
-def https_fetch_submissions(ctx, assignment, url, token, output_dir):
+def https_fetch_submissions(ctx, assignment, url, token, output_dir, force):
     """Download all submissions from an HTTPS server (instructor)."""
     from mograder.https_transport import HTTPSTransport
     from mograder.transport_commands import do_fetch_submissions
@@ -1904,7 +2103,7 @@ def https_fetch_submissions(ctx, assignment, url, token, output_dir):
     transport = HTTPSTransport(url, token=token)
     if output_dir is None:
         output_dir = Path(config.submitted_dir) / assignment
-    do_fetch_submissions(transport, assignment, Path(output_dir))
+    do_fetch_submissions(transport, assignment, Path(output_dir), force=force)
 
 
 @https_group.command("upload-grades")

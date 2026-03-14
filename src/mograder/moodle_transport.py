@@ -58,6 +58,7 @@ class MoodleTransport:
                         filename=py_files[0]["filename"],
                         url=py_files[0]["fileurl"],
                         status=sub.get("status", ""),
+                        timemodified=py_files[0].get("timemodified", 0),
                     )
                 )
         return result

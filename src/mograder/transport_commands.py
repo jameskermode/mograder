@@ -99,25 +99,69 @@ def do_submit(
     click.echo(f"Submitted '{filepath.name}' to '{assignment}'")
 
 
+def _load_fetch_meta(output_dir: Path) -> dict:
+    """Load previously fetched submission timestamps from sidecar file."""
+    import json
+
+    meta_path = output_dir / ".fetch_metadata.json"
+    if meta_path.is_file():
+        try:
+            return json.loads(meta_path.read_text())
+        except (json.JSONDecodeError, OSError):
+            pass
+    return {}
+
+
+def _save_fetch_meta(output_dir: Path, meta: dict) -> None:
+    """Save fetched submission timestamps to sidecar file."""
+    import json
+
+    meta_path = output_dir / ".fetch_metadata.json"
+    meta_path.write_text(json.dumps(meta, indent=2) + "\n")
+
+
 def do_fetch_submissions(
     transport: Transport,
     assignment: str,
     output_dir: Path,
+    force: bool = False,
 ) -> None:
-    """Download all student submissions for an assignment."""
+    """Download all student submissions for an assignment.
+
+    Tracks remote ``timemodified`` timestamps in a sidecar metadata file.
+    Skips submissions that haven't changed since the last fetch (unless
+    *force* is True).
+    """
     submissions = transport.get_submissions(assignment)
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    count = 0
+    meta = _load_fetch_meta(output_dir)
+    downloaded = 0
+    skipped = 0
     for sub in submissions:
         if sub.status != "submitted":
             continue
         dest = output_dir / f"{sub.username}.py"
+        if (
+            not force
+            and dest.is_file()
+            and sub.timemodified
+            and meta.get(sub.username) == sub.timemodified
+        ):
+            skipped += 1
+            continue
         transport.download_file(sub.url, dest)
+        if sub.timemodified:
+            meta[sub.username] = sub.timemodified
         click.echo(f"  {sub.username}.py")
-        count += 1
+        downloaded += 1
 
-    click.echo(f"Downloaded {count} submission(s) to {_rel(output_dir)}")
+    _save_fetch_meta(output_dir, meta)
+
+    parts = [f"Downloaded {downloaded}"]
+    if skipped:
+        parts.append(f"skipped {skipped} unchanged")
+    click.echo(f"{', '.join(parts)} submission(s) in {_rel(output_dir)}")
 
 
 def do_upload_feedback(

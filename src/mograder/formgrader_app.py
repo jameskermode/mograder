@@ -51,10 +51,21 @@ def _():
     elif TRANSPORT_TYPE == "https":
         if MOGRADER_CONFIG.https_url:
             TRANSPORT_READY = True  # HTTPS transport doesn't require pre-auth
-    moodle_assign_names = {
-        a["name"]
-        for a in (MOGRADER_CONFIG.assignments or MOGRADER_CONFIG.moodle_assignments)
-    }
+    # Map local directory names to transport assignment names.
+    # Each [[assignments]] entry can have a "dir" key (e.g. "A1") used for
+    # substring matching against local directory names (e.g. "ES98E-A1-Intro-to-SciML").
+    def match_transport_assignment(
+        local_name: str,
+        _assignments=MOGRADER_CONFIG.assignments or MOGRADER_CONFIG.moodle_assignments,
+    ) -> str | None:
+        """Return the transport assignment name for a local dir name, or None."""
+        for a in _assignments:
+            d = a.get("dir")
+            if d and d in local_name:
+                return a["name"]
+            if a["name"] == local_name:
+                return a["name"]
+        return None
 
     def is_instructor() -> bool:
         """Check if the current user is an instructor.
@@ -87,9 +98,9 @@ def _():
         TRANSPORT_READY,
         TRANSPORT_TYPE,
         Path,
+        match_transport_assignment,
         get_user_display,
         is_instructor,
-        moodle_assign_names,
         io,
         mo,
         os,
@@ -109,14 +120,18 @@ def _(mo):
     get_grading_index, set_grading_index = mo.state(0)
     get_data_version, set_data_version = mo.state(0)
     get_grading_inputs, set_grading_inputs = mo.state(None)
+    # Track active headless edit sessions: {path_str: {session_id, url}}
+    get_active_editors, set_active_editors = mo.state({})
     return (
         get_action_log,
+        get_active_editors,
         get_data_version,
         get_grading_index,
         get_grading_inputs,
         get_pending_action,
         get_selected,
         set_action_log,
+        set_active_editors,
         set_data_version,
         set_grading_index,
         set_grading_inputs,
@@ -167,7 +182,7 @@ def _(
     MOGRADER_CONFIG,
     TRANSPORT_READY,
     TRANSPORT_TYPE,
-    moodle_assign_names,
+    match_transport_assignment,
     assignments,
     io,
     is_instructor,
@@ -179,8 +194,11 @@ def _(
     zipfile,
 ):
     def _open_marimo(mode, path, label):
-        sp.Popen([sys.executable, "-m", "marimo", mode, "--sandbox", str(path)])
-        set_action_log(f"Opened **{mode}** for `{label}`")
+        if MOGRADER_CONFIG.headless_edit:
+            set_pending_action({"action": "edit", "path": str(path), "label": label})
+        else:
+            sp.Popen([sys.executable, "-m", "marimo", mode, "--sandbox", str(path)])
+            set_action_log(f"Opened **{mode}** for `{label}`")
 
     # --- build per-assignment buttons ---
     _src_btns_list = []
@@ -246,8 +264,12 @@ def _(
             _rel_btns_list.append(mo.md("\u2013"))
             _rel_dl_list.append(None)
 
-        # Import — file upload for CSV + ZIP (hidden when sync transport available)
-        if not TRANSPORT_READY:
+        # Per-assignment: can this assignment sync via transport?
+        _transport_name = match_transport_assignment(_a.name) if TRANSPORT_READY else None
+        _has_sync = _transport_name is not None
+
+        # Import — file upload for CSV + ZIP (hidden when sync available for this assignment)
+        if not _has_sync:
             _imp_list.append(
                 mo.ui.file(
                     filetypes=[".csv", ".zip"],
@@ -377,7 +399,7 @@ def _(
             _fb_zip_dl_list.append(None)
 
         # Autograded upload — ZIP file upload per assignment (hidden when sync available)
-        if not TRANSPORT_READY:
+        if not _has_sync:
             _auto_upload_list.append(
                 mo.ui.file(
                     filetypes=[".zip"],
@@ -389,17 +411,18 @@ def _(
         else:
             _auto_upload_list.append(mo.md(""))
 
-        # Fetch submissions via transport (instructor only)
+        # Fetch submissions via transport
         _sub_out = str(COURSE_DIR / DIR_NAMES.submitted / _a.name)
-        if TRANSPORT_READY and _a.name in moodle_assign_names and is_instructor():
-            _n_fetch = _a.name
+        if _has_sync:
+            _n_fetch = _transport_name
+            _n_label = _a.name
             _fetch_sub_list.append(
                 mo.ui.button(
                     label="⬇",
-                    on_change=lambda _, n=_n_fetch, o=_sub_out: set_pending_action(
+                    on_change=lambda _, n=_n_fetch, o=_sub_out, nl=_n_label: set_pending_action(
                         {
                             "cmd": [TRANSPORT_TYPE, "fetch-submissions", n, "-o", o],
-                            "label": f"fetch submissions {n}",
+                            "label": f"fetch submissions {nl}",
                         }
                     ),
                     tooltip="Fetch submissions",
@@ -415,8 +438,8 @@ def _(
         # Upload grades & feedback via transport (instructor only)
         _fb_dir_path = COURSE_DIR / DIR_NAMES.feedback / _a.name
         _has_feedback = _fb_dir_path.is_dir() and any(_fb_dir_path.glob("*.html"))
-        if TRANSPORT_READY and _a.name in moodle_assign_names and _has_feedback and is_instructor():
-            _n_up = _a.name
+        if _has_sync and _has_feedback:
+            _n_up = _transport_name
             _fb_d = str(_fb_dir_path)
             _upload_fb_list.append(
                 mo.ui.button(
@@ -508,7 +531,7 @@ def _(
             _rel_idx += 1
 
         # Submitted column: count + fetch button (sync), or count only (file mode)
-        if TRANSPORT_READY:
+        if _has_sync:
             _sub_cell = mo.hstack(
                 [mo.md(str(_a.num_submitted)), fetch_sub_btns[_i]],
                 justify="start",
@@ -556,27 +579,33 @@ def _(
             else "\u2013"
         )
 
-        _row = {
-            "Assignment": mo.md(_name),
-            "Source": _src_cell,
-            "→": gen_btns[_i],
-            "Release": _rel_combined,
-        }
-        if not TRANSPORT_READY:
-            _row["Import"] = _imp_list[_i]
-        _row["Submitted"] = _sub_cell
-        _row["→ "] = auto_btns[_i]
-        if not TRANSPORT_READY:
-            _row["Graded"] = mo.hstack(
+        # Import: file widget or empty (per-assignment sync availability)
+        _import_cell = _imp_list[_i]
+
+        # Graded: count + upload widget, or count only
+        if isinstance(_auto_upload_list[_i], mo.Html):
+            _graded_cell = mo.md(_graded_text)
+        else:
+            _graded_cell = mo.hstack(
                 [mo.md(_graded_text), _auto_upload_list[_i]],
                 justify="start",
                 gap=0.25,
             )
-        else:
-            _row["Graded"] = mo.md(_graded_text)
-        _row["Export"] = _export_cell
-        _row["Feedback"] = mo.md(_fb_text)
-        _rows.append(_row)
+
+        _rows.append(
+            {
+                "Assignment": mo.md(_name),
+                "Source": _src_cell,
+                "→": gen_btns[_i],
+                "Release": _rel_combined,
+                "Import": _import_cell,
+                "Submitted": _sub_cell,
+                "→ ": auto_btns[_i],
+                "Graded": _graded_cell,
+                "Export": _export_cell,
+                "Feedback": mo.md(_fb_text),
+            }
+        )
 
     assignments_content = (
         mo.ui.table(_rows, selection=None)
@@ -618,6 +647,8 @@ def _(
     from mograder.moodle import extract_submissions, read_moodle_worksheet
 
     for _i, _a in enumerate(assignments):
+        if _i >= len(imp_uploads):
+            break
         _files = imp_uploads[_i].value
         if not _files:
             continue
@@ -699,6 +730,8 @@ def _(
     zipfile,
 ):
     for _i, _a in enumerate(assignments):
+        if _i >= len(auto_uploads):
+            break
         _files = auto_uploads[_i].value
         if not _files:
             continue
@@ -751,6 +784,7 @@ def _(
     plt,
     refresh_btn,
     set_action_log,
+    set_pending_action,
     sns,
     sp,
     sys,
@@ -766,8 +800,13 @@ def _(
         )
 
         def _open_editor(path):
-            sp.Popen([sys.executable, "-m", "marimo", "edit", "--sandbox", str(path)])
-            set_action_log(f"Opened editor for **{path.name}**")
+            if MOGRADER_CONFIG.headless_edit:
+                set_pending_action({"action": "edit", "path": str(path), "label": path.name})
+            else:
+                sp.Popen(
+                    [sys.executable, "-m", "marimo", "edit", "--sandbox", str(path)]
+                )
+                set_action_log(f"Opened editor for **{path.name}**")
 
         _edit_list = []
         for _s in _subs:
@@ -1429,6 +1468,70 @@ def _(clear_btn, get_action_log, mo):
 
 
 @app.cell
+def _(MOGRADER_CONFIG, get_active_editors, mo, os, set_active_editors, set_pending_action):
+    import json as _json
+    import urllib.request as _urllib_request
+    from pathlib import Path as _Path
+
+    # Sync UI state with server-side sessions (survives page reloads)
+    _editors = get_active_editors()
+    if MOGRADER_CONFIG.headless_edit:
+        _api_url = (
+            f"http://127.0.0.1:{os.environ.get('MOGRADER_PORT', '2718')}"
+            f"{os.environ.get('MOGRADER_BASE_URL', '')}/_api/edit"
+        )
+        try:
+            _server_sessions = _json.loads(
+                _urllib_request.urlopen(_api_url, timeout=5).read()
+            )
+        except Exception:
+            _server_sessions = []
+
+        # Merge server sessions into UI state
+        _server_map = {
+            s["path"]: {"session_id": s["session_id"], "url": s["url"]}
+            for s in _server_sessions
+        }
+        if _server_map != _editors:
+            set_active_editors(lambda _: _server_map)
+            _editors = _server_map
+
+    if _editors and MOGRADER_CONFIG.headless_edit:
+        _items = []
+        for _path_str, _info in _editors.items():
+            _url = _info["url"]
+            _name = _Path(_path_str).name
+            _sid = _info["session_id"]
+            _stop_btn = mo.ui.button(
+                label="Stop",
+                kind="danger",
+                on_change=lambda _, p=_path_str, s=_sid: set_pending_action(
+                    {"action": "stop_edit", "path": p, "session_id": s}
+                ),
+                tooltip=f"Stop editor for {_name}",
+            )
+            _items.append(
+                mo.hstack(
+                    [
+                        mo.md(
+                            f'**{_name}** — <a href="{_url}" target="_blank">open</a>'
+                        ),
+                        _stop_btn,
+                    ],
+                    justify="start",
+                    align="center",
+                    gap=0.5,
+                )
+            )
+        active_editors_content = mo.callout(
+            mo.vstack([mo.md("**Active editors**")] + _items), kind="info"
+        )
+    else:
+        active_editors_content = mo.md("")
+    return (active_editors_content,)
+
+
+@app.cell
 def _(COURSE_DIR, DIR_NAMES, mo, set_pending_action):
     new_name_input = mo.ui.text(placeholder="new-assignment-name")
     new_btn = mo.ui.button(
@@ -1449,6 +1552,7 @@ def _(COURSE_DIR, DIR_NAMES, mo, set_pending_action):
 def _(
     COURSE_DIR,
     action_log_content,
+    active_editors_content,
     assignments_content,
     get_user_display,
     grading_content,
@@ -1489,6 +1593,7 @@ def _(
                     "Students": students_content,
                 }
             ),
+            active_editors_content,
             action_log_content,
         ]
     )
@@ -1501,16 +1606,72 @@ def _(
     MOGRADER_BIN,
     get_pending_action,
     mo,
+    os,
     set_action_log,
+    set_active_editors,
     set_data_version,
     set_pending_action,
     sp,
 ):
     import json as _json
     import traceback as _tb
+    import urllib.request as _urllib_request
 
     _action = get_pending_action()
-    if _action is not None and _action.get("action") == "new_assignment":
+    if _action is not None and _action.get("action") == "edit":
+        _path = _action["path"]
+        _label = _action["label"]
+        _base = os.environ.get("MOGRADER_BASE_URL", "")
+        _port = os.environ.get("MOGRADER_PORT", "2718")
+        with mo.status.spinner(
+            title=f"Starting editor for {_label}...", remove_on_exit=True
+        ):
+            _req = _urllib_request.Request(
+                f"http://127.0.0.1:{_port}{_base}/_api/edit",
+                data=_json.dumps({"path": _path}).encode(),
+                headers={"Content-Type": "application/json"},
+            )
+            try:
+                _resp = _json.loads(
+                    _urllib_request.urlopen(_req, timeout=60).read()
+                )
+                _url = _resp["url"]
+                _session_id = _resp["session_id"]
+                set_active_editors(
+                    lambda d: {
+                        **d,
+                        _path: {"session_id": _session_id, "url": _url},
+                    }
+                )
+                set_action_log(
+                    f'Editing **{_label}**: <a href="{_url}" target="_blank">{_url}</a>'
+                )
+            except Exception as _exc:
+                set_action_log(f"Failed to start editor for **{_label}**: {_exc}")
+        set_pending_action(None)
+    elif _action is not None and _action.get("action") == "stop_edit":
+        from pathlib import Path as _PathSE
+
+        _sid = _action["session_id"]
+        _path = _action["path"]
+        _base = os.environ.get("MOGRADER_BASE_URL", "")
+        _port = os.environ.get("MOGRADER_PORT", "2718")
+        _req = _urllib_request.Request(
+            f"http://127.0.0.1:{_port}{_base}/_api/edit",
+            data=_json.dumps({"session_id": _sid}).encode(),
+            headers={"Content-Type": "application/json"},
+            method="DELETE",
+        )
+        try:
+            _urllib_request.urlopen(_req, timeout=10)
+        except Exception:
+            pass
+        set_active_editors(
+            lambda d: {k: v for k, v in d.items() if k != _path}
+        )
+        set_action_log(f"Stopped editor for **{_PathSE(_path).name}**")
+        set_pending_action(None)
+    elif _action is not None and _action.get("action") == "new_assignment":
         import re as _re2
         from pathlib import Path as _Path
 

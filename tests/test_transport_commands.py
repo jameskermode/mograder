@@ -98,6 +98,78 @@ class TestDoFetchSubmissions:
         captured = capsys.readouterr()
         assert "Downloaded 1" in captured.out
 
+    def test_skips_unchanged_on_repeat(self, tmp_path, capsys):
+        """Second fetch should skip when timemodified hasn't changed."""
+        transport = _mock_transport()
+        transport.get_submissions.return_value = [
+            RemoteSubmission(
+                userid="100",
+                username="alice",
+                filename="sol.py",
+                url="http://example.com/sol.py",
+                timemodified=1700000000,
+            )
+        ]
+        # First fetch
+        do_fetch_submissions(transport, "HW1", tmp_path)
+        captured = capsys.readouterr()
+        assert "Downloaded 1" in captured.out
+        assert transport.download_file.call_count == 1
+
+        # Second fetch — same timemodified
+        do_fetch_submissions(transport, "HW1", tmp_path)
+        captured = capsys.readouterr()
+        assert "skipped 1 unchanged" in captured.out
+        assert transport.download_file.call_count == 1  # no new download
+
+    def test_re_fetches_when_timemodified_changes(self, tmp_path, capsys):
+        """Should re-download when remote timemodified increases."""
+        transport = _mock_transport()
+        transport.get_submissions.return_value = [
+            RemoteSubmission(
+                userid="100",
+                username="alice",
+                filename="sol.py",
+                url="http://example.com/sol.py",
+                timemodified=1700000000,
+            )
+        ]
+        do_fetch_submissions(transport, "HW1", tmp_path)
+        assert transport.download_file.call_count == 1
+
+        # Simulate updated submission
+        transport.get_submissions.return_value = [
+            RemoteSubmission(
+                userid="100",
+                username="alice",
+                filename="sol.py",
+                url="http://example.com/sol.py",
+                timemodified=1700001000,
+            )
+        ]
+        do_fetch_submissions(transport, "HW1", tmp_path)
+        captured = capsys.readouterr()
+        assert "Downloaded 1" in captured.out
+        assert transport.download_file.call_count == 2
+
+    def test_force_re_fetches(self, tmp_path, capsys):
+        """--force should re-download even if unchanged."""
+        transport = _mock_transport()
+        transport.get_submissions.return_value = [
+            RemoteSubmission(
+                userid="100",
+                username="alice",
+                filename="sol.py",
+                url="http://example.com/sol.py",
+                timemodified=1700000000,
+            )
+        ]
+        do_fetch_submissions(transport, "HW1", tmp_path)
+        do_fetch_submissions(transport, "HW1", tmp_path, force=True)
+        captured = capsys.readouterr()
+        assert "Downloaded 1" in captured.out
+        assert transport.download_file.call_count == 2
+
 
 class TestDoUploadFeedback:
     def test_upload(self, capsys):

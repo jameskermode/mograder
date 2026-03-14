@@ -46,6 +46,7 @@ class RemoteSubmission:
     filename: str
     url: str
     status: str = "submitted"
+    timemodified: int = 0  # Unix timestamp of last modification
 
 
 @dataclass
