@@ -68,6 +68,21 @@ def _():
                 return a["name"]
         return None
 
+    def moodle_grading_url(local_name: str) -> str | None:
+        """Return the Moodle grading page URL for a local assignment, or None."""
+        _assignments = MOGRADER_CONFIG.assignments or MOGRADER_CONFIG.moodle_assignments
+        _base = MOGRADER_CONFIG.moodle_url
+        if not _base:
+            return None
+        for a in _assignments:
+            d = a.get("dir")
+            cmid = a.get("cmid")
+            if cmid and ((d and d in local_name) or a["name"] == local_name):
+                return (
+                    f"{_base.rstrip('/')}/mod/assign/view.php?id={cmid}&action=grading"
+                )
+        return None
+
     def is_instructor() -> bool:
         """Check if the current user is an instructor.
 
@@ -100,6 +115,7 @@ def _():
         TRANSPORT_TYPE,
         Path,
         match_transport_assignment,
+        moodle_grading_url,
         get_user_display,
         is_instructor,
         io,
@@ -184,6 +200,7 @@ def _(
     TRANSPORT_READY,
     TRANSPORT_TYPE,
     match_transport_assignment,
+    moodle_grading_url,
     assignments,
     io,
     is_instructor,
@@ -215,6 +232,11 @@ def _(
     _fetch_sub_list = []
     _upload_fb_list = []
 
+    # Show Import column only if any assignment lacks transport sync
+    _show_import = not TRANSPORT_READY or any(
+        match_transport_assignment(_a.name) is None for _a in assignments
+    )
+
     for _a in assignments:
         # Source — edit source notebook
         if _a.source_path:
@@ -225,9 +247,9 @@ def _(
                 _n = _a.name
                 _src_btns_list.append(
                     mo.ui.button(
-                        label="\u270f\ufe0f",
+                        label="\u270e",
                         on_change=lambda _, p=_p, n=_n: _open_marimo("edit", p, n),
-                        tooltip=f"Edit {_a.source_path}",
+                        tooltip=f"Edit {_a.source_path.relative_to(COURSE_DIR)}",
                     )
                 )
         else:
@@ -242,9 +264,9 @@ def _(
                 _n2 = _a.name
                 _rel_btns_list.append(
                     mo.ui.button(
-                        label="\u270f\ufe0f",
+                        label="\u270e",
                         on_change=lambda _, p=_p2, n=_n2: _open_marimo("edit", p, n),
-                        tooltip=f"Edit {_a.release_path}",
+                        tooltip=f"Edit {_a.release_path.relative_to(COURSE_DIR)}",
                     )
                 )
             _rel_dir = _a.release_path.parent
@@ -259,7 +281,7 @@ def _(
                 return buf.getvalue()
 
             _rel_dl_list.append(
-                mo.download(data=_make_zip, filename=_zip_name, label="\U0001f4e6")
+                mo.download(data=_make_zip, filename=_zip_name, label=" ")
             )
         else:
             _rel_btns_list.append(mo.md("\u2013"))
@@ -277,7 +299,7 @@ def _(
                 mo.ui.file(
                     filetypes=[".csv", ".zip"],
                     multiple=True,
-                    label="📥",
+                    label="\u2191",
                     kind="button",
                 )
             )
@@ -294,7 +316,7 @@ def _(
                 _gen_cmd.append("--no-validate")
             _gen.append(
                 mo.ui.button(
-                    label="\u2192",
+                    label="\u00bb",
                     on_change=lambda _, cmd=_gen_cmd, n=_n3: set_pending_action(
                         {"cmd": cmd, "label": f"generate {n}"}
                     ),
@@ -302,7 +324,7 @@ def _(
                 )
             )
         else:
-            _gen.append(mo.ui.button(label="\u2192", disabled=True, tooltip="Generate"))
+            _gen.append(mo.ui.button(label="\u00bb", disabled=True, tooltip="Generate"))
 
         # Autograde
         _sub_dir = COURSE_DIR / DIR_NAMES.submitted / _a.name
@@ -322,7 +344,7 @@ def _(
             _n4 = _a.name
             _auto.append(
                 mo.ui.button(
-                    label="\u2192",
+                    label="\u00bb",
                     on_change=lambda _, c=_cmd, n=_n4: set_pending_action(
                         {"cmd": c, "label": f"autograde {n}"}
                     ),
@@ -331,7 +353,7 @@ def _(
             )
         else:
             _auto.append(
-                mo.ui.button(label="\u2192", disabled=True, tooltip="Autograde")
+                mo.ui.button(label="\u00bb", disabled=True, tooltip="Autograde")
             )
 
         # Export Moodle (feedback + optional moodle merge)
@@ -360,7 +382,7 @@ def _(
             )
             _fb.append(
                 mo.ui.button(
-                    label="\u2192",
+                    label="\u00bb",
                     on_change=lambda _, c=_sub_cmds, n=_n5: set_pending_action(
                         {"cmd": c, "label": f"export {n}"}
                     ),
@@ -369,7 +391,7 @@ def _(
             )
         else:
             _fb.append(
-                mo.ui.button(label="\u2192", disabled=True, tooltip="Export Moodle")
+                mo.ui.button(label="\u00bb", disabled=True, tooltip="Export Moodle")
             )
 
         # Feedback downloads — CSV and ZIP if they exist
@@ -382,7 +404,7 @@ def _(
                 return p.read_bytes()
 
             _fb_csv_dl_list.append(
-                mo.download(data=_read_fb_csv, filename=_cn, label="📋")
+                mo.download(data=_read_fb_csv, filename=_cn, label=" ")
             )
         else:
             _fb_csv_dl_list.append(None)
@@ -396,7 +418,7 @@ def _(
                 return p.read_bytes()
 
             _fb_zip_dl_list.append(
-                mo.download(data=_read_fb_zip, filename=_zn, label="\U0001f4e6")
+                mo.download(data=_read_fb_zip, filename=_zn, label=" ")
             )
         else:
             _fb_zip_dl_list.append(None)
@@ -407,7 +429,7 @@ def _(
                 mo.ui.file(
                     filetypes=[".zip"],
                     multiple=False,
-                    label="📤",
+                    label="\u2191",
                     kind="button",
                 )
             )
@@ -421,7 +443,7 @@ def _(
             _n_label = _a.name
             _fetch_sub_list.append(
                 mo.ui.button(
-                    label="⬇",
+                    label="\u2193",
                     on_change=lambda _, n=_n_fetch, o=_sub_out, nl=_n_label: (
                         set_pending_action(
                             {
@@ -441,7 +463,7 @@ def _(
             )
         else:
             _fetch_sub_list.append(
-                mo.ui.button(label="⬇", disabled=True, tooltip="Fetch submissions")
+                mo.ui.button(label="\u2193", disabled=True, tooltip="Fetch submissions")
             )
 
         # Upload grades & feedback via transport (instructor only)
@@ -450,20 +472,24 @@ def _(
         if _has_sync and _has_feedback:
             _n_up = _transport_name
             _fb_d = str(_fb_dir_path)
+            _moodle_link = moodle_grading_url(_a.name)
             _upload_fb_list.append(
                 mo.ui.button(
-                    label="⬆",
-                    on_change=lambda _, n=_n_up, d=_fb_d: set_pending_action(
-                        {
-                            "cmd": [
-                                TRANSPORT_TYPE,
-                                "upload-feedback",
-                                n,
-                                "--feedback-dir",
-                                d,
-                            ],
-                            "label": f"upload feedback {n}",
-                        }
+                    label="\u2191",
+                    on_change=lambda _, n=_n_up, d=_fb_d, ml=_moodle_link: (
+                        set_pending_action(
+                            {
+                                "cmd": [
+                                    TRANSPORT_TYPE,
+                                    "upload-feedback",
+                                    n,
+                                    "--feedback-dir",
+                                    d,
+                                ],
+                                "label": f"upload feedback {n}",
+                                "review_url": ml,
+                            }
+                        )
                     ),
                     tooltip="Upload grades & feedback",
                 )
@@ -471,7 +497,7 @@ def _(
         else:
             _upload_fb_list.append(
                 mo.ui.button(
-                    label="⬆",
+                    label="\u2191",
                     disabled=True,
                     tooltip="Upload grades & feedback",
                 )
@@ -599,20 +625,24 @@ def _(
                 gap=0.25,
             )
 
-        _rows.append(
+        _row = {
+            "Assignment": mo.md(_name),
+            "Source": _src_cell,
+            "\u00bb": gen_btns[_i],
+            "Release": _rel_combined,
+        }
+        if _show_import:
+            _row["Import"] = _import_cell
+        _row.update(
             {
-                "Assignment": mo.md(_name),
-                "Source": _src_cell,
-                "→": gen_btns[_i],
-                "Release": _rel_combined,
-                "Import": _import_cell,
                 "Submitted": _sub_cell,
-                "→ ": auto_btns[_i],
+                "\u00bb ": auto_btns[_i],
                 "Graded": _graded_cell,
                 "Export": _export_cell,
                 "Feedback": mo.md(_fb_text),
             }
         )
+        _rows.append(_row)
 
     assignments_content = (
         mo.ui.table(_rows, selection=None)
@@ -820,17 +850,17 @@ def _(
         _edit_list = []
         for _s in _subs:
             if MOGRADER_CONFIG.no_edit:
-                _edit_list.append(mo.ui.button(label="✏️", disabled=True))
+                _edit_list.append(mo.ui.button(label="\u270e", disabled=True))
             elif _s.autograded_path:
                 _p = _s.autograded_path
                 _edit_list.append(
                     mo.ui.button(
-                        label="✏️",
+                        label="\u270e",
                         on_change=lambda _, p=_p: _open_editor(p),
                     )
                 )
             else:
-                _edit_list.append(mo.ui.button(label="✏️", disabled=True))
+                _edit_list.append(mo.ui.button(label="\u270e", disabled=True))
 
         edit_btns = mo.ui.array(_edit_list)
 
@@ -1268,6 +1298,7 @@ def _(
     grading_subs,
     mo,
     name_lookup,
+    set_action_log,
     set_data_version,
     set_grading_index,
 ):
@@ -1292,7 +1323,13 @@ def _(
 
             # Enforce minimum 3-sentence feedback when mark is set
             if _slider_val > 0 and _count_sentences(_feedback) < 3:
-                return  # Don't save — UI shows validation warning
+                _n = _count_sentences(_feedback)
+                set_action_log(
+                    f"**Cannot save:** feedback must be at least 3 sentences "
+                    f"(currently {_n}). Please expand your feedback before "
+                    f"saving or navigating."
+                )
+                return
 
             # Scale slider (0-100) to manual contribution
             _manual_available = grading_scale_info["manual_available"]
@@ -1467,9 +1504,12 @@ def _(mo, set_action_log):
 def _(clear_btn, get_action_log, mo):
     _log = get_action_log()
     if _log:
-        _kind = (
-            "danger" if "exited with code" in _log or "timed out" in _log else "info"
-        )
+        if "Cannot save" in _log:
+            _kind = "warn"
+        elif "exited with code" in _log or "timed out" in _log:
+            _kind = "danger"
+        else:
+            _kind = "info"
         action_log_content = mo.vstack([mo.callout(mo.md(_log), kind=_kind), clear_btn])
     else:
         action_log_content = mo.md("")
@@ -1574,6 +1614,16 @@ def _(
     students_content,
     submissions_content,
 ):
+    _style = mo.Html("""<style>
+        /* Normalize download links to match mo.ui.button sizing */
+        marimo-download a {
+            padding: 3px 8px !important;
+            min-height: unset !important;
+            font-size: 0.85em !important;
+            line-height: 1.4 !important;
+        }
+        marimo-download a svg { margin-right: 0 !important; }
+    </style>""")
     _assignments_tab = mo.vstack(
         [
             assignments_content,
@@ -1587,6 +1637,7 @@ def _(
     )
     mo.vstack(
         [
+            _style,
             mo.hstack(
                 [
                     mo.md("# mograder"),
@@ -1711,6 +1762,12 @@ def _(
         set_pending_action(None)
     elif _action is not None:
         _cmd, _label = _action["cmd"], _action["label"]
+        _review_url = _action.get("review_url")
+        _review_link = (
+            f' <a href="{_review_url}" target="_blank">Review on Moodle</a>'
+            if _review_url
+            else ""
+        )
         # Compound action: list of sub-commands to run sequentially
         _is_compound = _cmd and isinstance(_cmd[0], list)
         # Commands that support --progress with JSON events on stderr
@@ -1756,7 +1813,7 @@ def _(
                 _combined = "\n".join(_combined_output)
                 _code = f"\n```\n{_combined}\n```" if _combined else ""
                 if _overall_ok:
-                    set_action_log(f"**{_label}** — done.{_code}")
+                    set_action_log(f"**{_label}** — done.{_review_link}{_code}")
                 else:
                     set_action_log(f"**{_label}** — failed.{_code}")
             elif _has_progress:
@@ -1842,7 +1899,9 @@ def _(
                         _lines.append("| " + " | ".join(_cells) + " |")
                     _table_md = "\n".join(_lines)
                     if _proc.returncode == 0:
-                        set_action_log(f"**{_label}** — done.\n\n{_table_md}")
+                        set_action_log(
+                            f"**{_label}** — done.{_review_link}\n\n{_table_md}"
+                        )
                     else:
                         set_action_log(
                             f"**{_label}** — exited with code "
@@ -1852,7 +1911,7 @@ def _(
                     _stdout = (_proc.stdout.read() if _proc.stdout else "").strip()
                     _code = f"\n```\n{_stdout}\n```" if _stdout else ""
                     if _proc.returncode == 0:
-                        set_action_log(f"**{_label}** — done.{_code}")
+                        set_action_log(f"**{_label}** — done.{_review_link}{_code}")
                     else:
                         set_action_log(
                             f"**{_label}** — exited with code "
@@ -1870,7 +1929,7 @@ def _(
                 _output = (_proc.stdout + _proc.stderr).strip()
                 _code = f"\n```\n{_output}\n```" if _output else ""
                 if _proc.returncode == 0:
-                    set_action_log(f"**{_label}** — done.{_code}")
+                    set_action_log(f"**{_label}** — done.{_review_link}{_code}")
                 else:
                     set_action_log(
                         f"**{_label}** — exited with code {_proc.returncode}.{_code}"
