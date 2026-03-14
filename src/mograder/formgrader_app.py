@@ -51,6 +51,7 @@ def _():
     elif TRANSPORT_TYPE == "https":
         if MOGRADER_CONFIG.https_url:
             TRANSPORT_READY = True  # HTTPS transport doesn't require pre-auth
+
     # Map local directory names to transport assignment names.
     # Each [[assignments]] entry can have a "dir" key (e.g. "A1") used for
     # substring matching against local directory names (e.g. "ES98E-A1-Intro-to-SciML").
@@ -265,7 +266,9 @@ def _(
             _rel_dl_list.append(None)
 
         # Per-assignment: can this assignment sync via transport?
-        _transport_name = match_transport_assignment(_a.name) if TRANSPORT_READY else None
+        _transport_name = (
+            match_transport_assignment(_a.name) if TRANSPORT_READY else None
+        )
         _has_sync = _transport_name is not None
 
         # Import — file upload for CSV + ZIP (hidden when sync available for this assignment)
@@ -419,20 +422,26 @@ def _(
             _fetch_sub_list.append(
                 mo.ui.button(
                     label="⬇",
-                    on_change=lambda _, n=_n_fetch, o=_sub_out, nl=_n_label: set_pending_action(
-                        {
-                            "cmd": [TRANSPORT_TYPE, "fetch-submissions", n, "-o", o],
-                            "label": f"fetch submissions {nl}",
-                        }
+                    on_change=lambda _, n=_n_fetch, o=_sub_out, nl=_n_label: (
+                        set_pending_action(
+                            {
+                                "cmd": [
+                                    TRANSPORT_TYPE,
+                                    "fetch-submissions",
+                                    n,
+                                    "-o",
+                                    o,
+                                ],
+                                "label": f"fetch submissions {nl}",
+                            }
+                        )
                     ),
                     tooltip="Fetch submissions",
                 )
             )
         else:
             _fetch_sub_list.append(
-                mo.ui.button(
-                    label="⬇", disabled=True, tooltip="Fetch submissions"
-                )
+                mo.ui.button(label="⬇", disabled=True, tooltip="Fetch submissions")
             )
 
         # Upload grades & feedback via transport (instructor only)
@@ -574,9 +583,7 @@ def _(
         _name = _a.name
 
         _graded_text = (
-            f"{_a.num_graded}/{_a.num_autograded}"
-            if _a.num_autograded
-            else "\u2013"
+            f"{_a.num_graded}/{_a.num_autograded}" if _a.num_autograded else "\u2013"
         )
 
         # Import: file widget or empty (per-assignment sync availability)
@@ -801,7 +808,9 @@ def _(
 
         def _open_editor(path):
             if MOGRADER_CONFIG.headless_edit:
-                set_pending_action({"action": "edit", "path": str(path), "label": path.name})
+                set_pending_action(
+                    {"action": "edit", "path": str(path), "label": path.name}
+                )
             else:
                 sp.Popen(
                     [sys.executable, "-m", "marimo", "edit", "--sandbox", str(path)]
@@ -1468,7 +1477,9 @@ def _(clear_btn, get_action_log, mo):
 
 
 @app.cell
-def _(MOGRADER_CONFIG, get_active_editors, mo, os, set_active_editors, set_pending_action):
+def _(
+    MOGRADER_CONFIG, get_active_editors, mo, os, set_active_editors, set_pending_action
+):
     import json as _json
     import urllib.request as _urllib_request
     from pathlib import Path as _Path
@@ -1632,9 +1643,7 @@ def _(
                 headers={"Content-Type": "application/json"},
             )
             try:
-                _resp = _json.loads(
-                    _urllib_request.urlopen(_req, timeout=60).read()
-                )
+                _resp = _json.loads(_urllib_request.urlopen(_req, timeout=60).read())
                 _url = _resp["url"]
                 _session_id = _resp["session_id"]
                 set_active_editors(
@@ -1666,9 +1675,7 @@ def _(
             _urllib_request.urlopen(_req, timeout=10)
         except Exception:
             pass
-        set_active_editors(
-            lambda d: {k: v for k, v in d.items() if k != _path}
-        )
+        set_active_editors(lambda d: {k: v for k, v in d.items() if k != _path})
         set_action_log(f"Stopped editor for **{_PathSE(_path).name}**")
         set_pending_action(None)
     elif _action is not None and _action.get("action") == "new_assignment":
@@ -1708,9 +1715,7 @@ def _(
         _is_compound = _cmd and isinstance(_cmd[0], list)
         # Commands that support --progress with JSON events on stderr
         _PROGRESS_CMDS = {"autograde", "generate"}
-        _has_progress = (
-            not _is_compound and _cmd and _cmd[0] in _PROGRESS_CMDS
-        )
+        _has_progress = not _is_compound and _cmd and _cmd[0] in _PROGRESS_CMDS
 
         try:
             if _is_compound:
@@ -1718,9 +1723,7 @@ def _(
                 _overall_ok = True
                 with mo.status.spinner(title=_label, remove_on_exit=True):
                     for _sub_cmd in _cmd:
-                        _sub_has_progress = (
-                            _sub_cmd and _sub_cmd[0] in _PROGRESS_CMDS
-                        )
+                        _sub_has_progress = _sub_cmd and _sub_cmd[0] in _PROGRESS_CMDS
                         if _sub_has_progress:
                             _full = [MOGRADER_BIN] + _sub_cmd + ["--progress"]
                             _p = sp.Popen(

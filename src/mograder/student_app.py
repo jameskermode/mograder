@@ -544,17 +544,13 @@ def _(
                         _url = rewrite_codespaces_url(_hs.url)
                     else:
                         _url = _hs.url
-                    set_action_log(
-                        f"Opened **{_name}** for editing: [{_url}]({_url})"
-                    )
+                    set_action_log(f"Opened **{_name}** for editing: [{_url}]({_url})")
                 except TimeoutError:
                     set_action_log(
                         f"Opened **{_name}** for editing (could not detect URL)"
                     )
             else:
-                _cmd = [
-                    sys.executable, "-m", "marimo", "edit", "--sandbox", _path
-                ]
+                _cmd = [sys.executable, "-m", "marimo", "edit", "--sandbox", _path]
                 sp.Popen(_cmd)
                 set_action_log(f"Opened **{_name}** for editing")
 
