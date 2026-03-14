@@ -100,17 +100,21 @@ class TrustedProxyAuth:
 _base_url = os.environ.get("MOGRADER_BASE_URL", "/")
 _app_path = str(Path(__file__).parent / "formgrader_app.py")
 
+from mograder.edit_sessions import (  # noqa: E402
+    EditSessionManager,
+    MarimoOptimizeMiddleware,
+    build_edit_proxy_app,
+)
+
 _builder = marimo.create_asgi_app(quiet=True)
 _builder = _builder.with_app(
     path=_base_url,
     root=_app_path,
-    middleware=[TrustedProxyAuth],
+    middleware=[TrustedProxyAuth, MarimoOptimizeMiddleware],
 )
 _marimo_app = _builder.build()
 
 # --- Edit session proxy (headless marimo edit via reverse proxy) ---
-
-from mograder.edit_sessions import EditSessionManager, build_edit_proxy_app  # noqa: E402
 
 _edit_manager = EditSessionManager(base_url=_base_url.rstrip("/"))
 _edit_app = build_edit_proxy_app(_edit_manager)

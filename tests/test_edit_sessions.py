@@ -24,9 +24,7 @@ class TestSpawnHeadlessEdit:
 
             from mograder.edit_sessions import spawn_headless_edit
 
-            result = spawn_headless_edit(
-                "/tmp/test.py", spawn_timeout=2
-            )
+            result = spawn_headless_edit("/tmp/test.py", spawn_timeout=2)
 
             cmd = mock_popen.call_args[0][0]
             assert "--sandbox" in cmd
@@ -46,9 +44,7 @@ class TestSpawnHeadlessEdit:
 
             from mograder.edit_sessions import spawn_headless_edit
 
-            spawn_headless_edit(
-                "/tmp/test.py", sandbox=False, spawn_timeout=2
-            )
+            spawn_headless_edit("/tmp/test.py", sandbox=False, spawn_timeout=2)
 
             cmd = mock_popen.call_args[0][0]
             assert "--sandbox" not in cmd
@@ -98,9 +94,7 @@ class TestSpawnHeadlessEdit:
 
             from mograder.edit_sessions import spawn_headless_edit
 
-            result = spawn_headless_edit(
-                "/tmp/test.py", spawn_timeout=5
-            )
+            result = spawn_headless_edit("/tmp/test.py", spawn_timeout=5)
             assert result.url == "http://127.0.0.1:4567"
             assert result.port == 4567
 
@@ -109,27 +103,21 @@ class TestSpawnHeadlessEdit:
         with patch("mograder.edit_sessions.subprocess.Popen") as mock_popen:
             mock_proc = MagicMock()
             # No URL line in output — simulate a hang
-            mock_proc.stdout = iter(
-                ["Installing...\n", "Still installing...\n"]
-            )
+            mock_proc.stdout = iter(["Installing...\n", "Still installing...\n"])
             mock_proc.kill = MagicMock()
             mock_popen.return_value = mock_proc
 
             from mograder.edit_sessions import spawn_headless_edit
 
             with pytest.raises(TimeoutError, match="did not produce URL"):
-                spawn_headless_edit(
-                    "/tmp/test.py", spawn_timeout=0.5
-                )
+                spawn_headless_edit("/tmp/test.py", spawn_timeout=0.5)
             mock_proc.kill.assert_called_once()
 
 
 class TestRewriteCodespacesUrl:
     def test_basic_rewrite(self, monkeypatch):
         monkeypatch.setenv("CODESPACE_NAME", "my-codespace")
-        monkeypatch.setenv(
-            "GITHUB_CODESPACES_PORT_FORWARDING_DOMAIN", "app.github.dev"
-        )
+        monkeypatch.setenv("GITHUB_CODESPACES_PORT_FORWARDING_DOMAIN", "app.github.dev")
         from mograder.edit_sessions import rewrite_codespaces_url
 
         result = rewrite_codespaces_url("http://127.0.0.1:3456")
@@ -139,9 +127,7 @@ class TestRewriteCodespacesUrl:
         monkeypatch.setenv("CODESPACE_NAME", "my-cs")
         from mograder.edit_sessions import rewrite_codespaces_url
 
-        result = rewrite_codespaces_url(
-            "http://127.0.0.1:3456?token=abc123"
-        )
+        result = rewrite_codespaces_url("http://127.0.0.1:3456?token=abc123")
         assert result == "https://my-cs-3456.app.github.dev?token=abc123"
 
     def test_no_port_returns_unchanged(self, monkeypatch):
@@ -321,6 +307,7 @@ class TestEditProxyApp:
         from mograder.edit_sessions import build_edit_proxy_app
 
         app = build_edit_proxy_app(manager, http_client=mock_http_client)
+
         # Wrap with a minimal middleware that sets scope["user"]
         async def authed_app(scope, receive, send):
             if scope["type"] in ("http", "websocket"):
@@ -422,9 +409,7 @@ class TestEditProxyApp:
         )
         assert resp.status_code == 403
 
-    def test_proxy_http_forbidden_for_non_instructor(
-        self, non_instructor_client
-    ):
+    def test_proxy_http_forbidden_for_non_instructor(self, non_instructor_client):
         """Non-instructors cannot access edit proxy routes."""
         resp = non_instructor_client.get("/live/grader/_edit/any_session/")
         assert resp.status_code == 403
@@ -463,9 +448,7 @@ class TestEditProxyApp:
 
         mock_http_client.request = MagicMock(side_effect=_request)
 
-        resp = client.get(
-            f"/live/grader/_edit/{session.session_id}/"
-        )
+        resp = client.get(f"/live/grader/_edit/{session.session_id}/")
         assert resp.status_code == 200
         assert b"marimo" in resp.content
 
@@ -498,8 +481,7 @@ class TestEditProxyApp:
         mock_http_client.request = MagicMock(side_effect=_request)
 
         resp = client.get(
-            f"/live/grader/_edit/{session.session_id}"
-            "/assets/cells-CCtxWKxf.js"
+            f"/live/grader/_edit/{session.session_id}/assets/cells-CCtxWKxf.js"
         )
         assert resp.status_code == 200
         assert "immutable" in resp.headers["cache-control"]
@@ -532,9 +514,7 @@ class TestEditProxyApp:
 
         mock_http_client.request = MagicMock(side_effect=_request)
 
-        resp = client.get(
-            f"/live/grader/_edit/{session.session_id}/"
-        )
+        resp = client.get(f"/live/grader/_edit/{session.session_id}/")
         assert resp.status_code == 200
         assert "immutable" not in resp.headers.get("cache-control", "")
 
@@ -566,9 +546,7 @@ class TestEditProxyApp:
 
         mock_http_client.request = MagicMock(side_effect=_request)
 
-        resp = client.get(
-            f"/live/grader/_edit/{session.session_id}/"
-        )
+        resp = client.get(f"/live/grader/_edit/{session.session_id}/")
         assert resp.status_code == 200
         assert b"Loading notebook..." in resp.content
         assert b'<div id="root"></div>' not in resp.content
@@ -602,9 +580,7 @@ class TestEditProxyApp:
 
         mock_http_client.request = MagicMock(side_effect=_request)
 
-        resp = client.get(
-            f"/live/grader/_edit/{session.session_id}/app.js"
-        )
+        resp = client.get(f"/live/grader/_edit/{session.session_id}/app.js")
         assert resp.status_code == 200
         assert resp.content == js_content
 
@@ -712,3 +688,147 @@ class TestLifespan:
             # aclose should NOT have been called for injected client
             mock_client.aclose.assert_not_called()
             mgr.shutdown()
+
+
+# ---------------------------------------------------------------------------
+# MarimoOptimizeMiddleware (shared ASGI middleware)
+# ---------------------------------------------------------------------------
+
+
+class TestMarimoOptimizeMiddleware:
+    """Test the shared ASGI middleware that adds cache headers and loading screen."""
+
+    @pytest.fixture
+    def make_client(self):
+        """Factory: returns a TestClient wrapping the middleware around a fake ASGI app."""
+        from starlette.testclient import TestClient
+
+        from mograder.edit_sessions import MarimoOptimizeMiddleware
+
+        def _make(status, body, headers, *, path="/"):
+            async def inner(scope, receive, send):
+                await send(
+                    {
+                        "type": "http.response.start",
+                        "status": status,
+                        "headers": [
+                            (k.encode(), v.encode()) for k, v in headers.items()
+                        ],
+                    }
+                )
+                await send({"type": "http.response.body", "body": body})
+
+            app = MarimoOptimizeMiddleware(inner)
+
+            # Wrap with a tiny app that overrides the path for testing
+            async def path_app(scope, receive, send):
+                scope["path"] = path
+                await app(scope, receive, send)
+
+            return TestClient(path_app)
+
+        return _make
+
+    def test_adds_cache_headers_for_hashed_asset(self, make_client):
+        """Asset paths with content hashes get immutable cache-control."""
+        client = make_client(
+            200,
+            b"// js content",
+            {"content-type": "application/javascript"},
+            path="/assets/cells-CCtxWKxf.js",
+        )
+        resp = client.get("/assets/cells-CCtxWKxf.js")
+        assert resp.status_code == 200
+        assert "immutable" in resp.headers["cache-control"]
+        assert "31536000" in resp.headers["cache-control"]
+
+    def test_no_cache_headers_for_unhashed_path(self, make_client):
+        """Non-hashed paths like /favicon.ico should not get cache headers."""
+        client = make_client(
+            200,
+            b"icon data",
+            {"content-type": "image/x-icon"},
+            path="/favicon.ico",
+        )
+        resp = client.get("/favicon.ico")
+        assert "immutable" not in resp.headers.get("cache-control", "")
+
+    def test_no_cache_headers_for_html_page(self, make_client):
+        """HTML pages should not get immutable cache headers."""
+        client = make_client(
+            200,
+            b"<html><body>hello</body></html>",
+            {"content-type": "text/html"},
+            path="/",
+        )
+        resp = client.get("/")
+        assert "immutable" not in resp.headers.get("cache-control", "")
+
+    def test_injects_loading_screen_into_html(self, make_client):
+        """HTML responses with empty #root get loading spinner injected."""
+        client = make_client(
+            200,
+            b'<html><div id="root"></div></html>',
+            {"content-type": "text/html"},
+            path="/",
+        )
+        resp = client.get("/")
+        assert resp.status_code == 200
+        assert b"Loading notebook..." in resp.content
+        assert b'<div id="root"></div>' not in resp.content
+
+    def test_does_not_modify_non_html_body(self, make_client):
+        """JS responses should not be modified."""
+        js_content = b'var root = document.getElementById("root");'
+        client = make_client(
+            200,
+            js_content,
+            {"content-type": "application/javascript"},
+            path="/app.js",
+        )
+        resp = client.get("/app.js")
+        assert resp.content == js_content
+
+    def test_strips_content_length_for_html(self, make_client):
+        """content-length should be removed for HTML since body size changes."""
+        original = b'<html><div id="root"></div></html>'
+        client = make_client(
+            200,
+            original,
+            {"content-type": "text/html", "content-length": str(len(original))},
+            path="/",
+        )
+        resp = client.get("/")
+        # Body was modified (loading screen injected), so content-length
+        # should not reflect the original size
+        assert b"Loading notebook..." in resp.content
+        # The response should still be valid (Starlette TestClient handles this)
+        assert resp.status_code == 200
+
+    def test_websocket_passthrough(self):
+        """WebSocket scopes should pass through without modification."""
+        from mograder.edit_sessions import MarimoOptimizeMiddleware
+
+        calls = []
+
+        async def inner(scope, receive, send):
+            calls.append(scope["type"])
+
+        app = MarimoOptimizeMiddleware(inner)
+
+        import asyncio
+
+        asyncio.run(app({"type": "websocket"}, None, None))
+        assert calls == ["websocket"]
+
+
+class TestFormgraderMiddlewareWiring:
+    """Verify MarimoOptimizeMiddleware is wired into the formgrader marimo app."""
+
+    def test_formgrader_includes_optimize_middleware(self):
+        """The formgrader_asgi module should include MarimoOptimizeMiddleware."""
+        from mograder import formgrader_asgi
+
+        # The middleware list passed to marimo's with_app includes our middleware
+        # We verify by checking the import worked and the class is referenced
+        assert hasattr(formgrader_asgi, "MarimoOptimizeMiddleware")

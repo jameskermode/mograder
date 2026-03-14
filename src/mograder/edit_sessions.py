@@ -67,7 +67,10 @@ def spawn_headless_edit(
     log = logging.getLogger("uvicorn.error")
     log.info("spawn_headless_edit: %s", " ".join(cmd))
     proc = subprocess.Popen(
-        cmd, stdout=PIPE, stderr=STDOUT, text=True,
+        cmd,
+        stdout=PIPE,
+        stderr=STDOUT,
+        text=True,
         start_new_session=True,  # new process group so we can kill the tree
     )
     log.info("spawn_headless_edit: pid=%d", proc.pid)
@@ -99,9 +102,7 @@ def spawn_headless_edit(
             output_lines,
         )
         proc.kill()
-        raise TimeoutError(
-            f"marimo edit did not produce URL within {spawn_timeout}s"
-        )
+        raise TimeoutError(f"marimo edit did not produce URL within {spawn_timeout}s")
 
     raw_url = url_box[0]
     port = urlparse(raw_url).port or 0
@@ -283,8 +284,7 @@ class EditSessionManager:
         dead = [
             sid
             for sid, s in self.sessions.items()
-            if s.proc.poll() is not None
-            or (now - s.last_activity) > self.idle_timeout
+            if s.proc.poll() is not None or (now - s.last_activity) > self.idle_timeout
         ]
         for sid in dead:
             self.stop(sid)
@@ -320,7 +320,7 @@ _ASSET_PATH_RE = re.compile(r"/assets/[^/]+-[A-Za-z0-9_-]{6,}\.\w+$")
 _LOADING_SCREEN = (
     b'<div id="root"><div style="display:flex;align-items:center;'
     b"justify-content:center;height:100vh;font-family:'PT Sans',"
-    b"system-ui,sans-serif;color:#666;flex-direction:column;gap:16px\">"
+    b'system-ui,sans-serif;color:#666;flex-direction:column;gap:16px">'
     b'<svg width="48" height="48" viewBox="0 0 24 24" fill="none" '
     b'stroke="currentColor" stroke-width="1.5" stroke-linecap="round">'
     b'<path d="M21 12a9 9 0 1 1-6.219-8.56">'
@@ -338,6 +338,60 @@ def _inject_loading_screen(content: bytes) -> bytes:
     so no cleanup is needed.
     """
     return content.replace(b'<div id="root"></div>', _LOADING_SCREEN)
+
+
+class MarimoOptimizeMiddleware:
+    """ASGI middleware: cache headers for hashed assets + loading screen.
+
+    Wraps any ASGI app to:
+    1. Add ``Cache-Control: public, max-age=31536000, immutable`` to
+       content-hashed asset responses (e.g. ``/assets/cells-CCtxWKxf.js``).
+    2. Inject a loading spinner into HTML responses that contain an empty
+       ``<div id="root"></div>``.
+
+    Used by both the edit proxy and the formgrader marimo app.
+    """
+
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+
+        path = scope.get("path", "")
+        is_asset = bool(_ASSET_PATH_RE.search(path))
+        is_html = False  # determined from response headers
+
+        async def send_wrapper(message):
+            nonlocal is_html
+            if message["type"] == "http.response.start":
+                headers = list(message.get("headers", []))
+                if is_asset:
+                    # Remove any existing cache-control, add immutable
+                    headers = [(k, v) for k, v in headers if k != b"cache-control"]
+                    headers.append(
+                        (
+                            b"cache-control",
+                            b"public, max-age=31536000, immutable",
+                        )
+                    )
+                # Detect HTML for loading screen injection
+                for k, v in headers:
+                    if k == b"content-type" and b"text/html" in v:
+                        is_html = True
+                        # Remove content-length since body size will change
+                        headers = [(k, v) for k, v in headers if k != b"content-length"]
+                        break
+                message = {**message, "headers": headers}
+            elif message["type"] == "http.response.body" and is_html:
+                body = message.get("body", b"")
+                body = _inject_loading_screen(body)
+                message = {**message, "body": body}
+            await send(message)
+
+        await self.app(scope, receive, send_wrapper)
 
 
 _HOP_BY_HOP = frozenset(
@@ -358,20 +412,12 @@ _HOP_BY_HOP = frozenset(
 
 def _filter_headers(headers) -> dict[str, str]:
     """Filter hop-by-hop headers from a request."""
-    return {
-        k: v
-        for k, v in headers.items()
-        if k.lower() not in _HOP_BY_HOP
-    }
+    return {k: v for k, v in headers.items() if k.lower() not in _HOP_BY_HOP}
 
 
 def _filter_response_headers(headers) -> dict[str, str]:
     """Filter hop-by-hop headers from an upstream response."""
-    return {
-        k: v
-        for k, v in headers.items()
-        if k.lower() not in _HOP_BY_HOP
-    }
+    return {k: v for k, v in headers.items() if k.lower() not in _HOP_BY_HOP}
 
 
 def build_edit_proxy_app(
@@ -438,21 +484,8 @@ def build_edit_proxy_app(
 
         resp_headers = _filter_response_headers(resp.headers)
 
-        # Cache content-hashed assets indefinitely
-        if _ASSET_PATH_RE.search(target_path):
-            resp_headers["cache-control"] = (
-                "public, max-age=31536000, immutable"
-            )
-
-        content = resp.content
-
-        # Inject loading spinner into the initial HTML page
-        ct = resp_headers.get("content-type", "")
-        if "text/html" in ct:
-            content = _inject_loading_screen(content)
-
         return Response(
-            content=content,
+            content=resp.content,
             status_code=resp.status_code,
             headers=resp_headers,
         )
@@ -498,9 +531,7 @@ def build_edit_proxy_app(
                     except Exception:
                         pass
 
-                await asyncio.gather(
-                    client_to_upstream(), upstream_to_client()
-                )
+                await asyncio.gather(client_to_upstream(), upstream_to_client())
         except Exception:
             pass
         finally:
@@ -516,16 +547,12 @@ def build_edit_proxy_app(
         data = await request.json()
         path = data.get("path")
         if not path:
-            return JSONResponse(
-                {"error": "Missing 'path'"}, status_code=400
-            )
+            return JSONResponse({"error": "Missing 'path'"}, status_code=400)
         try:
             # Run in thread pool — start() blocks waiting for marimo URL
             session = await asyncio.to_thread(manager.start, path)
         except TimeoutError as exc:
-            return JSONResponse(
-                {"error": str(exc)}, status_code=504
-            )
+            return JSONResponse({"error": str(exc)}, status_code=504)
         return JSONResponse(
             {
                 "session_id": session.session_id,
@@ -543,9 +570,7 @@ def build_edit_proxy_app(
         data = await request.json()
         session_id = data.get("session_id")
         if not session_id:
-            return JSONResponse(
-                {"error": "Missing 'session_id'"}, status_code=400
-            )
+            return JSONResponse({"error": "Missing 'session_id'"}, status_code=400)
         removed = await asyncio.to_thread(manager.stop, session_id)
         return JSONResponse({"removed": removed})
 
@@ -559,7 +584,7 @@ def build_edit_proxy_app(
 
     base = manager.base_url
 
-    return Starlette(
+    starlette_app = Starlette(
         routes=[
             Route(
                 base + "/_api/edit",
@@ -578,3 +603,4 @@ def build_edit_proxy_app(
         ],
         lifespan=lifespan,
     )
+    return MarimoOptimizeMiddleware(starlette_app)
