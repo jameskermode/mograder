@@ -15,9 +15,7 @@ def _():
 
     params = mo.query_params()
     # Snapshot which params were provided — plain set, no reactive writes
-    provided_params = frozenset(
-        k for k in ("server",) if params.get(k, "")
-    )
+    provided_params = frozenset(k for k in ("server",) if params.get(k, ""))
 
     # Auto-detect server URL when running in WASM (browser)
     default_server = ""
@@ -149,9 +147,7 @@ def _(assignments, datetime, mo, moodle_url, server_url):
         )
 
     mo.output.replace(
-        mo.vstack(
-            [mo.md("## Assignments"), mo.ui.table(_rows, selection=None)]
-        )
+        mo.vstack([mo.md("## Assignments"), mo.ui.table(_rows, selection=None)])
     )
     return
 

@@ -1055,7 +1055,15 @@ def _(
 
 
 @app.cell
-def _(COURSE_DIR, DIR_NAMES, GRADEBOOK, get_data_version, get_selected, refresh_btn, set_grading_index):
+def _(
+    COURSE_DIR,
+    DIR_NAMES,
+    GRADEBOOK,
+    get_data_version,
+    get_selected,
+    refresh_btn,
+    set_grading_index,
+):
     from mograder.formgrader import scan_submissions as _scan_subs
 
     _ = refresh_btn.value, get_data_version()

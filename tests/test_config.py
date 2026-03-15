@@ -209,7 +209,7 @@ def test_load_config_rlimits_custom(tmp_path):
 def test_load_config_edit_links(tmp_path):
     """[edit_links] section is parsed into tuple of (name, template) pairs."""
     (tmp_path / "mograder.toml").write_text(
-        '[edit_links]\n'
+        "[edit_links]\n"
         'molab = "https://molab.marimo.io/new/#code/{content_lz}"\n'
         'codespaces = "https://github.com/example/codespaces"\n'
     )

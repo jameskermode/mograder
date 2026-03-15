@@ -187,12 +187,8 @@ class TestEditLinks:
     def test_edit_links_with_content_lz(self, course_dir):
         """Template with {content_lz} produces URL containing lz-compressed content."""
         config = _make_config(
-            assignments=(
-                {"name": "A1", "dir": "A1", "duedate": 1000},
-            ),
-            edit_links=(
-                ("molab", "https://molab.marimo.io/new/#code/{content_lz}"),
-            ),
+            assignments=({"name": "A1", "dir": "A1", "duedate": 1000},),
+            edit_links=(("molab", "https://molab.marimo.io/new/#code/{content_lz}"),),
         )
         app = create_student_api(course_dir, config)
         client = TestClient(app, raise_server_exceptions=False)
@@ -210,12 +206,8 @@ class TestEditLinks:
     def test_edit_links_static_url(self, course_dir):
         """Template without placeholders appears for all assignments."""
         config = _make_config(
-            assignments=(
-                {"name": "A1", "dir": "A1", "duedate": 1000},
-            ),
-            edit_links=(
-                ("codespaces", "https://github.com/example/codespaces"),
-            ),
+            assignments=({"name": "A1", "dir": "A1", "duedate": 1000},),
+            edit_links=(("codespaces", "https://github.com/example/codespaces"),),
         )
         app = create_student_api(course_dir, config)
         client = TestClient(app, raise_server_exceptions=False)
@@ -229,9 +221,7 @@ class TestEditLinks:
     def test_edit_links_missing_release_dir(self, tmp_path):
         """Template needing {content_lz} omitted when no release dir exists."""
         config = _make_config(
-            assignments=(
-                {"name": "A2", "dir": "A2"},
-            ),
+            assignments=({"name": "A2", "dir": "A2"},),
             edit_links=(
                 ("molab", "https://molab.marimo.io/new/#code/{content_lz}"),
                 ("codespaces", "https://github.com/example/codespaces"),
@@ -250,9 +240,7 @@ class TestEditLinks:
     def test_edit_links_absent_when_no_config(self, course_dir):
         """No edit_links config → no edit_links key in response."""
         config = _make_config(
-            assignments=(
-                {"name": "A1", "dir": "A1"},
-            ),
+            assignments=({"name": "A1", "dir": "A1"},),
         )
         app = create_student_api(course_dir, config)
         client = TestClient(app, raise_server_exceptions=False)
@@ -274,8 +262,13 @@ class TestEditLinks:
         resp = client.get("/config")
         data = resp.json()
         assert "edit_links" in data
-        assert data["edit_links"]["molab"] == "https://molab.marimo.io/new/#code/{content_lz}"
-        assert data["edit_links"]["codespaces"] == "https://github.com/example/codespaces"
+        assert (
+            data["edit_links"]["molab"]
+            == "https://molab.marimo.io/new/#code/{content_lz}"
+        )
+        assert (
+            data["edit_links"]["codespaces"] == "https://github.com/example/codespaces"
+        )
 
 
 class TestCORS:
