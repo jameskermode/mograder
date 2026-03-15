@@ -1,6 +1,6 @@
 """Tests for integrity checking of check/marks cells."""
 
-from mograder.integrity import check_integrity
+from mograder.integrity import check_cell_integrity, check_integrity
 
 # -- Minimal notebook templates -----------------------------------------------
 
@@ -180,3 +180,78 @@ def test_extra_student_cell_not_flagged():
     result = check_integrity(SOURCE_HOLISTIC, submitted)
     assert result.tampered_checks == []
     assert result.tampered_marks is False
+
+
+# -- Cell integrity tests (release vs submitted) ------------------------------
+
+# Release notebook: solution cells have "# YOUR CODE HERE"
+RELEASE_NOTEBOOK = _notebook(
+    _cell("import marimo as mo\nfrom mograder.runtime import check", hide_code=True),
+    _cell("# Setup cell\nx = 42"),
+    _cell("# YOUR CODE HERE\npass"),
+    _cell(
+        'check(\n    "Q1: Add",\n    [\n        (x == 42, "ok"),\n    ],\n)',
+        hide_code=True,
+    ),
+)
+
+
+def test_cell_integrity_no_tampering():
+    """Release == submitted → no tampered cells."""
+    result = check_cell_integrity(RELEASE_NOTEBOOK, RELEASE_NOTEBOOK)
+    assert result.tampered_cells == []
+
+
+def test_cell_integrity_modified_setup():
+    """Non-solution cell changed → detected & reinjected."""
+    submitted = RELEASE_NOTEBOOK.replace("x = 42", "x = 999")
+    result = check_cell_integrity(RELEASE_NOTEBOOK, submitted)
+    assert len(result.tampered_cells) > 0
+    # The fixed source should contain the original setup code
+    assert "x = 42" in result.fixed_source
+
+
+def test_cell_integrity_solution_changed():
+    """Solution cell changed → NOT flagged (student is allowed to modify)."""
+    submitted = RELEASE_NOTEBOOK.replace(
+        "# YOUR CODE HERE\npass", "# YOUR CODE HERE\nx = 1 + 1"
+    )
+    result = check_cell_integrity(RELEASE_NOTEBOOK, submitted)
+    assert result.tampered_cells == []
+
+
+def test_cell_integrity_extra_cell():
+    """Student added extra cell → not flagged."""
+    submitted = _notebook(
+        _cell(
+            "import marimo as mo\nfrom mograder.runtime import check", hide_code=True
+        ),
+        _cell("# Setup cell\nx = 42"),
+        _cell("# YOUR CODE HERE\npass"),
+        _cell("extra = 'student added this'"),
+        _cell(
+            'check(\n    "Q1: Add",\n    [\n        (x == 42, "ok"),\n    ],\n)',
+            hide_code=True,
+        ),
+    )
+    result = check_cell_integrity(RELEASE_NOTEBOOK, submitted)
+    assert result.tampered_cells == []
+
+
+def test_cell_integrity_deleted_cell():
+    """Non-solution cell removed → detected & reinjected."""
+    submitted = _notebook(
+        _cell(
+            "import marimo as mo\nfrom mograder.runtime import check", hide_code=True
+        ),
+        # Setup cell deleted
+        _cell("# YOUR CODE HERE\npass"),
+        _cell(
+            'check(\n    "Q1: Add",\n    [\n        (x == 42, "ok"),\n    ],\n)',
+            hide_code=True,
+        ),
+    )
+    result = check_cell_integrity(RELEASE_NOTEBOOK, submitted)
+    assert len(result.tampered_cells) > 0
+    # The fixed source should have the setup cell reinjected
+    assert "x = 42" in result.fixed_source

@@ -38,6 +38,80 @@ def _is_marks_cell(code: str) -> bool:
     return MARKS_MARKER in code
 
 
+@dataclasses.dataclass
+class CellIntegrityResult:
+    """Result of cell-level integrity check between release and submitted."""
+
+    tampered_cells: list[str]  # descriptions of modified non-solution cells
+    fixed_source: str  # reassembled with release cells reinjected
+
+
+def _is_solution_cell(code: str) -> bool:
+    """A release cell is a solution cell if it contains the placeholder."""
+    return "# YOUR CODE HERE" in code
+
+
+def check_cell_integrity(release_text: str, submitted_text: str) -> CellIntegrityResult:
+    """Compare all non-solution cells between release and submitted notebooks.
+
+    Solution cells (containing ``# YOUR CODE HERE``) are left as-is since
+    students are expected to modify them. Every other release cell must appear
+    unchanged in the submission; missing or modified cells are reinjected from
+    the release version.
+    """
+    release_ir = MarimoConvert.from_py(release_text).to_ir()
+    submitted_ir = MarimoConvert.from_py(submitted_text).to_ir()
+
+    # Separate release cells into solution and non-solution
+    non_solution_codes: set[str] = set()
+    for cell in release_ir.cells:
+        if not _is_solution_cell(cell.code):
+            non_solution_codes.add(cell.code)
+
+    # Build set of submitted cell codes for quick lookup
+    submitted_codes: set[str] = {cell.code for cell in submitted_ir.cells}
+
+    # Find missing/modified non-solution cells
+    tampered_cells: list[str] = []
+    missing_cells = []
+    for cell in release_ir.cells:
+        if _is_solution_cell(cell.code):
+            continue
+        if cell.code not in submitted_codes:
+            snippet = cell.code.strip().split("\n")[0][:60]
+            tampered_cells.append(f"modified/missing: {snippet}")
+            missing_cells.append(cell)
+
+    # Build fixed notebook: start with submitted cells, replace/reinject
+    # For each submitted cell that matches a non-solution release cell, keep it.
+    # For submitted cells that don't match any release non-solution cell AND
+    # are not solution cells from the submission, they might be tampered versions.
+    # Strategy: keep all submitted cells, then append any missing release cells.
+    new_cells = list(submitted_ir.cells)
+    for cell in missing_cells:
+        # Insert before last cell (if __name__ guard)
+        if new_cells:
+            new_cells.insert(len(new_cells) - 1, cell)
+        else:
+            new_cells.append(cell)
+
+    new_ir = NotebookSerializationV1(
+        app=submitted_ir.app,
+        header=submitted_ir.header,
+        version=submitted_ir.version,
+        cells=new_cells,
+        violations=submitted_ir.violations,
+        valid=submitted_ir.valid,
+        filename=submitted_ir.filename,
+    )
+    fixed_source = generate_filecontents_from_ir(new_ir)
+
+    return CellIntegrityResult(
+        tampered_cells=tampered_cells,
+        fixed_source=fixed_source,
+    )
+
+
 def check_integrity(source_text: str, submitted_text: str) -> IntegrityResult:
     """Compare check/marks cells between source and submitted notebooks.
 

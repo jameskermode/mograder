@@ -429,6 +429,11 @@ def validate(ctx, file, timeout):
     is_flag=True,
     help="Re-autograde all submissions even if output is up to date",
 )
+@click.option(
+    "--safety-check",
+    is_flag=True,
+    help="Scan submitted code for dangerous patterns before execution",
+)
 @click.pass_context
 def autograde(
     ctx,
@@ -442,6 +447,7 @@ def autograde(
     output_dir,
     progress,
     force,
+    safety_check,
 ):
     """Run notebooks and inject grading cells for GTA review.
 
@@ -613,16 +619,46 @@ def autograde(
             total = sum(marks.values())
             click.echo(f"  Marks metadata: {marks_info} (total: {total})")
 
+    # Resolve release notebook for cell integrity checking
+    release_text: str | None = None
+    if safety_check and source_path:
+        assignment_name = source_path.parent.name
+        release_dir = (
+            source_path.parent.parent.parent / config.release_dir / assignment_name
+        )
+        release_candidates = (
+            list(release_dir.glob("*.py")) if release_dir.is_dir() else []
+        )
+        if release_candidates:
+            release_text = release_candidates[0].read_text()
+            click.echo(
+                f"Cell integrity check using release: {_rel(release_candidates[0])}"
+            )
+
     # Integrity check + reinject tampered cells
     run_paths: list[Path] = list(notebooks)
     tamper_info: dict[str, integrity.IntegrityResult] = {}
+    cell_tamper_info: dict[str, integrity.CellIntegrityResult] = {}
     fixed_dir: Path | None = None
     if source_text:
         fixed_dir = Path(tempfile.mkdtemp())
         run_paths = []
         for nb in notebooks:
-            ir = integrity.check_integrity(source_text, nb.read_text())
-            if ir.tampered_checks or ir.tampered_marks:
+            nb_text = nb.read_text()
+
+            # Cell integrity check: verify non-solution cells match release
+            if release_text:
+                cir = integrity.check_cell_integrity(release_text, nb_text)
+                if cir.tampered_cells:
+                    nb_text = cir.fixed_source
+                    cell_tamper_info[nb.stem] = cir
+                    click.echo(
+                        f"  WARNING: {nb.stem} — non-solution cells reinjected: "
+                        f"{len(cir.tampered_cells)} cell(s)"
+                    )
+
+            ir = integrity.check_integrity(source_text, nb_text)
+            if ir.tampered_checks or ir.tampered_marks or nb.stem in cell_tamper_info:
                 fixed = fixed_dir / nb.name
                 fixed.write_text(ir.fixed_source)
                 run_paths.append(fixed)
@@ -630,10 +666,11 @@ def autograde(
                 warns = [f"check({k})" for k in ir.tampered_checks]
                 if ir.tampered_marks:
                     warns.append("marks")
-                click.echo(
-                    f"  WARNING: {nb.stem} — tampered cells reinjected: "
-                    f"{', '.join(warns)}"
-                )
+                if warns:
+                    click.echo(
+                        f"  WARNING: {nb.stem} — tampered cells reinjected: "
+                        f"{', '.join(warns)}"
+                    )
             else:
                 run_paths.append(nb)
 
@@ -664,6 +701,7 @@ def autograde(
         html_dir=output_dir,
         on_progress=progress_cb,
         sandbox_dir=shared_sandbox,
+        safety_check=safety_check,
     )
 
     # Map results back to original paths + record tampering
@@ -675,6 +713,9 @@ def autograde(
             r.tampered = [f"check({k})" for k in ti.tampered_checks]
             if ti.tampered_marks:
                 r.tampered.append("marks")
+        if original.stem in cell_tamper_info:
+            cti = cell_tamper_info[original.stem]
+            r.tampered.extend(f"cell: {d}" for d in cti.tampered_cells)
 
     if fixed_dir:
         shutil.rmtree(fixed_dir, ignore_errors=True)

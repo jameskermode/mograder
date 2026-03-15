@@ -56,6 +56,7 @@ if (course_dir / "release").is_dir():
             "--source",
             str(source),
             "--force",
+            "--safety-check",
         ]
         logger.info("Autograding %s/%s: %s", assignment, username, " ".join(cmd))
         try:

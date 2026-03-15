@@ -207,14 +207,30 @@ def run_notebook(
     html_dir: Path | None = None,
     sandbox_dir: Path | None = None,
     on_check: Callable[[CheckResult], None] | None = None,
+    safety_check: bool = False,
 ) -> NotebookResult:
     """Execute a notebook and return its check results.
 
     If *on_check* is provided, the sidecar file is polled while the
     notebook executes and the callback is invoked for each new check
     result as it appears (useful for live progress in the UI).
+
+    If *safety_check* is True, the notebook source is scanned for
+    dangerous patterns (denied imports, eval/exec, etc.) before execution.
+    If unsafe patterns are found, execution is skipped.
     """
     result = NotebookResult(path=notebook_path)
+
+    if safety_check:
+        from mograder.safety import check_safety
+
+        source = notebook_path.read_text()
+        safety_result = check_safety(source)
+        if not safety_result.safe:
+            descs = "; ".join(f.description for f in safety_result.findings)
+            result.export_ok = False
+            result.export_error = f"safety check failed: {descs}"
+            return result
 
     with tempfile.NamedTemporaryFile(suffix=".html", delete=False) as tmp:
         tmp_path = Path(tmp.name)
@@ -326,6 +342,7 @@ def run_batch(
     html_dir: Path | None = None,
     on_progress: Callable[[int, int, Path], None] | None = None,
     sandbox_dir: Path | None = None,
+    safety_check: bool = False,
 ) -> list[NotebookResult]:
     """Run notebooks in parallel and return results sorted by filename."""
     results: list[NotebookResult] = []
@@ -334,7 +351,9 @@ def run_batch(
 
     with ProcessPoolExecutor(max_workers=jobs) as executor:
         futures = {
-            executor.submit(run_notebook, nb, timeout, html_dir, sandbox_dir): nb
+            executor.submit(
+                run_notebook, nb, timeout, html_dir, sandbox_dir, None, safety_check
+            ): nb
             for nb in notebooks
         }
         for future in as_completed(futures):
