@@ -83,6 +83,16 @@ def _():
                 )
         return None
 
+    def _get_user_attr(attr: str, default=None):
+        """Read an attribute from the request user (dict or object)."""
+        req = mo.app_meta().request
+        user = req.user if req else None
+        if user is None:
+            return default
+        if isinstance(user, dict):
+            return user.get(attr, default)
+        return getattr(user, attr, default)
+
     def is_instructor() -> bool:
         """Check if the current user is an instructor.
 
@@ -90,15 +100,11 @@ def _():
         populated by TrustedProxyAuth middleware in ASGI mode.
         Defaults to True for local/non-ASGI use (no middleware).
         """
-        req = mo.app_meta().request
-        user = req.user if req else {}
-        return user.get("is_instructor", True)
+        return _get_user_attr("is_instructor", True)
 
     def get_user_display() -> str:
         """Return 'username@host' for display in the navbar."""
-        req = mo.app_meta().request
-        user = req.user if req else {}
-        username = user.get("username", "")
+        username = _get_user_attr("username", "")
         if not username:
             username = os.environ.get("USER", "local")
         hostname = socket.gethostname().split(".")[0]
