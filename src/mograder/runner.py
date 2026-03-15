@@ -4,6 +4,7 @@ import csv
 import io
 import json
 import os
+import platform
 import shutil
 import subprocess
 import sys
@@ -15,6 +16,29 @@ from pathlib import Path
 
 from mograder.models import CheckResult, NotebookResult
 from mograder.parser import count_cell_errors, parse_check_results
+
+
+def _apply_rlimits():
+    """Set resource limits on the subprocess (called via preexec_fn).
+
+    Caps memory (1 GiB), CPU time (600s), child processes (64), and open
+    file descriptors (256).  Linux/macOS only — skips unsupported limits.
+    """
+    import resource
+
+    limits = [
+        (resource.RLIMIT_CPU, 600),
+        (resource.RLIMIT_NPROC, 64),
+        (resource.RLIMIT_NOFILE, 256),
+    ]
+    # RLIMIT_AS is unreliable on macOS; only apply on Linux.
+    if platform.system() != "Darwin":
+        limits.append((resource.RLIMIT_AS, 1 << 30))
+    for limit_id, value in limits:
+        try:
+            resource.setrlimit(limit_id, (value, value))
+        except (ValueError, OSError):
+            pass
 
 
 def _venv_python(venv_dir: Path) -> Path:
@@ -232,6 +256,8 @@ def run_notebook(
         if local_bin not in env.get("PATH", "").split(os.pathsep):
             env["PATH"] = local_bin + os.pathsep + env.get("PATH", "")
 
+        _preexec = _apply_rlimits if os.name != "nt" else None
+
         if on_check is not None:
             # Stream mode: poll sidecar for live check results
             proc = subprocess.Popen(
@@ -241,6 +267,7 @@ def run_notebook(
                 text=True,
                 env=env,
                 stdin=subprocess.DEVNULL,
+                preexec_fn=_preexec,
             )
             _poll_sidecar(proc, sidecar_path, timeout, on_check)
             stderr = proc.stderr.read() if proc.stderr else ""
@@ -252,6 +279,7 @@ def run_notebook(
                 timeout=timeout,
                 env=env,
                 stdin=subprocess.DEVNULL,
+                preexec_fn=_preexec,
             )
             stderr = proc.stderr
 
