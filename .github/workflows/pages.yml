@@ -41,6 +41,12 @@ jobs:
       - name: Export demo-holistic notebook
         run: uv run marimo export html-wasm demo/course/demo-holistic/files/demo-holistic.py -o dist/notebooks/demo-holistic.html --mode edit
 
+      - name: Generate workshop notebook
+        run: uv run mograder workshop encrypt demo/course/demo-workshop/files/demo-workshop.py -o demo/course/demo-workshop/files/
+
+      - name: Export demo-workshop notebook
+        run: uv run marimo export html-wasm demo/course/demo-workshop/files/demo-workshop.py -o dist/notebooks/demo-workshop.html --mode edit
+
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
         with:

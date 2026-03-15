@@ -33,6 +33,15 @@ def _write_sidecar(label: str, check_status: str, details: list[str]) -> None:
         f.write(json.dumps(record) + "\n")
 
 
+def hint(*hints):
+    """Display progressive hints in a collapsed accordion."""
+    if len(hints) == 1:
+        items = {"Hint": mo.md(hints[0])}
+    else:
+        items = {f"Hint {i}": mo.md(h) for i, h in enumerate(hints, 1)}
+    return mo.accordion(items)
+
+
 def check(label, checks):
     """Run a list of (condition, message) checks and display coloured feedback.
 

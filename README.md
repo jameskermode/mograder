@@ -11,7 +11,8 @@ A live demo is available with three components:
 1. **[Student Dashboard](https://jameskermode.github.io/mograder/?server=https://mograder-demo.jrkermode.uk&wasm_base=notebooks)** — WASM app hosted on GitHub Pages. Lists assignments and links to self-hosted WASM notebooks for editing in the browser.
 2. **[Formgrader + Assignment Server](https://mograder-demo.jrkermode.uk)** — Combined ASGI app. The formgrader UI shows the full grading workflow (assignments, submissions, grading, students tabs) with pre-populated demo data. The same service also handles the assignment API at `/assignments`. No login required.
 3. **Notebook Editor** — Click "Edit in Browser" in the dashboard to open a notebook as a standalone WASM app with full edit mode. Each notebook has a submit cell to send your work back to the assignment server.
-4. **[GitHub Codespaces](https://codespaces.new/jameskermode/mograder)** — Open the repo in a Codespace for a full development environment with uv, marimo, and the student dashboard pre-configured. Assignments are served from the demo server.
+4. **[Demo Workshop](https://jameskermode.github.io/mograder/notebooks/demo-workshop.html)** — WASM notebook demonstrating hints and encrypted solutions for formative workshops.
+5. **[GitHub Codespaces](https://codespaces.new/jameskermode/mograder)** — Open the repo in a Codespace for a full development environment with uv, marimo, and the student dashboard pre-configured. Assignments are served from the demo server.
 
 ## For students
 
@@ -140,6 +141,55 @@ x = 42
 ```
 
 Solution blocks are replaced with `# YOUR CODE HERE` / `pass` in the release version. Auxiliary files (data, helper modules) are automatically copied from the source directory. Notebooks import `check()` from `mograder.runtime` for formative feedback, or use `Grader` for per-question marks with reactive score tracking.
+
+### Hints
+
+Use `hint()` in notebooks to provide progressive hints as collapsed accordions:
+
+```python
+from mograder.runtime import hint
+
+# Single hint — accordion label is "Hint"
+hint("Think about what preserves insertion order")
+
+# Multiple hints — numbered "Hint 1", "Hint 2", ...
+hint(
+    "Think about which data structure preserves insertion order",
+    "Consider using `collections.OrderedDict`",
+    "Use `OrderedDict.move_to_end()`"
+)
+```
+
+### Workshop notebooks with encrypted solutions
+
+For formative workshops (ungraded, deployed as WASM on GitHub Pages), mograder supports encrypted solutions that students can check interactively:
+
+**1. Author a source notebook** with a `# === MOGRADER: ANSWERS ===` cell containing expected answers, alongside regular `### BEGIN/END SOLUTION` markers:
+
+```python
+# === MOGRADER: ANSWERS ===
+_answers = {"Q1": [2.54, 0.07], "Q2": 42}
+```
+
+**2. Generate the workshop notebook** — encrypts solutions and injects answer-checking UI:
+
+```bash
+mograder workshop encrypt source/workshop/workshop.py -o release/workshop/
+```
+
+**3. Export for WASM deployment** — generates HTML + keys.json for GitHub Pages:
+
+```bash
+mograder workshop export source/workshop/workshop.py -o dist/workshop/
+```
+
+**4. Release solutions during a live workshop** — incrementally reveal answers:
+
+```bash
+mograder workshop release-key dist/workshop/keys.json Q1 "[2.54, 0.07]"
+```
+
+Students check answers via input widgets in the notebook. Correct answers decrypt and display the model solution. The instructor can also release all solutions at once by copying `keys_all.json` over `keys.json`.
 
 ### Validate a notebook
 

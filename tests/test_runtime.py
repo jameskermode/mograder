@@ -171,6 +171,56 @@ def test_grader_scores_partial():
     assert "FAIL" in content
 
 
+# --- hint() ---
+
+
+def test_hint_single():
+    mo = _mock_mo()
+    mo.accordion.side_effect = lambda items: items
+    from mograder import runtime
+
+    with patch.object(runtime, "mo", mo):
+        from mograder.runtime import hint
+
+        with patch.object(runtime, "mo", mo):
+            result = hint("Think about insertion order")
+    assert "Hint" in result
+    assert len(result) == 1
+
+
+def test_hint_multiple():
+    mo = _mock_mo()
+    mo.accordion.side_effect = lambda items: items
+    from mograder import runtime
+
+    with patch.object(runtime, "mo", mo):
+        from mograder.runtime import hint
+
+        with patch.object(runtime, "mo", mo):
+            result = hint("First hint", "Second hint", "Third hint")
+    assert "Hint 1" in result
+    assert "Hint 2" in result
+    assert "Hint 3" in result
+    assert len(result) == 3
+
+
+def test_hint_renders_markdown():
+    mo = _mock_mo()
+    mo.accordion.side_effect = lambda items: items
+    from mograder import runtime
+
+    with patch.object(runtime, "mo", mo):
+        from mograder.runtime import hint
+
+        with patch.object(runtime, "mo", mo):
+            hint("Some **bold** text", "More text")
+    # mo.md should have been called for each hint string
+    assert mo.md.call_count >= 2
+
+
+# --- Grader.scores() ---
+
+
 def test_grader_scores_unattempted():
     mo = _mock_mo()
     grader = Grader(mo, {"Q1": 10, "Q2": 15})

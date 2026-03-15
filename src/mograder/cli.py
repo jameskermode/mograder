@@ -2524,3 +2524,117 @@ def token(usernames, secret_file, secret_stdin, secret_value):
     for username in usernames:
         click.echo(f"{username}: {make_token(secret, username)}")
     click.echo(f"\ninstructor: {make_token(secret, INSTRUCTOR_USER)}")
+
+
+# ---------------------------------------------------------------------------
+# Workshop group
+# ---------------------------------------------------------------------------
+
+
+@cli.group()
+@click.pass_context
+def workshop_group(ctx):
+    """Workshop notebooks with encrypted solutions."""
+    pass
+
+
+cli.add_command(workshop_group, "workshop")
+
+
+@workshop_group.command("encrypt")
+@click.argument("sources", nargs=-1, required=True)
+@click.option(
+    "-o",
+    "--output-dir",
+    type=click.Path(path_type=Path),
+    default=None,
+    help="Output directory (default: inferred from source path)",
+)
+@click.option("--salt", default=None, help="Encryption salt (default: random)")
+def workshop_encrypt(sources, output_dir, salt):
+    """Encrypt solutions in workshop notebooks.
+
+    Parses _answers dict, encrypts solution blocks, strips solutions,
+    and injects checker cells. Output: workshop-ready marimo notebook.
+    """
+    from mograder.workshop import process_workshop
+
+    for src in sources:
+        source = Path(src)
+        out = output_dir or _infer_output_dir(source, "source", "release", "release")
+        dest = process_workshop(source, out, salt=salt)
+        click.echo(f"OK: {_rel(source)} → {_rel(dest)}")
+
+
+@workshop_group.command("export")
+@click.argument("sources", nargs=-1, required=True)
+@click.option(
+    "-o",
+    "--output-dir",
+    type=click.Path(path_type=Path),
+    required=True,
+    help="Output directory for WASM export",
+)
+@click.option("--salt", default=None, help="Encryption salt (default: random)")
+def workshop_export(sources, output_dir, salt):
+    """Encrypt solutions and export as WASM HTML.
+
+    Same as encrypt, then runs marimo export html-wasm.
+    Writes keys.json (empty) and keys_all.json.
+    """
+    import subprocess
+
+    from mograder.workshop import parse_answers_metadata, process_workshop, write_keys
+
+    output_dir = Path(output_dir)
+    for src in sources:
+        source = Path(src)
+
+        # Read answers before processing
+        source_lines = source.read_text().splitlines(keepends=True)
+        answers = parse_answers_metadata(source_lines)
+        if not answers:
+            click.echo(f"SKIP: {_rel(source)} (no answers marker)", err=True)
+            continue
+
+        # Use a deterministic salt for export
+        _salt = salt or "workshop"
+        dest = process_workshop(source, output_dir, salt=_salt)
+        click.echo(f"Encrypted: {_rel(source)} → {_rel(dest)}")
+
+        # Write keys files
+        write_keys(answers, _salt, output_dir / "keys.json", which="empty")
+        write_keys(answers, _salt, output_dir / "keys_all.json", which="all")
+        click.echo(
+            f"Keys: {_rel(output_dir / 'keys.json')} (empty), keys_all.json (all)"
+        )
+
+        # Export WASM HTML
+        html_name = dest.stem + ".html"
+        html_out = output_dir / html_name
+        cmd = [
+            sys.executable,
+            "-m",
+            "marimo",
+            "export",
+            "html-wasm",
+            str(dest),
+            "-o",
+            str(html_out),
+            "--mode",
+            "edit",
+        ]
+        subprocess.run(cmd, check=True)
+        click.echo(f"WASM: {_rel(html_out)}")
+
+
+@workshop_group.command("release-key")
+@click.argument("keys_file", type=click.Path(path_type=Path))
+@click.argument("exercise_id")
+@click.argument("answer")
+def workshop_release_key(keys_file, exercise_id, answer):
+    """Add one key to a keys.json for incremental release during a live workshop."""
+    from mograder.workshop import release_key
+
+    release_key(keys_file, exercise_id, answer)
+    click.echo(f"Released key for {exercise_id} in {_rel(keys_file)}")
