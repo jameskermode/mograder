@@ -910,7 +910,6 @@ source = { editable = "." }
 dependencies = [
     { name = "click" },
     { name = "httpx" },
-    { name = "lzstring" },
     { name = "marimo" },
     { name = "requests" },
     { name = "websockets" },
@@ -918,6 +917,7 @@ dependencies = [
 
 [package.optional-dependencies]
 asgi = [
+    { name = "lzstring" },
     { name = "python-multipart" },
     { name = "starlette" },
     { name = "uvicorn" },
@@ -943,7 +943,7 @@ grader = [
 requires-dist = [
     { name = "click", specifier = ">=8.0" },
     { name = "httpx", specifier = ">=0.24" },
-    { name = "lzstring", specifier = ">=1.0.4" },
+    { name = "lzstring", marker = "extra == 'asgi'", specifier = ">=1.0.4" },
     { name = "marimo", specifier = ">=0.19" },
     { name = "marimo", extras = ["sandbox"], marker = "extra == 'editor'", specifier = ">=0.19" },
     { name = "markdown-it-py", marker = "extra == 'dev'" },

@@ -186,6 +186,7 @@ class TestConfig:
 class TestEditLinks:
     def test_edit_links_with_content_lz(self, course_dir):
         """Template with {content_lz} produces URL containing lz-compressed content."""
+        pytest.importorskip("lzstring")
         config = _make_config(
             assignments=({"name": "A1", "dir": "A1", "duedate": 1000},),
             edit_links=(("molab", "https://molab.marimo.io/new/#code/{content_lz}"),),

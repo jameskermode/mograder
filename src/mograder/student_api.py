@@ -94,7 +94,10 @@ def create_student_api(course_dir: Path, config: MograderConfig) -> Starlette:
         """Compress release notebook with lz-string for molab embedding."""
         if dir_key in _content_lz_cache:
             return _content_lz_cache[dir_key]
-        import lzstring
+        try:
+            import lzstring
+        except ModuleNotFoundError:
+            return None
 
         py_files = sorted(
             f for f in matched.iterdir() if f.is_file() and f.suffix == ".py"
