@@ -3,7 +3,7 @@
 # dependencies = [
 #     "marimo",
 #     "numpy",
-#     "mograder",
+#     "mograder>=0.0.7",
 # ]
 # ///
 

@@ -2,7 +2,7 @@
 # requires-python = ">=3.11"
 # dependencies = [
 #     "marimo",
-#     "mograder",
+#     "mograder>=0.0.7",
 # ]
 # ///
 
