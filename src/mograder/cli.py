@@ -702,6 +702,9 @@ def autograde(
         on_progress=progress_cb,
         sandbox_dir=shared_sandbox,
         safety_check=safety_check,
+        rlimit_cpu=config.rlimit_cpu,
+        rlimit_nproc=config.rlimit_nproc,
+        rlimit_nofile=config.rlimit_nofile,
     )
 
     # Map results back to original paths + record tampering

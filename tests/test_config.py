@@ -184,3 +184,23 @@ def test_load_config_https_section(tmp_path):
     (tmp_path / "mograder.toml").write_text('[https]\nurl = "http://localhost:9000"\n')
     config = load_config(tmp_path)
     assert config.https_url == "http://localhost:9000"
+
+
+def test_load_config_rlimits_defaults(tmp_path):
+    """Missing [rlimits] section uses defaults."""
+    (tmp_path / "mograder.toml").write_text("")
+    config = load_config(tmp_path)
+    assert config.rlimit_cpu == 600
+    assert config.rlimit_nproc == 64
+    assert config.rlimit_nofile == 256
+
+
+def test_load_config_rlimits_custom(tmp_path):
+    """[rlimits] section overrides defaults."""
+    (tmp_path / "mograder.toml").write_text(
+        "[rlimits]\ncpu = 120\nnproc = 0\nnofile = 512\n"
+    )
+    config = load_config(tmp_path)
+    assert config.rlimit_cpu == 120
+    assert config.rlimit_nproc == 0
+    assert config.rlimit_nofile == 512

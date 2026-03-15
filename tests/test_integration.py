@@ -47,6 +47,12 @@ def course(tmp_path):
     imp = tmp_path / "import-test"
     shutil.copytree(IMPORT_TEST, imp)
 
+    # Relaxed rlimits for CI runners where the user may already have many
+    # processes (NPROC is per-user, not per-process).
+    (tmp_path / "mograder.toml").write_text(
+        "[rlimits]\nnproc = 0\n"  # 0 = no limit
+    )
+
     return tmp_path
 
 
@@ -112,11 +118,17 @@ def test_full_workflow(course, monkeypatch):
 
     autograded_dir = course / "autograded" / "demo-holistic"
     autograded = sorted(autograded_dir.glob("*.py"))
-    assert len(autograded) == 6
+    assert len(autograded) == 6, (
+        f"expected 6 autograded .py files, got {len(autograded)}: "
+        f"{[f.name for f in autograded]}\nautograde output:\n{result.output}"
+    )
 
     # HTML exports should also exist
     html_files = sorted(autograded_dir.glob("*.html"))
-    assert len(html_files) == 6
+    assert len(html_files) == 6, (
+        f"expected 6 HTML exports, got {len(html_files)}: "
+        f"{[f.name for f in html_files]}\nautograde output:\n{result.output}"
+    )
 
     # --- 5. Feedback ---
     ag_files = [str(f) for f in autograded]

@@ -18,27 +18,36 @@ from mograder.models import CheckResult, NotebookResult
 from mograder.parser import count_cell_errors, parse_check_results
 
 
-def _apply_rlimits():
-    """Set resource limits on the subprocess (called via preexec_fn).
+def _make_apply_rlimits(cpu: int = 600, nproc: int = 64, nofile: int = 256):
+    """Return a preexec_fn that sets resource limits on the subprocess.
 
-    Caps memory (1 GiB), CPU time (600s), child processes (64), and open
-    file descriptors (256).  Linux/macOS only — skips unsupported limits.
+    A value of 0 disables that limit.  Caps:
+    - CPU time (*cpu* seconds)
+    - Total user processes (*nproc* — note: per-user, not per-process)
+    - Open file descriptors (*nofile*)
+    - Virtual memory (1 GiB, Linux only)
     """
-    import resource
 
-    limits = [
-        (resource.RLIMIT_CPU, 600),
-        (resource.RLIMIT_NPROC, 64),
-        (resource.RLIMIT_NOFILE, 256),
-    ]
-    # RLIMIT_AS is unreliable on macOS; only apply on Linux.
-    if platform.system() != "Darwin":
-        limits.append((resource.RLIMIT_AS, 1 << 30))
-    for limit_id, value in limits:
-        try:
-            resource.setrlimit(limit_id, (value, value))
-        except (ValueError, OSError):
-            pass
+    def _apply():
+        import resource
+
+        limits: list[tuple[int, int]] = []
+        if cpu:
+            limits.append((resource.RLIMIT_CPU, cpu))
+        if nproc:
+            limits.append((resource.RLIMIT_NPROC, nproc))
+        if nofile:
+            limits.append((resource.RLIMIT_NOFILE, nofile))
+        # RLIMIT_AS is unreliable on macOS; only apply on Linux.
+        if platform.system() != "Darwin":
+            limits.append((resource.RLIMIT_AS, 1 << 30))
+        for limit_id, value in limits:
+            try:
+                resource.setrlimit(limit_id, (value, value))
+            except (ValueError, OSError):
+                pass
+
+    return _apply
 
 
 def _venv_python(venv_dir: Path) -> Path:
@@ -208,6 +217,9 @@ def run_notebook(
     sandbox_dir: Path | None = None,
     on_check: Callable[[CheckResult], None] | None = None,
     safety_check: bool = False,
+    rlimit_cpu: int = 600,
+    rlimit_nproc: int = 64,
+    rlimit_nofile: int = 256,
 ) -> NotebookResult:
     """Execute a notebook and return its check results.
 
@@ -272,7 +284,11 @@ def run_notebook(
         if local_bin not in env.get("PATH", "").split(os.pathsep):
             env["PATH"] = local_bin + os.pathsep + env.get("PATH", "")
 
-        _preexec = _apply_rlimits if os.name != "nt" else None
+        _preexec = (
+            _make_apply_rlimits(rlimit_cpu, rlimit_nproc, rlimit_nofile)
+            if os.name != "nt"
+            else None
+        )
 
         if on_check is not None:
             # Stream mode: poll sidecar for live check results
@@ -343,6 +359,9 @@ def run_batch(
     on_progress: Callable[[int, int, Path], None] | None = None,
     sandbox_dir: Path | None = None,
     safety_check: bool = False,
+    rlimit_cpu: int = 600,
+    rlimit_nproc: int = 64,
+    rlimit_nofile: int = 256,
 ) -> list[NotebookResult]:
     """Run notebooks in parallel and return results sorted by filename."""
     results: list[NotebookResult] = []
@@ -352,7 +371,16 @@ def run_batch(
     with ProcessPoolExecutor(max_workers=jobs) as executor:
         futures = {
             executor.submit(
-                run_notebook, nb, timeout, html_dir, sandbox_dir, None, safety_check
+                run_notebook,
+                nb,
+                timeout,
+                html_dir,
+                sandbox_dir,
+                None,
+                safety_check,
+                rlimit_cpu,
+                rlimit_nproc,
+                rlimit_nofile,
             ): nb
             for nb in notebooks
         }
