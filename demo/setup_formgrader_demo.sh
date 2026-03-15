@@ -38,7 +38,6 @@ mkdir -p "$COURSE/import"
 cat > "$COURSE/mograder.toml" << 'TOML'
 [defaults]
 no_edit = true
-no_actions = true
 TOML
 cp -r examples/source "$COURSE/"
 cp -r examples/release "$COURSE/"
