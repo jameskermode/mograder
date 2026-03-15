@@ -47,6 +47,8 @@ class MograderConfig:
     sync_remote: str | None = None
     sync_remote_course_dir: str | None = None
     sync_remote_venv_dir: str | None = None
+    # [edit_links]
+    edit_links: tuple[tuple[str, str], ...] = ()
 
 
 DEFAULT_CONFIG = MograderConfig()
@@ -66,6 +68,7 @@ def load_config(course_dir: Path) -> MograderConfig:
     gradebook = data.get("gradebook", {})
     rlimits = data.get("rlimits", {})
     sync = data.get("sync", {})
+    edit_links_data = data.get("edit_links", {})
 
     # [[assignments]] with fallback to [[moodle.assignments]]
     top_assignments = tuple(data.get("assignments", []))
@@ -102,4 +105,5 @@ def load_config(course_dir: Path) -> MograderConfig:
         sync_remote=sync.get("remote"),
         sync_remote_course_dir=sync.get("remote_course_dir"),
         sync_remote_venv_dir=sync.get("remote_venv_dir"),
+        edit_links=tuple((k, v) for k, v in edit_links_data.items()),
     )

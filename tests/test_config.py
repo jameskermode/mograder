@@ -204,3 +204,29 @@ def test_load_config_rlimits_custom(tmp_path):
     assert config.rlimit_cpu == 120
     assert config.rlimit_nproc == 0
     assert config.rlimit_nofile == 512
+
+
+def test_load_config_edit_links(tmp_path):
+    """[edit_links] section is parsed into tuple of (name, template) pairs."""
+    (tmp_path / "mograder.toml").write_text(
+        '[edit_links]\n'
+        'molab = "https://molab.marimo.io/new/#code/{content_lz}"\n'
+        'codespaces = "https://github.com/example/codespaces"\n'
+    )
+    config = load_config(tmp_path)
+    assert len(config.edit_links) == 2
+    assert config.edit_links[0] == (
+        "molab",
+        "https://molab.marimo.io/new/#code/{content_lz}",
+    )
+    assert config.edit_links[1] == (
+        "codespaces",
+        "https://github.com/example/codespaces",
+    )
+
+
+def test_load_config_edit_links_default(tmp_path):
+    """Missing [edit_links] section defaults to empty tuple."""
+    (tmp_path / "mograder.toml").write_text("")
+    config = load_config(tmp_path)
+    assert config.edit_links == ()

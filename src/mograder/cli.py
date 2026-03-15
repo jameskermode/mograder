@@ -330,6 +330,144 @@ def generate(
         sys.exit(1)
 
 
+@cli.command("wasm-export")
+@click.argument("assignments", nargs=-1)
+@click.option(
+    "--all", "export_all", is_flag=True, help="Export all WASM-compatible assignments"
+)
+@click.option(
+    "--check-only", is_flag=True, help="Only check compatibility, don't export"
+)
+@click.option("--mode", default="edit", help="WASM mode: edit or run")
+@click.pass_context
+def wasm_export(ctx, assignments, export_all, check_only, mode):
+    """Check WASM compatibility and export compatible assignments.
+
+    With --check-only, prints a compatibility table without exporting.
+    Without arguments, use --all to process all assignments.
+    """
+    import subprocess as sp
+
+    from mograder.wasm_compat import check_wasm_compatible
+
+    config = ctx.obj["config"]
+    source_dir = Path(config.source_dir)
+    release_dir = Path(config.release_dir)
+
+    # Discover all assignment directories
+    if not source_dir.is_dir():
+        click.echo(f"ERROR: source directory not found: {source_dir}", err=True)
+        sys.exit(1)
+
+    all_dirs = sorted(
+        d for d in source_dir.iterdir() if d.is_dir() and any(d.glob("*.py"))
+    )
+
+    # Filter to requested assignments
+    if assignments:
+        selected = []
+        for name in assignments:
+            matches = [
+                d for d in all_dirs if d.name == name or d.name.startswith(name + "-")
+            ]
+            if not matches:
+                # Try matching by dir field from config
+                for a in config.assignments:
+                    if a.get("dir") == name:
+                        matches = [
+                            d
+                            for d in all_dirs
+                            if d.name.startswith(a.get("dir", "") + "-")
+                            or d.name == name
+                        ]
+                        break
+                if not matches:
+                    click.echo(f"WARNING: no source directory found for '{name}'")
+            selected.extend(matches)
+        all_dirs = selected
+    elif not export_all and not check_only:
+        click.echo("ERROR: specify assignment names or use --all", err=True)
+        sys.exit(1)
+
+    # Check compatibility of each
+    click.echo(f"{'Assignment':<40} {'Status':<8} {'Blockers'}")
+    click.echo("-" * 70)
+
+    compatible_dirs: list[Path] = []
+    for d in all_dirs:
+        py_files = sorted(d.glob("*.py"))
+        if not py_files:
+            continue
+        nb_path = py_files[0]
+        is_compat, blockers = check_wasm_compatible(nb_path)
+        status = "WASM" if is_compat else "LIVE"
+        blocker_str = ", ".join(blockers) if blockers else ""
+        click.echo(f"{d.name:<40} {status:<8} {blocker_str}")
+        if is_compat:
+            compatible_dirs.append(d)
+
+    click.echo(f"\n{len(compatible_dirs)}/{len(all_dirs)} WASM-compatible")
+
+    if check_only:
+        return
+
+    # Export each compatible assignment
+    wasm_dir = Path(".mograder") / "wasm"
+    for d in compatible_dirs:
+        if assignments and not any(
+            d.name == name or d.name.startswith(name + "-") for name in assignments
+        ):
+            continue
+
+        # Determine release path
+        release_nb = release_dir / d.name / (d.name + ".py")
+        if not release_nb.exists():
+            click.echo(f"\n  Generating release for {d.name}...")
+            ctx.invoke(
+                generate,
+                assignments=(d.name,),
+                output_dir=None,
+                dry_run=False,
+                validate=False,
+                no_validate=True,
+                submit_url=None,
+                progress=False,
+            )
+
+        if not release_nb.exists():
+            click.echo(f"  ERROR: release not found at {release_nb}", err=True)
+            continue
+
+        # Export to WASM
+        # Extract dir name (e.g. A0 from ES98E-A0-Probability)
+        short_name = d.name
+        for a in config.assignments:
+            if d.name.startswith(a.get("dir", "") + "-") or a.get("dir") in d.name:
+                short_name = a["dir"]
+                break
+
+        out_dir = wasm_dir / short_name
+        out_dir.mkdir(parents=True, exist_ok=True)
+        click.echo(f"\n  Exporting {release_nb.name} to {out_dir}...")
+        cmd = [
+            sys.executable,
+            "-m",
+            "marimo",
+            "export",
+            "html-wasm",
+            str(release_nb),
+            "-o",
+            str(out_dir) + "/",
+            "--mode",
+            mode,
+        ]
+        result = sp.run(cmd, capture_output=True, text=True)
+        if result.returncode != 0:
+            click.echo(f"  FAILED: {result.stderr.strip()}", err=True)
+        else:
+            click.echo(f"  OK: {out_dir}")
+
+
 @cli.command()
 @click.argument("file", type=click.Path(exists=True, path_type=Path))
 @click.option(

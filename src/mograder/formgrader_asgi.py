@@ -20,6 +20,9 @@ from pathlib import Path
 
 import marimo
 
+from mograder.config import load_config
+from mograder.student_api import create_student_api
+
 LOCALHOST_IPS = {"127.0.0.1", "::1"}
 
 TRUSTED_PROXIES = {
@@ -123,11 +126,24 @@ _authed_edit_app = TrustedProxyAuth(_edit_app)
 _edit_prefix = _base_url.rstrip("/") + "/_edit/"
 _api_prefix = _base_url.rstrip("/") + "/_api/edit"
 
+# --- Student API (read-only, no auth) ---
+
+_course_dir = Path(os.environ.get("MOGRADER_COURSE_DIR", "."))
+_student_config = load_config(_course_dir)
+_student_api = create_student_api(_course_dir, _student_config)
+_student_api_prefix = _base_url.rstrip("/") + "/student/api"
+
 
 async def app(scope, receive, send):
-    """Route /_edit/ and /_api/edit to the edit proxy, everything else to marimo."""
+    """Route requests to student API, edit proxy, or marimo formgrader."""
     if scope["type"] in ("http", "websocket"):
         path = scope.get("path", "")
+        # Student API — no auth, before formgrader catch-all
+        if path.startswith(_student_api_prefix):
+            scope = dict(scope)
+            scope["path"] = path[len(_student_api_prefix) :] or "/"
+            await _student_api(scope, receive, send)
+            return
         if path.startswith(_edit_prefix) or path.startswith(_api_prefix):
             await _authed_edit_app(scope, receive, send)
             return

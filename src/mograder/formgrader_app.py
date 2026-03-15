@@ -182,16 +182,20 @@ def _(COURSE_DIR, DIR_NAMES, GRADEBOOK, get_data_version, refresh_btn):
 def _(assignments, get_selected, mo, set_selected):
     _options = {a.name: a.name for a in assignments}
     _current = get_selected()
+    # Clear stale state if the previously selected assignment is no longer available
+    if _current and _current not in _options:
+        set_selected("")
+        _current = ""
     assignment_dropdown = mo.ui.dropdown(
         options=_options,
-        value=_current if _current in _options else None,
+        value=_current if _current else None,
         label="Assignment",
         on_change=lambda val: set_selected(val or ""),
     )
     # Second independent dropdown bound to the same state for the Grading tab
     assignment_dropdown_grading = mo.ui.dropdown(
         options=_options,
-        value=_current if _current in _options else None,
+        value=_current if _current else None,
         label="Assignment",
         on_change=lambda val: set_selected(val or ""),
     )
@@ -1051,10 +1055,10 @@ def _(
 
 
 @app.cell
-def _(COURSE_DIR, DIR_NAMES, GRADEBOOK, get_selected, refresh_btn, set_grading_index):
+def _(COURSE_DIR, DIR_NAMES, GRADEBOOK, get_data_version, get_selected, refresh_btn, set_grading_index):
     from mograder.formgrader import scan_submissions as _scan_subs
 
-    _ = refresh_btn.value
+    _ = refresh_btn.value, get_data_version()
 
     # Use the assignment selected in the Assignments tab
     _sel = get_selected()
