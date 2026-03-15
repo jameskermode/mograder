@@ -15,7 +15,9 @@ def _():
     params = mo.query_params()
     # Snapshot which params were provided — plain set, no reactive writes
     provided_params = frozenset(
-        k for k in ("server", "repo", "path", "branch") if params.get(k, "")
+        k
+        for k in ("server", "repo", "path", "branch", "wasm_base")
+        if params.get(k, "")
     )
     return json, mo, params, provided_params, urllib
 
@@ -90,7 +92,7 @@ def _(connection_error, mo):
 
 
 @app.cell
-def _(assignments, branch, github_repo, mo, release_path):
+def _(assignments, branch, github_repo, mo, params, release_path):
     if not assignments:
         mo.output.replace(
             mo.callout(
@@ -109,10 +111,15 @@ def _(assignments, branch, github_repo, mo, release_path):
         _name = _a["name"]
         _files = _a.get("files", [])
         _links = []
+        _wasm = params.get("wasm_base", "")
         for _f in _files:
             _fname = _f["filename"]
             if _fname.endswith(".py"):
-                if _repo:
+                if _wasm:
+                    _nb_name = _fname.rsplit(".", 1)[0]
+                    _wasm_url = f"{_wasm.rstrip('/')}/{_nb_name}.html"
+                    _links.append(mo.md(f"[Edit in Browser]({_wasm_url})"))
+                elif _repo:
                     _molab = (
                         f"https://molab.marimo.io/github/{_repo}"
                         f"/blob/{_branch}/{_rel_path}/{_name}/files/{_fname}"

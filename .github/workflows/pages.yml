@@ -6,6 +6,7 @@ on:
     paths:
       - src/mograder/student_wasm_app.py
       - .github/workflows/pages.yml
+      - demo/course/**
   workflow_dispatch:
 
 permissions:
@@ -33,6 +34,12 @@ jobs:
 
       - name: Export WASM app
         run: uv run marimo export html-wasm src/mograder/student_wasm_app.py -o dist/index.html --mode run
+
+      - name: Export demo-assignment notebook
+        run: uv run marimo export html-wasm demo/course/demo-assignment/files/demo-assignment.py -o dist/notebooks/demo-assignment.html --mode edit
+
+      - name: Export demo-holistic notebook
+        run: uv run marimo export html-wasm demo/course/demo-holistic/files/demo-holistic.py -o dist/notebooks/demo-holistic.html --mode edit
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
