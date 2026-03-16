@@ -54,9 +54,8 @@ echo "=== Importing student names ==="
 if [ -d demo/course ]; then
     for d in demo/course/*/; do
         name=$(basename "$d")
-        if [ -d "$COURSE/release/$name" ]; then
-            cp "$d"/*.py "$COURSE/release/$name/" 2>/dev/null || true
-        fi
+        mkdir -p "$COURSE/release/$name"
+        cp "$d"/files/*.py "$COURSE/release/$name/" 2>/dev/null || true
     done
 fi
 
