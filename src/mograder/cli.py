@@ -2705,6 +2705,13 @@ def workshop_export(sources, output_dir, salt):
         subprocess.run(cmd, check=True)
         click.echo(f"WASM: {_rel(html_out)}")
 
+        # Generate dashboard HTML
+        from mograder.workshop import generate_dashboard_html
+
+        dashboard_path = output_dir / "dashboard.html"
+        dashboard_path.write_text(generate_dashboard_html(exercise_keys))
+        click.echo(f"Dashboard: {_rel(dashboard_path)}")
+
 
 @workshop_group.command("release-key")
 @click.argument("keys_file", type=click.Path(path_type=Path))
@@ -2716,3 +2723,57 @@ def workshop_release_key(keys_file, exercise_id, salt):
 
     release_key(keys_file, exercise_id, salt)
     click.echo(f"Released key for {exercise_id} in {_rel(keys_file)}")
+
+
+@workshop_group.command("serve")
+@click.argument("export_dir", type=click.Path(exists=True, path_type=Path))
+@click.option("--port", default=8080, help="Port to listen on")
+@click.option("--host", default="127.0.0.1", help="Host to bind to")
+@click.option("--salt", required=True, help="The encryption salt used at export time")
+def workshop_serve(export_dir, port, host, salt):
+    """Serve a workshop export directory with an instructor dashboard.
+
+    Students open the root URL to use the WASM notebook. The instructor opens
+    /dashboard.html#token=<secret> (printed at startup) to release solutions.
+    """
+    import secrets as _secrets
+
+    from mograder.workshop import generate_dashboard_html
+    from mograder.workshop_server import create_workshop_server
+
+    export_dir = Path(export_dir)
+    keys_path = export_dir / "keys.json"
+    keys_all_path = export_dir / "keys_all.json"
+
+    if not keys_all_path.is_file():
+        raise click.ClickException(f"keys_all.json not found in {export_dir}")
+
+    keys_all = json.loads(keys_all_path.read_text())
+
+    # Generate dashboard HTML
+    exercise_keys = list(keys_all.keys())
+    dashboard_path = export_dir / "dashboard.html"
+    dashboard_path.write_text(generate_dashboard_html(exercise_keys))
+
+    # Generate a secret token for instructor auth
+    secret = _secrets.token_urlsafe(16)
+
+    server = create_workshop_server(
+        export_dir=export_dir,
+        keys_path=keys_path,
+        keys_all=keys_all,
+        secret=secret,
+        host=host,
+        port=port,
+    )
+
+    url = f"http://{host}:{port}"
+    click.echo(f"Student notebook:       {url}/")
+    click.echo(f"Instructor dashboard:   {url}/dashboard.html#token={secret}")
+    click.echo("Press Ctrl+C to stop.")
+
+    try:
+        server.serve_forever()
+    except KeyboardInterrupt:
+        click.echo("\nShutting down.")
+        server.shutdown()

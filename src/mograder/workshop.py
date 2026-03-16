@@ -540,6 +540,115 @@ def write_keys(
         path.write_text(json.dumps(keys, indent=2) + "\n")
 
 
+def generate_dashboard_html(
+    exercises: list[str], title: str = "Workshop Dashboard"
+) -> str:
+    """Return a self-contained HTML string for the instructor dashboard.
+
+    The dashboard shows checkboxes for each exercise, with "Release All"
+    and "Lock All" buttons. Token is read from ``location.hash``.
+    """
+    exercise_json = json.dumps(exercises)
+    return f"""\
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{title}</title>
+<style>
+  body {{ font-family: system-ui, sans-serif; max-width: 600px; margin: 2rem auto; padding: 0 1rem; }}
+  h1 {{ font-size: 1.4rem; }}
+  table {{ border-collapse: collapse; width: 100%; margin: 1rem 0; }}
+  th, td {{ text-align: left; padding: 0.5rem 1rem; border-bottom: 1px solid #ddd; }}
+  .btn {{ padding: 0.4rem 1rem; margin: 0.2rem; cursor: pointer; border: 1px solid #ccc; border-radius: 4px; background: #f5f5f5; }}
+  .btn:hover {{ background: #e0e0e0; }}
+  .btn-release {{ background: #d4edda; border-color: #28a745; }}
+  .btn-lock {{ background: #f8d7da; border-color: #dc3545; }}
+  #status {{ margin: 1rem 0; padding: 0.5rem; border-radius: 4px; }}
+  .ok {{ background: #d4edda; }}
+  .err {{ background: #f8d7da; }}
+</style>
+</head>
+<body>
+<h1>{title}</h1>
+<div id="status"></div>
+<div style="margin-bottom:1rem">
+  <button class="btn btn-release" onclick="releaseAll(true)">Release All</button>
+  <button class="btn btn-lock" onclick="releaseAll(false)">Lock All</button>
+</div>
+<table>
+  <thead><tr><th>Exercise</th><th>Released</th></tr></thead>
+  <tbody id="exercises"></tbody>
+</table>
+<script>
+const EXERCISES = {exercise_json};
+let TOKEN = location.hash.replace('#token=', '');
+
+function api(path, opts) {{
+  const sep = path.includes('?') ? '&' : '?';
+  return fetch(path + sep + 'token=' + TOKEN, opts);
+}}
+
+function render(state) {{
+  const tbody = document.getElementById('exercises');
+  tbody.innerHTML = '';
+  state.exercises.forEach(function(ex) {{
+    const tr = document.createElement('tr');
+    const tdName = document.createElement('td');
+    tdName.textContent = ex;
+    const tdCheck = document.createElement('td');
+    const cb = document.createElement('input');
+    cb.type = 'checkbox';
+    cb.checked = !!state.released[ex];
+    cb.onchange = function() {{ toggleRelease(ex, cb.checked); }};
+    tdCheck.appendChild(cb);
+    tr.appendChild(tdName);
+    tr.appendChild(tdCheck);
+    tbody.appendChild(tr);
+  }});
+}}
+
+function refresh() {{
+  api('/workshop/exercises')
+    .then(function(r) {{ return r.json(); }})
+    .then(render)
+    .catch(function(e) {{ showStatus('Error: ' + e, 'err'); }});
+}}
+
+function toggleRelease(exercise, released) {{
+  api('/workshop/release', {{
+    method: 'POST',
+    headers: {{'Content-Type': 'application/json'}},
+    body: JSON.stringify({{exercise: exercise, released: released}})
+  }}).then(function(r) {{ return r.json(); }}).then(render);
+}}
+
+function releaseAll(released) {{
+  api('/workshop/release-all', {{
+    method: 'POST',
+    headers: {{'Content-Type': 'application/json'}},
+    body: JSON.stringify({{released: released}})
+  }}).then(function(r) {{ return r.json(); }}).then(render);
+}}
+
+function showStatus(msg, cls) {{
+  const el = document.getElementById('status');
+  el.textContent = msg;
+  el.className = cls;
+}}
+
+if (!TOKEN) {{
+  showStatus('No token found. Open this page with #token=<secret>', 'err');
+}} else {{
+  refresh();
+  setInterval(refresh, 3000);
+}}
+</script>
+</body>
+</html>"""
+
+
 def release_key(keys_path: Path, exercise_id: str, salt: str) -> None:
     """Add one key to a keys.json for incremental release during a live workshop.
 

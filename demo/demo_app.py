@@ -2,6 +2,9 @@
 
 Environment variables:
     MOGRADER_COURSE_DIR       — course directory for formgrader (default: ".")
+    MOGRADER_WORKSHOP_DIR     — workshop export directory (optional)
+    MOGRADER_WORKSHOP_SALT    — workshop encryption salt (optional)
+    MOGRADER_WORKSHOP_SECRET  — workshop dashboard token (optional, auto-generated)
 """
 
 from __future__ import annotations
@@ -76,12 +79,55 @@ if (course_dir / "release").is_dir():
         except Exception:
             logger.exception("Autograde error: %s/%s", assignment, username)
 
+    # Optional workshop routes
+    workshop_app = None
+    workshop_dir = os.environ.get("MOGRADER_WORKSHOP_DIR")
+    if workshop_dir:
+        import json
+        import secrets
+
+        from mograder.workshop_server import create_workshop_starlette_routes
+
+        _ws_dir = Path(workshop_dir)
+        _ws_keys_all_path = _ws_dir / "keys_all.json"
+        if _ws_keys_all_path.is_file():
+            _ws_keys_all = json.loads(_ws_keys_all_path.read_text())
+            _ws_salt = os.environ.get("MOGRADER_WORKSHOP_SALT", "workshop")
+            _ws_secret = os.environ.get(
+                "MOGRADER_WORKSHOP_SECRET", secrets.token_urlsafe(16)
+            )
+            _ws_keys_path = _ws_dir / "keys.json"
+
+            # Generate dashboard HTML
+            from mograder.workshop import generate_dashboard_html
+
+            (_ws_dir / "dashboard.html").write_text(
+                generate_dashboard_html(list(_ws_keys_all.keys()))
+            )
+
+            workshop_app = create_workshop_starlette_routes(
+                export_dir=_ws_dir,
+                keys_path=_ws_keys_path,
+                keys_all=_ws_keys_all,
+                secret=_ws_secret,
+            )
+            logger.info("Workshop dashboard secret: %s", _ws_secret)
+
     from starlette.types import Receive, Scope, Send
 
     async def _router(scope: Scope, receive: Receive, send: Send):
-        """Route requests to API or formgrader."""
+        """Route requests to API, workshop, or formgrader."""
         path = scope.get("path", "")
         if scope["type"] in ("http", "websocket"):
+            # Workshop routes
+            if workshop_app and (
+                path.startswith("/workshop/")
+                or path == "/keys.json"
+                or path == "/dashboard.html"
+            ):
+                await workshop_app(scope, receive, send)
+                return
+
             if path.startswith("/assignments") or path == "/register":
                 # Intercept submit responses to trigger autograde
                 if "/submit" in path and scope.get("method") == "POST":
