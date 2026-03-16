@@ -257,8 +257,12 @@ def run_notebook(
     sidecar_path = Path(sidecar_name)
 
     try:
+        # Resolve to absolute paths so they remain valid when cwd changes.
+        notebook_abs = notebook_path.resolve()
+        notebook_cwd = notebook_abs.parent
+
         if sandbox_dir is not None:
-            python_exe = str(_venv_python(sandbox_dir))
+            python_exe = str(_venv_python(sandbox_dir.resolve()))
         else:
             python_exe = sys.executable
 
@@ -268,7 +272,7 @@ def run_notebook(
             "marimo",
             "export",
             "html",
-            str(notebook_path),
+            str(notebook_abs),
             "-o",
             str(tmp_path),
         ]
@@ -303,6 +307,7 @@ def run_notebook(
                 env=env,
                 stdin=subprocess.DEVNULL,
                 preexec_fn=_preexec,
+                cwd=notebook_cwd,
             )
             _poll_sidecar(proc, sidecar_path, timeout, on_check)
             stderr = proc.stderr.read() if proc.stderr else ""
@@ -315,6 +320,7 @@ def run_notebook(
                 env=env,
                 stdin=subprocess.DEVNULL,
                 preexec_fn=_preexec,
+                cwd=notebook_cwd,
             )
             stderr = proc.stderr
 

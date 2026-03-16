@@ -537,7 +537,7 @@ def wasm_export(ctx, assignments, export_all, check_only, mode):
 
 
 @cli.command()
-@click.argument("file", type=click.Path(exists=True, path_type=Path))
+@click.argument("assignments", nargs=-1, required=True, metavar="ASSIGNMENTS...")
 @click.option(
     "--timeout",
     type=int,
@@ -558,8 +558,12 @@ def wasm_export(ctx, assignments, export_all, check_only, mode):
     help="Path to release notebook (for --fix); auto-discovered from .mograder/release/ if omitted",
 )
 @click.pass_context
-def validate(ctx, file, timeout, fix, release_path):
-    """Run a notebook in a sandbox and report check results."""
+def validate(ctx, assignments, timeout, fix, release_path):
+    """Run notebook(s) in a sandbox and report check results.
+
+    ASSIGNMENTS can be assignment names (e.g. "A3-BayesianLinearRegression")
+    which are auto-expanded to source/<name>/<name>.py, or explicit file paths.
+    """
     from mograder.integrity import (
         fix_modified_cells,
         parse_assignment_name,
@@ -567,82 +571,91 @@ def validate(ctx, file, timeout, fix, release_path):
     )
     from mograder.runner import create_shared_sandbox, run_notebook
 
-    # --- Cell hash integrity check ---
-    notebook_text = file.read_text()
-    hash_warnings = validate_cell_hashes(notebook_text)
-    if hash_warnings:
-        click.echo("WARNING: The following non-solution cells have been modified:")
-        for w in hash_warnings:
-            click.echo(f"  Cell {w.index + 1}: {w.snippet}")
+    config = ctx.obj["config"]
+    files = _resolve_assignments(assignments, config.source_dir)
 
-        if fix:
-            # Find release notebook
-            release_text = None
-            if release_path:
-                release_text = release_path.read_text()
-            else:
-                # Try .mograder/release/<assignment>/ cache
-                assignment = parse_assignment_name(notebook_text)
-                if assignment:
-                    cache_dir = file.parent / ".mograder" / "release" / assignment
-                    candidates = (
-                        list(cache_dir.glob("*.py")) if cache_dir.is_dir() else []
-                    )
-                    if candidates:
-                        release_text = candidates[0].read_text()
+    any_failed = False
+    for file in files:
+        # --- Cell hash integrity check ---
+        notebook_text = file.read_text()
+        hash_warnings = validate_cell_hashes(notebook_text)
+        if hash_warnings:
+            click.echo("WARNING: The following non-solution cells have been modified:")
+            for w in hash_warnings:
+                click.echo(f"  Cell {w.index + 1}: {w.snippet}")
 
-            if release_text:
-                result = fix_modified_cells(release_text, notebook_text)
-                if result.tampered_cells:
-                    file.write_text(result.fixed_source)
-                    click.echo(
-                        f"Fixed {len(result.tampered_cells)} cell(s) from release"
-                    )
+            if fix:
+                # Find release notebook
+                release_text = None
+                if release_path:
+                    release_text = release_path.read_text()
                 else:
-                    click.echo("No fixable differences found")
-            else:
-                click.echo(
-                    "Cannot fix: no release notebook found. "
-                    "Use --release <path> or run 'mograder fetch' first."
-                )
-        click.echo()
+                    # Try .mograder/release/<assignment>/ cache
+                    assignment = parse_assignment_name(notebook_text)
+                    if assignment:
+                        cache_dir = file.parent / ".mograder" / "release" / assignment
+                        candidates = (
+                            list(cache_dir.glob("*.py")) if cache_dir.is_dir() else []
+                        )
+                        if candidates:
+                            release_text = candidates[0].read_text()
 
-    click.echo("Installing dependencies...")
-    sandbox = create_shared_sandbox(file)
-    click.echo(f"Running {_rel(file)}...")
-    result = run_notebook(
-        file,
-        sandbox_dir=sandbox,
-        timeout=timeout,
-        html_dir=file.parent,
-        rlimit_nproc=0,
-        rlimit_nofile=0,
-        rlimit_as=0,
-    )
+                if release_text:
+                    fix_result = fix_modified_cells(release_text, notebook_text)
+                    if fix_result.tampered_cells:
+                        file.write_text(fix_result.fixed_source)
+                        click.echo(
+                            f"Fixed {len(fix_result.tampered_cells)} cell(s) from release"
+                        )
+                    else:
+                        click.echo("No fixable differences found")
+                else:
+                    click.echo(
+                        "Cannot fix: no release notebook found. "
+                        "Use --release <path> or run 'mograder fetch' first."
+                    )
+            click.echo()
 
-    if not result.export_ok:
-        click.echo(f"FAILED: {result.export_error}", err=True)
-        sys.exit(1)
+        click.echo("Installing dependencies...")
+        sandbox = create_shared_sandbox(file)
+        click.echo(f"Running {_rel(file)}...")
+        result = run_notebook(
+            file,
+            sandbox_dir=sandbox,
+            timeout=timeout,
+            html_dir=file.parent,
+            rlimit_nproc=0,
+            rlimit_nofile=0,
+            rlimit_as=0,
+        )
 
-    if result.cell_errors > 0:
-        click.echo(f"  {result.cell_errors} cell error(s)")
+        if not result.export_ok:
+            click.echo(f"FAILED: {result.export_error}", err=True)
+            any_failed = True
+            continue
 
-    if not result.checks:
-        click.echo("No checks found")
-        sys.exit(0)
+        if result.cell_errors > 0:
+            click.echo(f"  {result.cell_errors} cell error(s)")
 
-    passed = sum(1 for c in result.checks if c.status == "success")
-    total = len(result.checks)
-    for c in result.checks:
-        icon = "PASS" if c.status == "success" else "FAIL"
-        click.echo(f"  {icon}: {c.label}")
-        for msg in c.details:
-            click.echo(f"        {msg}")
+        if not result.checks:
+            click.echo("No checks found")
+            continue
 
-    click.echo(f"\n{passed}/{total} checks passed")
-    if result.html_path:
-        click.echo(f"Report: {result.html_path}")
-    if passed < total:
+        passed = sum(1 for c in result.checks if c.status == "success")
+        total = len(result.checks)
+        for c in result.checks:
+            icon = "PASS" if c.status == "success" else "FAIL"
+            click.echo(f"  {icon}: {c.label}")
+            for msg in c.details:
+                click.echo(f"        {msg}")
+
+        click.echo(f"\n{passed}/{total} checks passed")
+        if result.html_path:
+            click.echo(f"Report: {result.html_path}")
+        if passed < total:
+            any_failed = True
+
+    if any_failed:
         sys.exit(1)
 
 
