@@ -87,7 +87,9 @@ def _(connection_error, mo):
 
 
 @app.cell
-def _(assignments, datetime, mo, moodle_url, precomputed_edit_links, server_url):
+def _(
+    assignments, datetime, mo, moodle_url, params, precomputed_edit_links, server_url
+):
     if not assignments:
         mo.output.replace(
             mo.callout(
@@ -98,14 +100,16 @@ def _(assignments, datetime, mo, moodle_url, precomputed_edit_links, server_url)
         mo.stop(True)
 
     _base = server_url.value.rstrip("/")
-    # Derive WASM base URL from server URL (strip /api suffix, add /wasm)
-    _wasm_base = _base.rsplit("/api", 1)[0] + "/wasm" if "/api" in _base else ""
+    # Derive WASM base URL: explicit query param > auto-detect from server URL
+    _wasm_base = params.get("wasm_base", "")
+    if not _wasm_base and "/api" in _base:
+        _wasm_base = _base.rsplit("/api", 1)[0] + "/wasm"
 
     _rows = []
     for _a in assignments:
         _name = _a["name"]
         _files = _a.get("files", [])
-        _dir = _a.get("dir", "")
+        _dir = _a.get("dir", "") or _a.get("id", "") or _name
 
         # Due date
         _due = ""
@@ -115,9 +119,11 @@ def _(assignments, datetime, mo, moodle_url, precomputed_edit_links, server_url)
 
         # Edit column: WASM link + edit_links (molab, codespaces, etc.)
         _edit_parts = []
-        _has_wasm = bool(_a.get("wasm_url") and _wasm_base)
+        _has_wasm = bool(
+            _wasm_base and (_a.get("wasm_url") or params.get("wasm_base", ""))
+        )
         if _has_wasm:
-            _wasm_href = _wasm_base + "/" + _dir + "/"
+            _wasm_href = _wasm_base.rstrip("/") + "/" + _dir + ".html"
             _edit_parts.append(f"**[Edit in Browser]({_wasm_href})**")
         _link_labels = {"molab": "Edit in Molab", "codespaces": "Edit in Codespaces"}
         for _link in _a.get("edit_links", []):
