@@ -104,8 +104,10 @@ def _(mo):
 @app.cell
 def _(np):
     def finite_diff(x, y):
+        dydx = ...
         # YOUR CODE HERE
         pass
+        return dydx
 
     return (finite_diff,)
 

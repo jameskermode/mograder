@@ -326,6 +326,39 @@ def generate(
                     shutil.copy2(f, dest)
                     click.echo(f"COPY: {_rel(f)} → {_rel(dest)}")
 
+    # Phase 3: Validate release notebooks (no cell errors allowed)
+    if not dry_run and not validate and not no_validate:
+        from .runner import create_shared_sandbox, run_notebook
+
+        click.echo("\n--- Phase 3: Validating release notebooks ---")
+        release_ok = True
+        release_sandbox = None
+        for filepath in py_files:
+            dest_dir = (
+                output_dir / filepath.parent.name
+                if filepath.parent.name != "."
+                else output_dir
+            )
+            release_path = dest_dir / filepath.name
+            if not release_path.exists():
+                continue
+            click.echo(f"RELEASE-CHECK: {_rel(release_path)} ... ", nl=False)
+            if release_sandbox is None:
+                release_sandbox = create_shared_sandbox(release_path)
+            result = run_notebook(release_path, sandbox_dir=release_sandbox)
+            if not result.export_ok:
+                click.echo(f"FAIL (export error: {result.export_error})")
+                release_ok = False
+                continue
+            if result.cell_errors > 0:
+                click.echo(f"FAIL ({result.cell_errors} cell errors)")
+                release_ok = False
+                continue
+            click.echo("OK")
+        if not release_ok:
+            click.echo("ERROR: release notebook validation failed", err=True)
+            success = False
+
     if not success:
         sys.exit(1)
 

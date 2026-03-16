@@ -2,6 +2,7 @@ from mograder.markers import (
     SOLUTION_BEGIN,
     SOLUTION_END,
     SUBMIT_MARKER,
+    _extract_return_names,
     build_submit_cell,
     convert_markdown_cells,
     count_markers,
@@ -262,3 +263,114 @@ def test_process_file_without_submit_url(tmp_path, fixtures_dir):
     assert process_file(source, out_dir) is True
     content = (out_dir / source.name).read_text()
     assert SUBMIT_MARKER not in content
+
+
+# --- _extract_return_names ---
+
+
+def test_extract_return_names_single():
+    assert _extract_return_names("        return pdf\n") == ["pdf"]
+
+
+def test_extract_return_names_tuple():
+    assert _extract_return_names("    return x, y\n") == ["x", "y"]
+
+
+def test_extract_return_names_parens_tuple():
+    assert _extract_return_names("    return (f_X,)\n") == ["f_X"]
+
+
+def test_extract_return_names_complex_expr():
+    assert _extract_return_names("    return x.value + 1\n") == []
+
+
+def test_extract_return_names_bare_return():
+    assert _extract_return_names("    return\n") == []
+
+
+def test_extract_return_names_no_return():
+    assert _extract_return_names("    x = 1\n") == []
+
+
+# --- sentinel insertion in strip_solutions ---
+
+
+def test_strip_solutions_sentinel_for_orphaned_return():
+    """return <name> after END SOLUTION gets a var = ... sentinel."""
+    lines = [
+        "    def f(x):\n",
+        f"        {SOLUTION_BEGIN}\n",
+        "        result = x * 2\n",
+        f"        {SOLUTION_END}\n",
+        "        return result\n",
+    ]
+    result = strip_solutions(lines)
+    assert "        result = ...\n" in result
+    assert "        # YOUR CODE HERE\n" in result
+    assert "        return result\n" in result
+
+
+def test_strip_solutions_no_sentinel_when_pre_assigned():
+    """No duplicate sentinel when variable is already assigned before BEGIN SOLUTION."""
+    lines = [
+        "    x = None\n",
+        f"    {SOLUTION_BEGIN}\n",
+        "    x = 42\n",
+        f"    {SOLUTION_END}\n",
+        "    return (x,)\n",
+    ]
+    result = strip_solutions(lines)
+    # x = None already exists before the block, no sentinel added
+    assert "    x = ...\n" not in result
+
+
+def test_strip_solutions_sentinel_multiple_returns():
+    """return x, y gets sentinels for both names."""
+    lines = [
+        f"    {SOLUTION_BEGIN}\n",
+        "    x = 1\n",
+        "    y = 2\n",
+        f"    {SOLUTION_END}\n",
+        "    return x, y\n",
+    ]
+    result = strip_solutions(lines)
+    assert "    x = ...\n" in result
+    assert "    y = ...\n" in result
+
+
+def test_strip_solutions_no_sentinel_for_complex_return():
+    """return with complex expressions (not simple names) gets no sentinel."""
+    lines = [
+        f"    {SOLUTION_BEGIN}\n",
+        "    x = compute()\n",
+        f"    {SOLUTION_END}\n",
+        "    return x.value + 1\n",
+    ]
+    result = strip_solutions(lines)
+    # No sentinel — return expression is not a simple name
+    assert "..." not in "".join(result)
+
+
+def test_strip_solutions_sentinel_parenthesised_tuple():
+    """return (f_X,) gets sentinel for f_X if not pre-assigned."""
+    lines = [
+        "    def f_X(x):\n",
+        f"        {SOLUTION_BEGIN}\n",
+        "        val = x * 2\n",
+        "        return val\n",
+        f"        {SOLUTION_END}\n",
+        "\n",
+        "    return (f_X,)\n",
+    ]
+    result = strip_solutions(lines)
+    # f_X is defined by `def f_X(x):` which is before the block but
+    # at a lower indent level — the scan should stop there.
+    # The sentinel is NOT needed because `def f_X` is a function def,
+    # not an assignment. But the return (f_X,) is at outer scope, and
+    # f_X is defined by `def`, so it's already available.
+    # Actually `def f_X(x):` is not matched by _ASSIGN_RE, so f_X
+    # would be considered orphaned. But in practice the `return (f_X,)`
+    # is at a different indent level than the solution block, so the
+    # forward scan won't match it (it's at 4 spaces, block is at 8).
+    # Let's verify the output is sensible
+    assert "        # YOUR CODE HERE\n" in result

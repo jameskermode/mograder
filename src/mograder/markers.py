@@ -18,6 +18,107 @@ SOLUTION_BEGIN = "### BEGIN SOLUTION"
 SOLUTION_END = "### END SOLUTION"
 SUBMIT_MARKER = "# === MOGRADER: SUBMIT ==="
 
+_SIMPLE_NAME_RE = re.compile(r"^[a-zA-Z_]\w*$")
+_ASSIGN_RE = re.compile(r"^\s*([a-zA-Z_]\w*)\s*=")
+
+
+def _extract_return_names(line: str) -> list[str]:
+    """Extract simple variable names from a return statement.
+
+    Returns names only when every component of the return expression is a
+    bare identifier (e.g. ``return x`` or ``return x, y``).  Complex
+    expressions like ``return x.value + 1`` yield an empty list.
+    """
+    m = re.match(r"^\s*return\s+(.+)$", line)
+    if not m:
+        return []
+    expr = m.group(1).strip()
+    # Single name: return result
+    if _SIMPLE_NAME_RE.match(expr):
+        return [expr]
+    # Tuple with optional parens: return (x, y) or return x, y
+    if expr.startswith("(") and expr.endswith(")"):
+        expr = expr[1:-1].strip()
+    if expr.endswith(","):
+        expr = expr[:-1].strip()
+    parts = [p.strip() for p in expr.split(",")]
+    if all(_SIMPLE_NAME_RE.match(p) for p in parts):
+        return parts
+    return []
+
+
+def _find_sentinel_vars(lines: list[str]) -> dict[int, list[str]]:
+    """Identify variables needing sentinels for each solution block.
+
+    Returns a mapping from solution-block index (0-based count of BEGIN
+    SOLUTION markers) to the list of variable names that should be
+    initialised as ``name = ...`` before the ``# YOUR CODE HERE``
+    placeholder.
+
+    A variable needs a sentinel when it appears in a ``return`` statement
+    after the corresponding END SOLUTION but is **not** already assigned
+    between the beginning of the enclosing scope and the BEGIN SOLUTION
+    marker.
+    """
+    # First pass: locate all solution blocks
+    blocks: list[tuple[int, int, str]] = []  # (begin_idx, end_idx, indent)
+    stack_begin: int | None = None
+    stack_indent = ""
+    for i, line in enumerate(lines):
+        stripped = line.strip()
+        if stripped == SOLUTION_BEGIN:
+            stack_begin = i
+            stack_indent = line[: len(line) - len(line.lstrip())]
+        elif stripped == SOLUTION_END and stack_begin is not None:
+            blocks.append((stack_begin, i, stack_indent))
+            stack_begin = None
+
+    result: dict[int, list[str]] = {}
+    for block_idx, (begin, end, indent) in enumerate(blocks):
+        # Scan forward from END SOLUTION to find return statements
+        # Stop at next BEGIN SOLUTION, end of file, or a line at lower
+        # indentation (different scope).
+        return_names: list[str] = []
+        for j in range(end + 1, len(lines)):
+            fwd = lines[j]
+            fwd_stripped = fwd.strip()
+            if not fwd_stripped:
+                continue
+            if fwd_stripped == SOLUTION_BEGIN:
+                break
+            # Stop when we leave the scope (lower indentation)
+            fwd_indent = fwd[: len(fwd) - len(fwd.lstrip())]
+            if len(fwd_indent) < len(indent):
+                break
+            names = _extract_return_names(fwd)
+            return_names.extend(names)
+            if names or fwd_stripped.startswith("return"):
+                break  # found the return, stop scanning
+
+        if not return_names:
+            continue
+
+        # Collect names already assigned before BEGIN SOLUTION in this scope
+        pre_assigned: set[str] = set()
+        for j in range(begin - 1, -1, -1):
+            prev = lines[j]
+            prev_stripped = prev.strip()
+            if not prev_stripped:
+                continue
+            # Stop scanning when we leave the enclosing scope
+            prev_indent = prev[: len(prev) - len(prev.lstrip())]
+            if prev_stripped and len(prev_indent) < len(indent):
+                break
+            m = _ASSIGN_RE.match(prev)
+            if m:
+                pre_assigned.add(m.group(1))
+
+        orphaned = [n for n in return_names if n not in pre_assigned]
+        if orphaned:
+            result[block_idx] = orphaned
+
+    return result
+
 
 def validate_markers(lines: list[str], filepath: str) -> list[str]:
     """Check that all solution markers are properly paired.
@@ -59,21 +160,33 @@ def strip_solutions(lines: list[str]) -> list[str]:
     Lines between BEGIN SOLUTION / END SOLUTION are replaced with
     ``# YOUR CODE HERE`` and ``pass`` at the correct indentation.
     The ``pass`` ensures empty function bodies remain syntactically valid.
+
+    When a ``return`` statement after END SOLUTION references simple
+    variable names that are only defined inside the removed solution block,
+    sentinel assignments (``name = ...``) are inserted before the
+    placeholder so the return does not raise :class:`NameError`.
     """
+    sentinels = _find_sentinel_vars(lines)
+
     output = []
     in_solution = False
     solution_indent = ""
+    block_idx = -1
 
     for line in lines:
         stripped = line.strip()
 
         if stripped == SOLUTION_BEGIN:
             in_solution = True
+            block_idx += 1
             solution_indent = line[: len(line) - len(line.lstrip())]
             continue
 
         if stripped == SOLUTION_END:
             in_solution = False
+            # Insert sentinels for orphaned return variables
+            for name in sentinels.get(block_idx, []):
+                output.append(f"{solution_indent}{name} = ...\n")
             output.append(f"{solution_indent}# YOUR CODE HERE\n")
             output.append(f"{solution_indent}pass\n")
             continue
