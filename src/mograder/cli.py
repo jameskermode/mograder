@@ -66,7 +66,8 @@ def _resolve_assignments(
                 parent = Path(base_dir)
                 if parent.is_dir():
                     matches = sorted(
-                        p for p in parent.iterdir()
+                        p
+                        for p in parent.iterdir()
                         if p.is_dir() and p.name.startswith(s + "-")
                     )
                     if len(matches) == 1:

@@ -111,11 +111,21 @@ def reveal_solution(
 
 def fetch_released_keys(url: str = "./keys.json") -> dict:
     """Fetch released keys. Uses pyodide.http.open_url in WASM, urllib locally."""
-    try:
-        from pyodide.http import open_url  # type: ignore[import-not-found]
+    import time
 
-        text = open_url(url).read()
-        return json.loads(text)
+    try:
+        from js import XMLHttpRequest  # type: ignore[import-not-found]
+        from js import self as js_self  # type: ignore[import-not-found]
+
+        # Worker runs from /assets/worker-xxx.js — go up to site root
+        base = str(js_self.location.href).rsplit("/", 1)[0].rsplit("/", 1)[0] + "/"
+        full_url = base + url + "?t=" + str(int(time.time()))
+        req = XMLHttpRequest.new()
+        req.open("GET", full_url, False)  # synchronous, cache-bust
+        req.send()
+        if req.status == 200 and req.responseText:
+            return json.loads(req.responseText)
+        return {}
     except ImportError:
         pass
 
@@ -273,27 +283,35 @@ def build_key_fetch_cell() -> str:
 @app.cell(hide_code=True)
 def _(mo):
     released_keys, set_released_keys = mo.state({})
-    return released_keys, set_released_keys
+    fetch_count, set_fetch_count = mo.state(0)
+    return fetch_count, released_keys, set_fetch_count, set_released_keys
 
 
 @app.cell(hide_code=True)
-def _(mo):
+def _(mo, set_fetch_count):
     workshop_key = mo.ui.text(label="Workshop key", placeholder="Enter key from instructor")
-    fetch_btn = mo.ui.run_button(label="Check for released solutions")
+
+    def _on_fetch(_):
+        set_fetch_count(lambda n: n + 1)
+
+    fetch_btn = mo.ui.button(label="Check for released solutions", on_click=_on_fetch)
     mo.hstack([workshop_key, fetch_btn], justify="start", gap=1)
     return fetch_btn, workshop_key
 
 
 @app.cell(hide_code=True)
-def _(mo, fetch_btn, fetch_released_keys, set_released_keys):
-    mo.stop(not fetch_btn.value)
-    _keys = fetch_released_keys()
-    set_released_keys(_keys)
-    _n = len(_keys)
-    if _n:
-        _out = mo.callout(mo.md(f"**{_n} solution(s) released** — scroll up to see them"), kind="success")
+def _(mo, fetch_count, fetch_released_keys, set_released_keys):
+    _count = fetch_count()
+    if _count == 0:
+        _out = mo.md("")
     else:
-        _out = mo.callout(mo.md("No additional solutions released by instructor"), kind="neutral")
+        _keys = fetch_released_keys()
+        set_released_keys(_keys)
+        _n = len(_keys)
+        if _n:
+            _out = mo.callout(mo.md(f"**{_n} solution(s) released** — scroll up to see them"), kind="success")
+        else:
+            _out = mo.callout(mo.md("No additional solutions released by instructor"), kind="neutral")
     _out
     return
 
@@ -419,13 +437,25 @@ def _add_check_pass_returns(lines: list[str], exercise_keys: list[str]) -> list[
     output = []
     current_cell_key = None
     captured = False
+    initialized = False
     for i, line in enumerate(lines):
         if line.strip().startswith("@app.cell"):
             current_cell_key = cell_key_map.get(i)
             captured = False
+            initialized = False
 
         if current_cell_key:
             stripped = line.strip()
+
+            # Insert default value right after the def line, before any mo.stop
+            if not initialized and stripped.startswith("def "):
+                output.append(line)
+                indent = "    "
+                var = f"check_passed_{current_cell_key}"
+                output.append(f"{indent}{var} = False\n")
+                initialized = True
+                continue
+
             if stripped.startswith("check(") and not captured:
                 indent = line[: len(line) - len(line.lstrip())]
                 line = f"{indent}_result = {stripped}\n"
