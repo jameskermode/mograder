@@ -92,7 +92,7 @@ jobs:
 
       - name: Verify
         run: |
-          sleep 3
+          sleep 8
           ROOT=$(curl -s -o /dev/null -w "%{http_code}" https://mograder-demo.jrkermode.uk/)
           API=$(curl -s -o /dev/null -w "%{http_code}" https://mograder-demo.jrkermode.uk/assignments)
           KEYS=$(curl -s -o /dev/null -w "%{http_code}" https://mograder-demo.jrkermode.uk/keys.json)
