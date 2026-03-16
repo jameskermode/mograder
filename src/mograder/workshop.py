@@ -114,7 +114,7 @@ def fetch_released_keys(url: str = "./keys.json") -> dict:
     try:
         from pyodide.http import open_url  # type: ignore[import-not-found]
 
-        text = open_url(url)
+        text = open_url(url).read()
         return json.loads(text)
     except ImportError:
         pass
