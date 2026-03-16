@@ -1,18 +1,16 @@
-"""Tests for mograder.workshop — crypto, parsing, check_answer, generation."""
+"""Tests for mograder.workshop — crypto, parsing, reveal, generation."""
 
 import json
 import textwrap
+
 from mograder.workshop import (
-    build_checker_cell,
-    build_exercises_cell,
     build_exercises_dict,
-    check_answer,
+    build_solution_cell,
     extract_solution_for_key,
-    make_hash,
-    normalize_answer,
-    parse_answers_metadata,
+    parse_exercises_metadata,
     process_workshop,
     release_key,
+    reveal_solution,
     write_keys,
     xor_decrypt,
     xor_encrypt,
@@ -22,41 +20,6 @@ from mograder.workshop import (
 # ---------------------------------------------------------------------------
 # Crypto primitives
 # ---------------------------------------------------------------------------
-
-
-def test_normalize_int():
-    assert normalize_answer(42) == "42"
-
-
-def test_normalize_float():
-    assert normalize_answer(3.14) == "3.14"
-
-
-def test_normalize_string():
-    assert normalize_answer("hello") == '"hello"'
-
-
-def test_normalize_list():
-    result = normalize_answer([2.54, 0.07])
-    assert json.loads(result) == [2.54, 0.07]
-
-
-def test_normalize_float_tolerance():
-    result = normalize_answer(3.14159265358979, tolerance=3)
-    assert json.loads(result) == 3.142
-
-
-def test_make_hash_deterministic():
-    h1 = make_hash("42", "salt1")
-    h2 = make_hash("42", "salt1")
-    assert h1 == h2
-    assert len(h1) == 64  # SHA256 hex digest
-
-
-def test_make_hash_salt_matters():
-    h1 = make_hash("42", "salt1")
-    h2 = make_hash("42", "salt2")
-    assert h1 != h2
 
 
 def test_xor_roundtrip():
@@ -81,50 +44,47 @@ def test_xor_empty():
 
 
 # ---------------------------------------------------------------------------
-# check_answer
+# reveal_solution
 # ---------------------------------------------------------------------------
 
 
-def test_check_answer_correct():
+def test_reveal_passed():
     salt = "testsalt"
-    answer = 42
-    normalized = normalize_answer(answer)
-    answer_hash = make_hash(normalized, salt)
     solution_code = "x = 42"
-    encrypted = xor_encrypt(solution_code, answer_hash)
+    encrypted = xor_encrypt(solution_code, salt)
+    exercises = {"Q1": {"solution": encrypted}}
 
-    exercises = {"Q1": {"hash": answer_hash, "solution": encrypted}}
-    status, solution = check_answer("Q1", 42, exercises, {}, salt)
-    assert status == "correct"
+    status, solution = reveal_solution("Q1", True, exercises, {}, salt)
+    assert status == "passed"
     assert solution == solution_code
 
 
-def test_check_answer_wrong():
+def test_reveal_locked():
     salt = "testsalt"
-    answer = 42
-    normalized = normalize_answer(answer)
-    answer_hash = make_hash(normalized, salt)
-    encrypted = xor_encrypt("x = 42", answer_hash)
+    encrypted = xor_encrypt("x = 42", salt)
+    exercises = {"Q1": {"solution": encrypted}}
 
-    exercises = {"Q1": {"hash": answer_hash, "solution": encrypted}}
-    status, solution = check_answer("Q1", 99, exercises, {}, salt)
-    assert status == "incorrect"
+    status, solution = reveal_solution("Q1", False, exercises, {}, salt)
+    assert status == "locked"
     assert solution is None
 
 
-def test_check_answer_released():
+def test_reveal_released():
     salt = "testsalt"
-    answer = 42
-    normalized = normalize_answer(answer)
-    answer_hash = make_hash(normalized, salt)
     solution_code = "x = 42"
-    encrypted = xor_encrypt(solution_code, answer_hash)
+    encrypted = xor_encrypt(solution_code, salt)
+    exercises = {"Q1": {"solution": encrypted}}
+    released_keys = {"Q1": True}
 
-    exercises = {"Q1": {"hash": answer_hash, "solution": encrypted}}
-    released_keys = {"Q1": normalized}
-    status, solution = check_answer("Q1", 99, exercises, released_keys, salt)
+    status, solution = reveal_solution("Q1", False, exercises, released_keys, salt)
     assert status == "released"
     assert solution == solution_code
+
+
+def test_reveal_unknown_exercise():
+    status, solution = reveal_solution("Q99", True, {}, {}, "salt")
+    assert status == "locked"
+    assert solution is None
 
 
 # ---------------------------------------------------------------------------
@@ -140,8 +100,8 @@ _SOURCE_NOTEBOOK = textwrap.dedent("""\
         import marimo as mo
         from mograder.runtime import check
 
-        # === MOGRADER: ANSWERS ===
-        _answers = {"Q1": [2.54, 0.07], "Q2": 42}
+        # === MOGRADER: EXERCISES ===
+        _exercises = ["Q1", "Q2"]
         return check, mo
 
     @app.cell
@@ -179,15 +139,15 @@ _SOURCE_NOTEBOOK = textwrap.dedent("""\
 """)
 
 
-def test_parse_answers_metadata():
+def test_parse_exercises_metadata():
     lines = _SOURCE_NOTEBOOK.splitlines(keepends=True)
-    answers = parse_answers_metadata(lines)
-    assert answers == {"Q1": [2.54, 0.07], "Q2": 42}
+    exercises = parse_exercises_metadata(lines)
+    assert exercises == ["Q1", "Q2"]
 
 
-def test_parse_answers_no_marker():
+def test_parse_exercises_no_marker():
     lines = ["import marimo\n", "app = marimo.App()\n"]
-    assert parse_answers_metadata(lines) is None
+    assert parse_exercises_metadata(lines) is None
 
 
 def test_extract_solution_for_key():
@@ -209,40 +169,25 @@ def test_extract_solution_for_key_q2():
 # ---------------------------------------------------------------------------
 
 
-def test_build_exercises_cell():
-    exercises = {
-        "Q1": {"hash": "abc123", "solution": "encrypted_blob"},
-    }
-    cell = build_exercises_cell(exercises, "salt123")
-    assert "EXERCISES" in cell
-    assert "SALT" in cell
-    assert "abc123" in cell
-    assert "salt123" in cell
-    # Should be valid Python-ish (contains @app.cell)
-    assert "@app.cell" in cell
-
-
-def test_build_checker_cell():
-    cell = build_checker_cell("Q1", "Array creation")
-    assert "Q1" in cell
-    assert "@app.cell" in cell
-    assert "check_answer" in cell
-    assert "mo.stop" in cell
-
-
 def test_build_exercises_dict():
     lines = _SOURCE_NOTEBOOK.splitlines(keepends=True)
-    answers = {"Q1": [2.54, 0.07], "Q2": 42}
     salt = "testsalt"
-    exercises = build_exercises_dict(answers, salt, lines)
+    exercises = build_exercises_dict(["Q1", "Q2"], salt, lines)
     assert "Q1" in exercises
     assert "Q2" in exercises
-    assert "hash" in exercises["Q1"]
     assert "solution" in exercises["Q1"]
 
-    # Verify hash matches
-    expected_hash = make_hash(normalize_answer([2.54, 0.07]), salt)
-    assert exercises["Q1"]["hash"] == expected_hash
+    # Verify roundtrip
+    sol = xor_decrypt(exercises["Q1"]["solution"], salt)
+    assert "np.linspace" in sol
+
+
+def test_build_solution_cell():
+    cell = build_solution_cell("Q1")
+    assert "Q1" in cell
+    assert "@app.cell" in cell
+    assert "reveal_solution" in cell
+    assert "WORKSHOP SOLUTION" in cell
 
 
 def test_process_workshop_e2e(tmp_path):
@@ -260,11 +205,15 @@ def test_process_workshop_e2e(tmp_path):
     assert "### BEGIN SOLUTION" not in content
     assert "# YOUR CODE HERE" in content
 
-    # Should have checker cells
-    assert "WORKSHOP CHECKER" in content or "check_answer" in content
+    # Should have solution reveal cells
+    assert "reveal_solution" in content
 
     # Should have key fetch cell
     assert "released_keys" in content
+
+    # Check cells should return check_passed_<key> booleans
+    assert "check_passed_Q1" in content
+    assert "check_passed_Q2" in content
 
 
 # ---------------------------------------------------------------------------
@@ -274,32 +223,30 @@ def test_process_workshop_e2e(tmp_path):
 
 def test_write_keys_empty(tmp_path):
     path = tmp_path / "keys.json"
-    write_keys({"Q1": 42}, "salt", path, which="empty")
+    write_keys(["Q1", "Q2"], path, which="empty")
     assert json.loads(path.read_text()) == {}
 
 
 def test_write_keys_all(tmp_path):
     path = tmp_path / "keys.json"
-    write_keys({"Q1": 42, "Q2": "hello"}, "salt", path, which="all")
+    write_keys(["Q1", "Q2"], path, which="all")
     keys = json.loads(path.read_text())
-    assert "Q1" in keys
-    assert "Q2" in keys
+    assert keys == {"Q1": True, "Q2": True}
 
 
 def test_release_key(tmp_path):
     path = tmp_path / "keys.json"
     path.write_text("{}\n")
-    release_key(path, "Q1", "42")
+    release_key(path, "Q1")
     keys = json.loads(path.read_text())
-    assert "Q1" in keys
-    assert json.loads(keys["Q1"]) == 42
+    assert keys == {"Q1": True}
 
 
 def test_release_key_new_file(tmp_path):
     path = tmp_path / "keys.json"
-    release_key(path, "Q1", "[2.54, 0.07]")
+    release_key(path, "Q1")
     keys = json.loads(path.read_text())
-    assert "Q1" in keys
+    assert keys == {"Q1": True}
 
 
 # ---------------------------------------------------------------------------
@@ -334,7 +281,7 @@ def test_workshop_release_key_cli(tmp_path):
     keys_file.write_text("{}\n")
 
     runner = CliRunner()
-    result = runner.invoke(cli, ["workshop", "release-key", str(keys_file), "Q1", "42"])
+    result = runner.invoke(cli, ["workshop", "release-key", str(keys_file), "Q1"])
     assert result.exit_code == 0, result.output
     keys = json.loads(keys_file.read_text())
-    assert "Q1" in keys
+    assert keys == {"Q1": True}

@@ -1,13 +1,14 @@
-"""Workshop notebooks with encrypted solutions and progressive answer checking.
+"""Workshop notebooks with encrypted solutions.
 
-Provides crypto primitives for answer hashing and solution encryption,
-exercise parsing from source notebooks, and notebook generation for
-interactive workshop use (including WASM deployment on GitHub Pages).
+Solutions are XOR-encrypted with a salt for obfuscation (not cryptographic
+security). They are revealed automatically when ``check()`` passes, or when
+the instructor releases them via ``keys.json`` during a live workshop.
+
+Provides encryption helpers, exercise parsing from source notebooks, and
+notebook generation for interactive workshop use (including WASM deployment).
 """
 
-import ast
 import base64
-import hashlib
 import json
 import re
 import secrets
@@ -21,8 +22,8 @@ from mograder.markers import (
     validate_markers,
 )
 
-ANSWERS_MARKER = "# === MOGRADER: ANSWERS ==="
-_WORKSHOP_CHECKER_PREFIX = "# === MOGRADER: WORKSHOP CHECKER"
+EXERCISES_MARKER = "# === MOGRADER: EXERCISES ==="
+_WORKSHOP_SOLUTION_PREFIX = "# === MOGRADER: WORKSHOP SOLUTION"
 
 # Reuse pattern from integrity.py
 _CHECK_CALL_RE = re.compile(r"""check\(\s*["']([^"':]+)""")
@@ -31,29 +32,6 @@ _CHECK_CALL_RE = re.compile(r"""check\(\s*["']([^"':]+)""")
 # ---------------------------------------------------------------------------
 # Crypto primitives (pure Python, Pyodide-compatible)
 # ---------------------------------------------------------------------------
-
-
-def normalize_answer(answer, tolerance=6) -> str:
-    """JSON-serialize answer, rounding floats to *tolerance* decimal places."""
-    return json.dumps(_round_floats(answer, tolerance), sort_keys=True)
-
-
-def _round_floats(obj, tolerance):
-    """Recursively round floats in nested structures."""
-    if isinstance(obj, float):
-        return round(obj, tolerance)
-    if isinstance(obj, list):
-        return [_round_floats(x, tolerance) for x in obj]
-    if isinstance(obj, dict):
-        return {k: _round_floats(v, tolerance) for k, v in obj.items()}
-    if isinstance(obj, tuple):
-        return [_round_floats(x, tolerance) for x in obj]
-    return obj
-
-
-def make_hash(normalized: str, salt: str) -> str:
-    """SHA256(salt + ':' + normalized) -> hex digest."""
-    return hashlib.sha256(f"{salt}:{normalized}".encode()).hexdigest()
 
 
 def xor_encrypt(data: str, key: str) -> str:
@@ -76,47 +54,35 @@ def xor_decrypt(ciphertext: str, key: str) -> str:
     return result.decode("utf-8")
 
 
-def check_answer(
+def reveal_solution(
     exercise_id: str,
-    submitted_answer,
+    check_passed: bool,
     exercises: dict,
     released_keys: dict,
     salt: str,
 ) -> tuple[str, str | None]:
-    """Check answer against exercises dict.
+    """Reveal a solution if the check passed or the key was released.
 
-    Returns ("correct", solution) | ("released", solution) | ("incorrect", None).
+    Returns ("passed", solution) | ("released", solution) | ("locked", None).
     """
     ex = exercises.get(exercise_id)
     if ex is None:
-        return ("incorrect", None)
+        return ("locked", None)
 
-    expected_hash = ex["hash"]
-    encrypted_solution = ex["solution"]
+    encrypted = ex["solution"]
 
-    # Check if answer is correct
-    normalized = normalize_answer(submitted_answer)
-    answer_hash = make_hash(normalized, salt)
+    if check_passed:
+        return ("passed", xor_decrypt(encrypted, salt))
 
-    if answer_hash == expected_hash:
-        solution = xor_decrypt(encrypted_solution, answer_hash)
-        return ("correct", solution)
+    if released_keys.get(exercise_id):
+        return ("released", xor_decrypt(encrypted, salt))
 
-    # Check if key has been released
-    if exercise_id in released_keys:
-        released_normalized = released_keys[exercise_id]
-        released_hash = make_hash(released_normalized, salt)
-        if released_hash == expected_hash:
-            solution = xor_decrypt(encrypted_solution, released_hash)
-            return ("released", solution)
-
-    return ("incorrect", None)
+    return ("locked", None)
 
 
 def fetch_released_keys(url: str = "./keys.json") -> dict:
-    """Fetch released keys. Uses pyodide.http.pyfetch in WASM, urllib locally."""
+    """Fetch released keys. Uses pyodide.http.open_url in WASM, urllib locally."""
     try:
-        # Try Pyodide first (WASM environment)
         from pyodide.http import open_url  # type: ignore[import-not-found]
 
         text = open_url(url)
@@ -134,35 +100,37 @@ def fetch_released_keys(url: str = "./keys.json") -> dict:
 
 
 # ---------------------------------------------------------------------------
-# Answer parsing (generate-time only)
+# Exercise parsing (generate-time only)
 # ---------------------------------------------------------------------------
 
 
-def parse_answers_metadata(source_lines: list[str]) -> dict | None:
-    """Extract _answers = {...} from the ANSWERS_MARKER cell.
+def parse_exercises_metadata(source_lines: list[str]) -> list[str] | None:
+    """Extract _exercises = [...] from the EXERCISES_MARKER cell.
 
-    Same approach as cells.parse_marks_metadata for _marks.
+    Returns a list of exercise key strings, or None if no marker found.
     """
+    import ast
+
     text = "".join(source_lines)
-    if ANSWERS_MARKER not in text:
+    if EXERCISES_MARKER not in text:
         return None
 
-    marker_idx = text.index(ANSWERS_MARKER)
+    marker_idx = text.index(EXERCISES_MARKER)
     section = text[marker_idx:]
 
-    dict_match = re.search(r"_answers\s*=\s*(\{[^}]+\})", section)
-    if not dict_match:
+    list_match = re.search(r"_exercises\s*=\s*(\[[^\]]+\])", section)
+    if not list_match:
         return None
     try:
-        answers = ast.literal_eval(dict_match.group(1))
+        exercises = ast.literal_eval(list_match.group(1))
     except (ValueError, SyntaxError):
         return None
 
-    return answers if answers else None
+    return exercises if exercises else None
 
 
 def extract_solution_for_key(source_lines: list[str], key: str) -> str | None:
-    """Find the ### BEGIN/END SOLUTION block in the cell whose check() label starts with key."""
+    """Find the ### BEGIN/END SOLUTION block in the cell before the check() matching *key*."""
     text = "".join(source_lines)
 
     # Split into cells by @app.cell boundaries
@@ -178,8 +146,7 @@ def extract_solution_for_key(source_lines: list[str], key: str) -> str | None:
         if not m or m.group(1).strip() != key:
             continue
 
-        # Found the check cell — now look for the solution cell that precedes it
-        # (the solution is typically in the cell just before the check cell)
+        # Found the check cell — look for the solution in the preceding cell
         if i > 0:
             prev_start = cell_starts[i - 1]
             prev_code = text[prev_start:start]
@@ -187,22 +154,18 @@ def extract_solution_for_key(source_lines: list[str], key: str) -> str | None:
             if sol:
                 return sol
 
-    # Alternative: scan all cells for solution blocks containing the key
+    # Fallback: scan all cells with solution blocks, check if the *next* cell matches
     for i, start in enumerate(cell_starts):
         end = cell_starts[i + 1] if i + 1 < len(cell_starts) else len(text)
         cell_code = text[start:end]
         if SOLUTION_BEGIN in cell_code:
             sol = _extract_solution_block(cell_code)
-            if sol:
-                # Check if the next cell has the matching check
-                if i + 1 < len(cell_starts):
-                    next_end = (
-                        cell_starts[i + 2] if i + 2 < len(cell_starts) else len(text)
-                    )
-                    next_code = text[cell_starts[i + 1] : next_end]
-                    nm = _CHECK_CALL_RE.search(next_code)
-                    if nm and nm.group(1).strip() == key:
-                        return sol
+            if sol and i + 1 < len(cell_starts):
+                next_end = cell_starts[i + 2] if i + 2 < len(cell_starts) else len(text)
+                next_code = text[cell_starts[i + 1] : next_end]
+                nm = _CHECK_CALL_RE.search(next_code)
+                if nm and nm.group(1).strip() == key:
+                    return sol
 
     return None
 
@@ -222,7 +185,6 @@ def _extract_solution_block(cell_code: str) -> str | None:
         if in_solution:
             solution_lines.append(line)
     if solution_lines:
-        # Dedent: find minimum indentation
         non_empty = [ln for ln in solution_lines if ln.strip()]
         if non_empty:
             min_indent = min(len(ln) - len(ln.lstrip()) for ln in non_empty)
@@ -240,69 +202,33 @@ def _extract_solution_block(cell_code: str) -> str | None:
 
 
 def build_exercises_dict(
-    answers: dict, salt: str, source_lines: list[str]
+    exercise_keys: list[str], salt: str, source_lines: list[str]
 ) -> dict[str, dict]:
-    """Build EXERCISES dict with hashes + encrypted solutions for each answer key."""
+    """Build EXERCISES dict with encrypted solutions for each exercise key."""
     exercises = {}
-    for key, answer in answers.items():
-        normalized = normalize_answer(answer)
-        answer_hash = make_hash(normalized, salt)
-
+    for key in exercise_keys:
         solution_code = extract_solution_for_key(source_lines, key) or ""
-        encrypted_solution = xor_encrypt(solution_code, answer_hash)
-
-        exercises[key] = {
-            "hash": answer_hash,
-            "solution": encrypted_solution,
-        }
+        encrypted_solution = xor_encrypt(solution_code, salt)
+        exercises[key] = {"solution": encrypted_solution}
     return exercises
 
 
-def build_exercises_cell(exercises: dict, salt: str) -> str:
-    """Return marimo cell source defining EXERCISES dict + SALT constant."""
-    exercises_repr = json.dumps(exercises, indent=4)
-    return f"""
-@app.cell(hide_code=True)
-def _():
-    from mograder.workshop import check_answer, fetch_released_keys
-
-    EXERCISES = {exercises_repr}
-
-    SALT = {salt!r}
-    return EXERCISES, SALT, check_answer, fetch_released_keys
-
-
-"""
-
-
-def build_checker_cell(key: str, title: str) -> str:
-    """Return marimo cells with answer input + check button + status display for one question."""
+def build_solution_cell(key: str) -> str:
+    """Return marimo cell that auto-reveals the solution when check() passes."""
     safe_key = key.replace('"', '\\"')
+    var_name = f"check_passed_{key}"
     return f'''
 @app.cell(hide_code=True)
-def _(mo):
-    {_WORKSHOP_CHECKER_PREFIX} {key} ===
-    input_{key} = mo.ui.text(label="Your answer for: {safe_key}")
-    btn_{key} = mo.ui.run_button(label="Check")
-    mo.hstack([input_{key}, btn_{key}])
-    return (btn_{key}, input_{key})
-
-
-@app.cell(hide_code=True)
-def _(mo, input_{key}, btn_{key}, EXERCISES, SALT, released_keys, check_answer):
-    import ast as _ast
-    mo.stop(not btn_{key}.value)
-    try:
-        _answer = _ast.literal_eval(input_{key}.value)
-    except Exception:
-        _answer = input_{key}.value
-    _status, _solution = check_answer("{safe_key}", _answer, EXERCISES, released_keys(), SALT)
-    if _status == "correct":
-        mo.callout(mo.md(f"**Correct!**\\n\\n```python\\n{{_solution}}\\n```"), kind="success")
+def _(mo, EXERCISES, SALT, released_keys, reveal_solution, {var_name}):
+    {_WORKSHOP_SOLUTION_PREFIX} {key} ===
+    _status, _solution = reveal_solution("{safe_key}", {var_name}, EXERCISES, released_keys(), SALT)
+    if _status == "passed":
+        _out = mo.callout(mo.md(f"**Model solution**\\n\\n```python\\n{{_solution}}\\n```"), kind="success")
     elif _status == "released":
-        mo.callout(mo.md(f"**Released by instructor**\\n\\n```python\\n{{_solution}}\\n```"), kind="info")
+        _out = mo.callout(mo.md(f"**Released solution**\\n\\n```python\\n{{_solution}}\\n```"), kind="info")
     else:
-        mo.callout(mo.md("**Incorrect** — try again"), kind="danger")
+        _out = mo.md("")
+    _out
     return
 
 
@@ -320,13 +246,23 @@ def _(mo):
 
 @app.cell(hide_code=True)
 def _(mo, fetch_released_keys, set_released_keys):
-    def _on_fetch(_):
-        _keys = fetch_released_keys()
-        set_released_keys(_keys)
-
-    fetch_btn = mo.ui.button(label="Check for released solutions", on_click=_on_fetch)
+    fetch_btn = mo.ui.run_button(label="Check for released solutions")
     fetch_btn
     return (fetch_btn,)
+
+
+@app.cell(hide_code=True)
+def _(mo, fetch_btn, fetch_released_keys, set_released_keys):
+    mo.stop(not fetch_btn.value)
+    _keys = fetch_released_keys()
+    set_released_keys(_keys)
+    _n = len(_keys)
+    if _n:
+        _out = mo.callout(mo.md(f"**{_n} solution(s) released** — scroll up to see them"), kind="success")
+    else:
+        _out = mo.callout(mo.md("No solutions released yet"), kind="neutral")
+    _out
+    return
 
 
 """
@@ -335,40 +271,36 @@ def _(mo, fetch_released_keys, set_released_keys):
 def process_workshop(
     source_path: Path, output_dir: Path, salt: str | None = None
 ) -> Path:
-    """Full pipeline: parse _answers -> strip solutions -> encrypt -> inject cells -> write."""
+    """Full pipeline: parse _exercises -> strip solutions -> encrypt -> inject cells -> write."""
     source_lines = source_path.read_text().splitlines(keepends=True)
 
     errors = validate_markers(source_lines, str(source_path))
     if errors:
         raise ValueError(f"Marker errors in {source_path}: {errors}")
 
-    answers = parse_answers_metadata(source_lines)
-    if not answers:
-        raise ValueError(f"No {ANSWERS_MARKER} cell found in {source_path}")
+    exercise_keys = parse_exercises_metadata(source_lines)
+    if not exercise_keys:
+        raise ValueError(f"No {EXERCISES_MARKER} cell found in {source_path}")
 
     if salt is None:
         salt = secrets.token_hex(8)
 
     # Build exercises dict from source (before stripping)
-    exercises = build_exercises_dict(answers, salt, source_lines)
+    exercises = build_exercises_dict(exercise_keys, salt, source_lines)
 
     # Strip solutions
     stripped = strip_solutions(source_lines)
 
-    # Remove the _answers line and replace with EXERCISES setup
-    # Also remove any MARKS_MARKER cell and Grader references
-    processed = _replace_answers_cell(stripped, exercises, salt, answers)
+    # Replace _exercises line with EXERCISES + SALT, add imports
+    processed = _replace_exercises_cell(stripped, exercises, salt)
 
-    # Build injected cells — key fetch first (defines released_keys state),
-    # then per-question checkers
-    injected_text = ""
-    injected_text += build_key_fetch_cell()
-    for key in answers:
-        title = key
-        injected_text += build_checker_cell(key, title)
+    # Add check_passed_<key> returns to exercise check cells,
+    # and inject solution reveal cells right after each check cell
+    processed = _add_check_pass_returns(processed, exercise_keys)
+    processed = _inject_solution_cells(processed, exercise_keys)
 
-    # Inject before __main__
-    processed = _inject_before_main(processed, injected_text)
+    # Inject key fetch cell before __main__
+    processed = _inject_before_main(processed, build_key_fetch_cell())
 
     output_dir.mkdir(parents=True, exist_ok=True)
     dest = output_dir / source_path.name
@@ -376,36 +308,29 @@ def process_workshop(
     return dest
 
 
-def _replace_answers_cell(
-    lines: list[str], exercises: dict, salt: str, answers: dict
-) -> list[str]:
-    """Replace the _answers = {...} line with EXERCISES + SALT definitions.
-
-    Adds imports for check_answer and fetch_released_keys, and replaces
-    the _answers dict with the encrypted EXERCISES dict + SALT constant.
-    """
+def _replace_exercises_cell(lines: list[str], exercises: dict, salt: str) -> list[str]:
+    """Replace _exercises = [...] with EXERCISES dict + SALT, add imports."""
     output = []
-    found_marker = False
+    in_exercises_cell = False
+    augment_next_return = False
 
     for line in lines:
-        if ANSWERS_MARKER in line:
-            found_marker = True
+        if EXERCISES_MARKER in line:
+            in_exercises_cell = True
             output.append(line)
             continue
 
-        # Replace _answers = {...} with EXERCISES and SALT
-        if found_marker and "_answers" in line and "=" in line:
-            # Detect indentation from the _answers line
+        # Replace _exercises = [...] with EXERCISES and SALT
+        if in_exercises_cell and "_exercises" in line and "=" in line:
             indent = line[: len(line) - len(line.lstrip())]
-            # Write EXERCISES dict with proper indentation
             exercises_json = json.dumps(exercises, indent=4)
-            # Indent all lines of the JSON
             ex_lines = exercises_json.split("\n")
             output.append(f"{indent}EXERCISES = {ex_lines[0]}\n")
             for ex_line in ex_lines[1:]:
                 output.append(f"{indent}{ex_line}\n")
             output.append(f"{indent}SALT = {salt!r}\n")
-            found_marker = False
+            augment_next_return = True
+            in_exercises_cell = False
             continue
 
         # Add workshop imports alongside existing imports
@@ -413,67 +338,147 @@ def _replace_answers_cell(
             output.append(line)
             indent = line[: len(line) - len(line.lstrip())]
             output.append(
-                f"{indent}from mograder.workshop import check_answer, fetch_released_keys\n"
+                f"{indent}from mograder.workshop import reveal_solution, fetch_released_keys\n"
             )
             continue
 
-        # Replace WorkshopGrader/Grader import references if present
-        if "WorkshopGrader" in line:
-            continue
-
-        # Augment return statement in the answers cell to include new names
-        if (
-            "return" in line
-            and "check" in line
-            and any(ANSWERS_MARKER in ol for ol in output)
-        ):
-            # Add EXERCISES, SALT, check_answer, fetch_released_keys to return
-            stripped = line.rstrip("\n")
-            if stripped.rstrip().endswith(")"):
-                # Has trailing paren — not a tuple return
-                pass
-            new_names = "EXERCISES, SALT, check_answer, fetch_released_keys, "
-            # Insert new names after "return "
+        # Augment the return of the exercises cell only
+        if augment_next_return and line.strip().startswith("return "):
+            new_names = "EXERCISES, SALT, reveal_solution, fetch_released_keys, "
             line = line.replace("return ", f"return {new_names}", 1)
+            augment_next_return = False
 
         output.append(line)
 
     return output
 
 
-def write_keys(
-    answers: dict,
-    salt: str,
-    path: Path,
-    which: str = "all",
-    tolerance: int = 6,
-) -> None:
-    """Write keys JSON file (empty {} or all normalized answers)."""
+def _add_check_pass_returns(lines: list[str], exercise_keys: list[str]) -> list[str]:
+    """Capture check() results and return a pass/fail bool from exercise check cells.
+
+    For each check cell matching an exercise key, finds the standalone
+    ``check(`` call (not the ``mo.stop`` guard), prefixes it with
+    ``_result =``, and replaces the bare ``return`` with a
+    ``check_passed_<key>`` extraction + return.
+    """
+    # Find @app.cell boundaries
+    cell_starts = []
+    for i, line in enumerate(lines):
+        if line.strip().startswith("@app.cell"):
+            cell_starts.append(i)
+
+    # Match cell text (multi-line) to find exercise keys
+    cell_key_map: dict[int, str] = {}
+    for ci, start in enumerate(cell_starts):
+        end = cell_starts[ci + 1] if ci + 1 < len(cell_starts) else len(lines)
+        cell_text = "".join(lines[start:end])
+        m = _CHECK_CALL_RE.search(cell_text)
+        if m and m.group(1).strip() in exercise_keys:
+            cell_key_map[start] = m.group(1).strip()
+
+    if not cell_key_map:
+        return lines
+
+    output = []
+    current_cell_key = None
+    captured = False
+    for i, line in enumerate(lines):
+        if line.strip().startswith("@app.cell"):
+            current_cell_key = cell_key_map.get(i)
+            captured = False
+
+        if current_cell_key:
+            # Find the standalone check( call — it's the line starting with
+            # just "check(" (after indent), NOT inside a mo.stop() call.
+            stripped = line.strip()
+            if stripped.startswith("check(") and not captured:
+                indent = line[: len(line) - len(line.lstrip())]
+                line = f"{indent}_result = {stripped}\n"
+                captured = True
+
+            # Replace bare "return" with result extraction + display + return
+            if stripped == "return" and captured:
+                indent = line[: len(line) - len(line.lstrip())]
+                var = f"check_passed_{current_cell_key}"
+                output.append(
+                    f'{indent}{var} = "success" in getattr(_result, "text", "")\n'
+                )
+                output.append(f"{indent}_result\n")
+                output.append(f"{indent}return ({var},)\n")
+                current_cell_key = None
+                continue
+
+        output.append(line)
+    return output
+
+
+def _inject_solution_cells(lines: list[str], exercise_keys: list[str]) -> list[str]:
+    """Insert each solution reveal cell right after its corresponding check cell."""
+    # Find @app.cell boundaries
+    cell_starts = []
+    for i, line in enumerate(lines):
+        if line.strip().startswith("@app.cell"):
+            cell_starts.append(i)
+
+    # Identify which cells return check_passed_<key> (these are the check cells).
+    # Insert the solution cell right after each one.
+    insert_points: list[tuple[int, str]] = []  # (line_index, key)
+    for ci, start in enumerate(cell_starts):
+        end = cell_starts[ci + 1] if ci + 1 < len(cell_starts) else len(lines)
+        cell_text = "".join(lines[start:end])
+        for key in exercise_keys:
+            if f"check_passed_{key}" in cell_text:
+                insert_points.append((end, key))
+                break
+
+    if not insert_points:
+        return lines
+
+    # Find the if __name__ line — nothing should be inserted after it
+    main_idx = len(lines)
+    for i, line in enumerate(lines):
+        if line.strip().startswith("if __name__"):
+            main_idx = i
+            break
+
+    # Build output, inserting solution cells at the right points
+    output = []
+    # Collect any cells that would land at or past __main__
+    deferred: list[str] = []
+    insert_map = {pos: key for pos, key in insert_points}
+    # Pre-collect any inserts that would land at or past __main__
+    for pos, key in insert_points:
+        if pos >= main_idx:
+            deferred.append(build_solution_cell(key))
+
+    for i, line in enumerate(lines):
+        # Insert deferred cells just before __main__
+        if i == main_idx and deferred:
+            for sol_text in deferred:
+                output.extend(sol_text.splitlines(keepends=True))
+            deferred.clear()
+        # Insert inline solution cells (before __main__ only)
+        if i in insert_map and i < main_idx:
+            sol_cell = build_solution_cell(insert_map[i])
+            output.extend(sol_cell.splitlines(keepends=True))
+        output.append(line)
+    return output
+
+
+def write_keys(exercise_keys: list[str], path: Path, which: str = "empty") -> None:
+    """Write keys JSON file — empty {} or all keys released."""
     if which == "empty":
         path.write_text("{}\n")
     else:
-        keys = {}
-        for key, answer in answers.items():
-            keys[key] = normalize_answer(answer, tolerance)
+        keys = {k: True for k in exercise_keys}
         path.write_text(json.dumps(keys, indent=2) + "\n")
 
 
-def release_key(
-    keys_path: Path,
-    exercise_id: str,
-    answer_str: str,
-    tolerance: int = 6,
-) -> None:
+def release_key(keys_path: Path, exercise_id: str) -> None:
     """Add one key to a keys.json for incremental release during a live workshop."""
     if keys_path.exists():
         keys = json.loads(keys_path.read_text())
     else:
         keys = {}
-
-    try:
-        answer = ast.literal_eval(answer_str)
-    except (ValueError, SyntaxError):
-        answer = answer_str
-
-    keys[exercise_id] = normalize_answer(answer, tolerance)
+    keys[exercise_id] = True
     keys_path.write_text(json.dumps(keys, indent=2) + "\n")

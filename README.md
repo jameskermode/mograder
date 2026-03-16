@@ -162,16 +162,16 @@ hint(
 
 ### Workshop notebooks with encrypted solutions
 
-For formative workshops (ungraded, deployed as WASM on GitHub Pages), mograder supports encrypted solutions that students can check interactively:
+For formative workshops (ungraded, deployed as WASM on GitHub Pages), mograder supports encrypted solutions that are revealed automatically when checks pass:
 
-**1. Author a source notebook** with a `# === MOGRADER: ANSWERS ===` cell containing expected answers, alongside regular `### BEGIN/END SOLUTION` markers:
+**1. Author a source notebook** with a `# === MOGRADER: EXERCISES ===` cell listing exercise keys, alongside regular `### BEGIN/END SOLUTION` markers and `check()` calls:
 
 ```python
-# === MOGRADER: ANSWERS ===
-_answers = {"Q1": [2.54, 0.07], "Q2": 42}
+# === MOGRADER: EXERCISES ===
+_exercises = ["Q1", "Q2"]
 ```
 
-**2. Generate the workshop notebook** — encrypts solutions and injects answer-checking UI:
+**2. Generate the workshop notebook** — encrypts solutions and injects reveal cells:
 
 ```bash
 mograder workshop encrypt source/workshop/workshop.py -o release/workshop/
@@ -183,13 +183,13 @@ mograder workshop encrypt source/workshop/workshop.py -o release/workshop/
 mograder workshop export source/workshop/workshop.py -o dist/workshop/
 ```
 
-**4. Release solutions during a live workshop** — incrementally reveal answers:
+**4. Release solutions during a live workshop** — incrementally reveal solutions:
 
 ```bash
-mograder workshop release-key dist/workshop/keys.json Q1 "[2.54, 0.07]"
+mograder workshop release-key dist/workshop/keys.json Q1
 ```
 
-Students check answers via input widgets in the notebook. Correct answers decrypt and display the model solution. The instructor can also release all solutions at once by copying `keys_all.json` over `keys.json`.
+When a student's `check()` passes, the model solution is automatically decrypted and shown below the check result. The instructor can also release solutions manually via `keys.json` (students click "Check for released solutions"), or release all at once by copying `keys_all.json` over `keys.json`.
 
 ### Validate a notebook
 

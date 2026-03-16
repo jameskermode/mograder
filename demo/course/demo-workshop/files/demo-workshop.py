@@ -3,7 +3,7 @@
 # dependencies = [
 #     "marimo",
 #     "numpy",
-#     "mograder>=0.0.7",
+#     "mograder>=0.0.8",
 # ]
 # ///
 
@@ -18,8 +18,8 @@ def _():
     import marimo as mo
     from mograder.runtime import check, hint
 
-    # === MOGRADER: ANSWERS ===
-    _answers = {"Q1": [2.54, 0.07], "Q2": 42}
+    # === MOGRADER: EXERCISES ===
+    _exercises = ["Q1", "Q2"]
     return check, hint, mo
 
 

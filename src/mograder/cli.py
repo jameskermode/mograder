@@ -2587,8 +2587,8 @@ cli.add_command(workshop_group, "workshop")
 def workshop_encrypt(sources, output_dir, salt):
     """Encrypt solutions in workshop notebooks.
 
-    Parses _answers dict, encrypts solution blocks, strips solutions,
-    and injects checker cells. Output: workshop-ready marimo notebook.
+    Parses _exercises list, encrypts solution blocks, strips solutions,
+    and injects solution-reveal cells. Output: workshop-ready marimo notebook.
     """
     from mograder.workshop import process_workshop
 
@@ -2617,17 +2617,17 @@ def workshop_export(sources, output_dir, salt):
     """
     import subprocess
 
-    from mograder.workshop import parse_answers_metadata, process_workshop, write_keys
+    from mograder.workshop import parse_exercises_metadata, process_workshop, write_keys
 
     output_dir = Path(output_dir)
     for src in sources:
         source = Path(src)
 
-        # Read answers before processing
+        # Read exercises before processing
         source_lines = source.read_text().splitlines(keepends=True)
-        answers = parse_answers_metadata(source_lines)
-        if not answers:
-            click.echo(f"SKIP: {_rel(source)} (no answers marker)", err=True)
+        exercise_keys = parse_exercises_metadata(source_lines)
+        if not exercise_keys:
+            click.echo(f"SKIP: {_rel(source)} (no exercises marker)", err=True)
             continue
 
         # Use a deterministic salt for export
@@ -2636,8 +2636,8 @@ def workshop_export(sources, output_dir, salt):
         click.echo(f"Encrypted: {_rel(source)} → {_rel(dest)}")
 
         # Write keys files
-        write_keys(answers, _salt, output_dir / "keys.json", which="empty")
-        write_keys(answers, _salt, output_dir / "keys_all.json", which="all")
+        write_keys(exercise_keys, output_dir / "keys.json", which="empty")
+        write_keys(exercise_keys, output_dir / "keys_all.json", which="all")
         click.echo(
             f"Keys: {_rel(output_dir / 'keys.json')} (empty), keys_all.json (all)"
         )
@@ -2664,10 +2664,9 @@ def workshop_export(sources, output_dir, salt):
 @workshop_group.command("release-key")
 @click.argument("keys_file", type=click.Path(path_type=Path))
 @click.argument("exercise_id")
-@click.argument("answer")
-def workshop_release_key(keys_file, exercise_id, answer):
+def workshop_release_key(keys_file, exercise_id):
     """Add one key to a keys.json for incremental release during a live workshop."""
     from mograder.workshop import release_key
 
-    release_key(keys_file, exercise_id, answer)
+    release_key(keys_file, exercise_id)
     click.echo(f"Released key for {exercise_id} in {_rel(keys_file)}")
