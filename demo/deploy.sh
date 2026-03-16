@@ -15,6 +15,17 @@ ssh $HOST "cd $REMOTE_DIR && \$HOME/.local/bin/uv sync --extra grader --extra as
 echo "=== Rebuilding demo data ==="
 ssh $HOST "cd $REMOTE_DIR && PYTHON=.venv/bin/python MOGRADER=.venv/bin/mograder bash demo/setup_formgrader_demo.sh"
 
+echo "=== Exporting workshop ==="
+WORKSHOP_DIR=$REMOTE_DIR/demo/workshop-export
+ssh $HOST "cd $REMOTE_DIR && .venv/bin/mograder workshop export demo/course/demo-workshop/files/demo-workshop.py -o $WORKSHOP_DIR --salt mograder"
+
+echo "=== Updating systemd service ==="
+WORKSHOP_SECRET=mograder-demo-secret
+ssh $HOST "sudo sed -i '/MOGRADER_WORKSHOP/d' /etc/systemd/system/mograder-demo.service && \
+  sudo sed -i '/ExecStart/i Environment=MOGRADER_WORKSHOP_DIR=$WORKSHOP_DIR' /etc/systemd/system/mograder-demo.service && \
+  sudo sed -i '/ExecStart/i Environment=MOGRADER_WORKSHOP_SECRET=$WORKSHOP_SECRET' /etc/systemd/system/mograder-demo.service && \
+  sudo systemctl daemon-reload"
+
 echo "=== Restarting service ==="
 ssh $HOST "sudo systemctl restart mograder-demo"
 
@@ -38,5 +49,20 @@ if [ "$AUTH_STATUS" = "200" ]; then
 else
     echo "WARNING: Expected 200, got $AUTH_STATUS"
 fi
+# Workshop keys.json should be public
+WS_STATUS=$(curl -s -o /dev/null -w "%{http_code}" https://mograder-demo.jrkermode.uk/keys.json)
+if [ "$WS_STATUS" = "200" ]; then
+    echo "Workshop keys.json: OK (200)"
+else
+    echo "WARNING: Expected 200, got $WS_STATUS"
+fi
+# Dashboard should be accessible
+DASH_STATUS=$(curl -s -o /dev/null -w "%{http_code}" https://mograder-demo.jrkermode.uk/dashboard.html)
+if [ "$DASH_STATUS" = "200" ]; then
+    echo "Workshop dashboard: OK (200)"
+else
+    echo "WARNING: Expected 200, got $DASH_STATUS"
+fi
 echo ""
 echo "Deploy complete: https://mograder-demo.jrkermode.uk"
+echo "Workshop dashboard: https://mograder-demo.jrkermode.uk/dashboard.html#token=$WORKSHOP_SECRET"
