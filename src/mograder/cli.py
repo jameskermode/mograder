@@ -62,7 +62,22 @@ def _resolve_assignments(
         if "/" not in s and os.sep not in s and not s.endswith(".py"):
             d = Path(base_dir) / s
             if not d.is_dir():
-                raise click.UsageError(f"Assignment directory not found: {d}")
+                # Try prefix match: "A0" matches "A0-Probability"
+                parent = Path(base_dir)
+                if parent.is_dir():
+                    matches = sorted(
+                        p for p in parent.iterdir()
+                        if p.is_dir() and p.name.startswith(s + "-")
+                    )
+                    if len(matches) == 1:
+                        d = matches[0]
+                    elif len(matches) > 1:
+                        names = ", ".join(m.name for m in matches)
+                        raise click.UsageError(
+                            f"Ambiguous assignment '{s}': matches {names}"
+                        )
+                if not d.is_dir():
+                    raise click.UsageError(f"Assignment directory not found: {d}")
             py = sorted(f for f in d.glob("*.py") if not _TIMESTAMP_RE.search(f.stem))
             if not py:
                 raise click.UsageError(f"No .py files in {d}")
