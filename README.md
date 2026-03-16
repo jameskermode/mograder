@@ -162,34 +162,40 @@ hint(
 
 ### Workshop notebooks with encrypted solutions
 
-For formative workshops (ungraded, deployed as WASM on GitHub Pages), mograder supports encrypted solutions that are revealed automatically when checks pass:
+For formative workshops (ungraded, deployed as WASM on GitHub Pages), mograder supports encrypted solutions with two reveal mechanisms:
 
-**1. Author a source notebook** with a `# === MOGRADER: EXERCISES ===` cell listing exercise keys, alongside regular `### BEGIN/END SOLUTION` markers and `check()` calls:
+- **Auto-reveal on check pass** — when a student's `check()` passes and they've entered the workshop key, the model solution appears automatically below the check result
+- **Instructor release** — the instructor can release solutions progressively during a live workshop via `keys.json`; students click "Check for released solutions" to fetch them
+
+The workshop key is a secret shared verbally by the instructor during the session. It is not stored in the generated notebook (only a SHA-256 hash is embedded), so students cannot extract solutions from the source code.
+
+**1. Author a source notebook** with a `# === MOGRADER: EXERCISES ===` cell listing exercise keys, alongside regular `### BEGIN/END SOLUTION` markers, `check()` calls, and optionally `hint()` for progressive hints:
 
 ```python
 # === MOGRADER: EXERCISES ===
 _exercises = ["Q1", "Q2"]
 ```
 
-**2. Generate the workshop notebook** — encrypts solutions and injects reveal cells:
+**2. Generate the workshop notebook** — encrypts solutions, strips them, and injects solution-reveal cells. The command prints the workshop key for the instructor to share verbally:
 
 ```bash
-mograder workshop encrypt source/workshop/workshop.py -o release/workshop/
+mograder workshop encrypt source/workshop/workshop.py -o release/workshop/ --salt mykey
+# Workshop key (share with students verbally): mykey
 ```
 
 **3. Export for WASM deployment** — generates HTML + keys.json for GitHub Pages:
 
 ```bash
-mograder workshop export source/workshop/workshop.py -o dist/workshop/
+mograder workshop export source/workshop/workshop.py -o dist/workshop/ --salt mykey
 ```
 
-**4. Release solutions during a live workshop** — incrementally reveal solutions:
+**4. Release solutions during a live workshop** — incrementally reveal solutions by adding decryption keys to `keys.json`:
 
 ```bash
-mograder workshop release-key dist/workshop/keys.json Q1
+mograder workshop release-key dist/workshop/keys.json Q1 --salt mykey
 ```
 
-When a student's `check()` passes, the model solution is automatically decrypted and shown below the check result. The instructor can also release solutions manually via `keys.json` (students click "Check for released solutions"), or release all at once by copying `keys_all.json` over `keys.json`.
+Students click "Check for released solutions" in the notebook to fetch updated keys. Released solutions appear regardless of whether checks pass or the workshop key has been entered. To release all solutions at once, copy `keys_all.json` over `keys.json`.
 
 ### Validate a notebook
 
