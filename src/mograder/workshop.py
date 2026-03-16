@@ -117,9 +117,13 @@ def fetch_released_keys(url: str = "./keys.json") -> dict:
         from js import XMLHttpRequest  # type: ignore[import-not-found]
         from js import self as js_self  # type: ignore[import-not-found]
 
-        # Worker runs from /assets/worker-xxx.js — go up to site root
-        base = str(js_self.location.href).rsplit("/", 1)[0].rsplit("/", 1)[0] + "/"
-        full_url = base + url + "?t=" + str(int(time.time()))
+        # Absolute URLs are used as-is; relative URLs are resolved from the site root
+        # (worker runs from /assets/worker-xxx.js — go up two levels)
+        if url.startswith("http://") or url.startswith("https://"):
+            full_url = url + ("&" if "?" in url else "?") + "t=" + str(int(time.time()))
+        else:
+            base = str(js_self.location.href).rsplit("/", 1)[0].rsplit("/", 1)[0] + "/"
+            full_url = base + url + "?t=" + str(int(time.time()))
         req = XMLHttpRequest.new()
         req.open("GET", full_url, False)  # synchronous, cache-bust
         req.send()
