@@ -85,7 +85,9 @@ def _resolve_assignments(
                 resolved.append(main)
             else:
                 # Fallback: all .py files (backward compat for flat layouts)
-                py = sorted(f for f in d.glob("*.py") if not _TIMESTAMP_RE.search(f.stem))
+                py = sorted(
+                    f for f in d.glob("*.py") if not _TIMESTAMP_RE.search(f.stem)
+                )
                 if not py:
                     raise click.UsageError(f"No .py files in {d}")
                 resolved.extend(py)

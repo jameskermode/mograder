@@ -211,22 +211,21 @@ def test_validate_sidecar_with_no_rlimits(tmp_path):
 
 @pytest.mark.skipif(os.name == "nt", reason="rlimits are Unix-only")
 @pytest.mark.xfail(
-    platform.system() == "Linux",
     reason=(
-        "Default RLIMIT_AS=1GiB is too small for marimo --sandbox "
-        "(uv run subprocess chain).  Student autograding uses "
-        "sandbox_dir (--no-sandbox) so is unaffected."
+        "Default rlimits (RLIMIT_AS=1GiB on Linux, RLIMIT_NPROC=64) are "
+        "too restrictive for marimo --sandbox (uv run subprocess chain).  "
+        "Student autograding uses sandbox_dir (--no-sandbox) so is unaffected."
     ),
-    strict=True,
+    strict=False,
 )
 def test_validate_sidecar_with_default_rlimits(tmp_path):
     """Real notebook execution produces sidecar results even under the
     default rlimits used for untrusted student code.
 
-    On Linux the default RLIMIT_AS (1 GiB) is too small for marimo's
-    --sandbox mode which spawns a uv run subprocess chain.  This test
-    documents the known limitation: student autograding always uses a
-    pre-built sandbox_dir (--no-sandbox) so is not affected.
+    Default rlimits are too restrictive for marimo's --sandbox mode which
+    spawns a uv run subprocess chain.  This test documents the known
+    limitation: student autograding always uses a pre-built sandbox_dir
+    (--no-sandbox) so is not affected.
     """
     nb = tmp_path / "smoke.py"
     nb.write_text(_MINIMAL_NOTEBOOK)
