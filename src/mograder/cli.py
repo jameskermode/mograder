@@ -2625,7 +2625,10 @@ cli.add_command(workshop_group, "workshop")
     help="Output directory (default: inferred from source path)",
 )
 @click.option("--salt", default=None, help="Encryption salt (default: random)")
-def workshop_encrypt(sources, output_dir, salt):
+@click.option(
+    "--keys-url", default="./keys.json", help="URL for keys.json (default: relative)"
+)
+def workshop_encrypt(sources, output_dir, salt, keys_url):
     """Encrypt solutions in workshop notebooks.
 
     Parses _exercises list, encrypts solution blocks, strips solutions,
@@ -2639,7 +2642,7 @@ def workshop_encrypt(sources, output_dir, salt):
     for src in sources:
         source = Path(src)
         out = output_dir or _infer_output_dir(source, "source", "release", "release")
-        dest = process_workshop(source, out, salt=_salt)
+        dest = process_workshop(source, out, salt=_salt, keys_url=keys_url)
         click.echo(f"OK: {_rel(source)} → {_rel(dest)}")
     click.echo(f"Workshop key (share with students verbally): {_salt}")
 
@@ -2654,7 +2657,10 @@ def workshop_encrypt(sources, output_dir, salt):
     help="Output directory for WASM export",
 )
 @click.option("--salt", default=None, help="Encryption salt (default: random)")
-def workshop_export(sources, output_dir, salt):
+@click.option(
+    "--keys-url", default="./keys.json", help="URL for keys.json (default: relative)"
+)
+def workshop_export(sources, output_dir, salt, keys_url):
     """Encrypt solutions and export as WASM HTML.
 
     Same as encrypt, then runs marimo export html-wasm.
@@ -2677,7 +2683,7 @@ def workshop_export(sources, output_dir, salt):
 
         # Use a deterministic salt for export
         _salt = salt or "workshop"
-        dest = process_workshop(source, output_dir, salt=_salt)
+        dest = process_workshop(source, output_dir, salt=_salt, keys_url=keys_url)
         click.echo(f"Encrypted: {_rel(source)} → {_rel(dest)}")
 
         # Write keys files

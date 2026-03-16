@@ -300,12 +300,12 @@ def _(mo, set_fetch_count):
 
 
 @app.cell(hide_code=True)
-def _(mo, fetch_count, fetch_released_keys, set_released_keys):
+def _(mo, fetch_count, fetch_released_keys, set_released_keys, KEYS_URL):
     _count = fetch_count()
     if _count == 0:
         _out = mo.md("")
     else:
-        _keys = fetch_released_keys()
+        _keys = fetch_released_keys(KEYS_URL)
         set_released_keys(_keys)
         _n = len(_keys)
         if _n:
@@ -320,7 +320,10 @@ def _(mo, fetch_count, fetch_released_keys, set_released_keys):
 
 
 def process_workshop(
-    source_path: Path, output_dir: Path, salt: str | None = None
+    source_path: Path,
+    output_dir: Path,
+    salt: str | None = None,
+    keys_url: str = "./keys.json",
 ) -> Path:
     """Full pipeline: parse _exercises -> strip solutions -> encrypt -> inject cells -> write."""
     source_lines = source_path.read_text().splitlines(keepends=True)
@@ -344,8 +347,8 @@ def process_workshop(
     # Strip solutions
     stripped = strip_solutions(source_lines)
 
-    # Replace _exercises line with EXERCISES + SALT_HASH, add imports
-    processed = _replace_exercises_cell(stripped, exercises, salt_hash)
+    # Replace _exercises line with EXERCISES + SALT_HASH + KEYS_URL, add imports
+    processed = _replace_exercises_cell(stripped, exercises, salt_hash, keys_url)
 
     # Add check_passed_<key> returns to exercise check cells,
     # and inject solution reveal cells right after each check cell
@@ -362,9 +365,12 @@ def process_workshop(
 
 
 def _replace_exercises_cell(
-    lines: list[str], exercises: dict, salt_hash: str
+    lines: list[str],
+    exercises: dict,
+    salt_hash: str,
+    keys_url: str = "./keys.json",
 ) -> list[str]:
-    """Replace _exercises = [...] with EXERCISES dict + SALT_HASH, add imports."""
+    """Replace _exercises = [...] with EXERCISES dict + SALT_HASH + KEYS_URL, add imports."""
     output = []
     in_exercises_cell = False
     augment_next_return = False
@@ -384,6 +390,7 @@ def _replace_exercises_cell(
             for ex_line in ex_lines[1:]:
                 output.append(f"{indent}{ex_line}\n")
             output.append(f"{indent}SALT_HASH = {salt_hash!r}\n")
+            output.append(f"{indent}KEYS_URL = {keys_url!r}\n")
             augment_next_return = True
             in_exercises_cell = False
             continue
@@ -399,7 +406,9 @@ def _replace_exercises_cell(
 
         # Augment the return of the exercises cell only
         if augment_next_return and line.strip().startswith("return "):
-            new_names = "EXERCISES, SALT_HASH, reveal_solution, fetch_released_keys, "
+            new_names = (
+                "EXERCISES, KEYS_URL, SALT_HASH, reveal_solution, fetch_released_keys, "
+            )
             line = line.replace("return ", f"return {new_names}", 1)
             augment_next_return = False
 

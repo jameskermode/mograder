@@ -42,7 +42,7 @@ jobs:
         run: uv run marimo export html-wasm demo/course/demo-holistic/files/demo-holistic.py -o dist/notebooks/demo-holistic.html --mode edit
 
       - name: Generate workshop notebook
-        run: uv run mograder workshop encrypt demo/course/demo-workshop/files/demo-workshop.py -o demo/course/demo-workshop/files/ --salt mograder
+        run: uv run mograder workshop encrypt demo/course/demo-workshop/files/demo-workshop.py -o demo/course/demo-workshop/files/ --salt mograder --keys-url https://mograder-demo.jrkermode.uk/keys.json
 
       - name: Export demo-workshop notebook
         run: |
