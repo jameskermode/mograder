@@ -18,14 +18,16 @@ from mograder.models import CheckResult, NotebookResult
 from mograder.parser import count_cell_errors, parse_check_results
 
 
-def _make_apply_rlimits(cpu: int = 600, nproc: int = 64, nofile: int = 256):
+def _make_apply_rlimits(
+    cpu: int = 600, nproc: int = 64, nofile: int = 256, address_space: int = 1 << 30
+):
     """Return a preexec_fn that sets resource limits on the subprocess.
 
     A value of 0 disables that limit.  Caps:
     - CPU time (*cpu* seconds)
     - Total user processes (*nproc* — note: per-user, not per-process)
     - Open file descriptors (*nofile*)
-    - Virtual memory (1 GiB, Linux only)
+    - Virtual memory (*address_space* bytes, Linux only)
     """
 
     def _apply():
@@ -39,8 +41,8 @@ def _make_apply_rlimits(cpu: int = 600, nproc: int = 64, nofile: int = 256):
         if nofile:
             limits.append((resource.RLIMIT_NOFILE, nofile))
         # RLIMIT_AS is unreliable on macOS; only apply on Linux.
-        if platform.system() != "Darwin":
-            limits.append((resource.RLIMIT_AS, 1 << 30))
+        if address_space and platform.system() != "Darwin":
+            limits.append((resource.RLIMIT_AS, address_space))
         for limit_id, value in limits:
             try:
                 resource.setrlimit(limit_id, (value, value))
@@ -220,6 +222,7 @@ def run_notebook(
     rlimit_cpu: int = 600,
     rlimit_nproc: int = 64,
     rlimit_nofile: int = 256,
+    rlimit_as: int = 1 << 30,
 ) -> NotebookResult:
     """Execute a notebook and return its check results.
 
@@ -285,7 +288,7 @@ def run_notebook(
             env["PATH"] = local_bin + os.pathsep + env.get("PATH", "")
 
         _preexec = (
-            _make_apply_rlimits(rlimit_cpu, rlimit_nproc, rlimit_nofile)
+            _make_apply_rlimits(rlimit_cpu, rlimit_nproc, rlimit_nofile, rlimit_as)
             if os.name != "nt"
             else None
         )
@@ -362,6 +365,7 @@ def run_batch(
     rlimit_cpu: int = 600,
     rlimit_nproc: int = 64,
     rlimit_nofile: int = 256,
+    rlimit_as: int = 1 << 30,
 ) -> list[NotebookResult]:
     """Run notebooks in parallel and return results sorted by filename."""
     results: list[NotebookResult] = []
@@ -381,6 +385,7 @@ def run_batch(
                 rlimit_cpu,
                 rlimit_nproc,
                 rlimit_nofile,
+                rlimit_as,
             ): nb
             for nb in notebooks
         }

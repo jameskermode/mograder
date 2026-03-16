@@ -2,8 +2,13 @@
 
 import json
 import os
+import platform
+import sys
+import textwrap
 from pathlib import Path
 from unittest.mock import MagicMock, patch
+
+import pytest
 
 from mograder.models import CheckResult
 from mograder.runner import _read_sidecar, run_notebook
@@ -144,3 +149,94 @@ def test_run_notebook_falls_back_to_html(tmp_path):
 
     assert len(result.checks) == 1
     assert result.checks[0].label == "Q1: Data check"
+
+
+# ---------------------------------------------------------------------------
+# End-to-end test: real notebook execution under rlimits
+# ---------------------------------------------------------------------------
+
+# Minimal marimo notebook that imports mograder.runtime.check and runs one
+# check.  No heavy dependencies — only marimo and mograder are needed.
+_MINIMAL_NOTEBOOK = textwrap.dedent("""\
+    # /// script
+    # requires-python = ">=3.12"
+    # dependencies = ["marimo", "mograder"]
+    # ///
+
+    import marimo
+    __generated_with = "0.20.2"
+    app = marimo.App()
+
+    @app.cell
+    def _():
+        import marimo as mo
+        return (mo,)
+
+    @app.cell
+    def _():
+        from mograder.runtime import check
+        return (check,)
+
+    @app.cell
+    def _(check):
+        check("Smoke: 1 + 1", [(1 + 1 == 2, "basic arithmetic")])
+        return
+
+    if __name__ == "__main__":
+        app.run()
+""")
+
+
+@pytest.mark.skipif(os.name == "nt", reason="rlimits are Unix-only")
+def test_validate_sidecar_with_no_rlimits(tmp_path):
+    """Real notebook execution produces sidecar results when rlimits are
+    disabled (the trusted-code path used by validate/generate)."""
+    nb = tmp_path / "smoke.py"
+    nb.write_text(_MINIMAL_NOTEBOOK)
+
+    result = run_notebook(
+        nb,
+        timeout=120,
+        rlimit_nproc=0,
+        rlimit_nofile=0,
+        rlimit_as=0,
+    )
+
+    assert result.export_ok, f"export failed: {result.export_error}"
+    assert result.cell_errors == 0
+    assert len(result.checks) == 1
+    assert result.checks[0].label == "Smoke: 1 + 1"
+    assert result.checks[0].status == "success"
+
+
+@pytest.mark.skipif(os.name == "nt", reason="rlimits are Unix-only")
+@pytest.mark.xfail(
+    platform.system() == "Linux",
+    reason=(
+        "Default RLIMIT_AS=1GiB is too small for marimo --sandbox "
+        "(uv run subprocess chain).  Student autograding uses "
+        "sandbox_dir (--no-sandbox) so is unaffected."
+    ),
+    strict=True,
+)
+def test_validate_sidecar_with_default_rlimits(tmp_path):
+    """Real notebook execution produces sidecar results even under the
+    default rlimits used for untrusted student code.
+
+    On Linux the default RLIMIT_AS (1 GiB) is too small for marimo's
+    --sandbox mode which spawns a uv run subprocess chain.  This test
+    documents the known limitation: student autograding always uses a
+    pre-built sandbox_dir (--no-sandbox) so is not affected.
+    """
+    nb = tmp_path / "smoke.py"
+    nb.write_text(_MINIMAL_NOTEBOOK)
+
+    result = run_notebook(nb, timeout=120)
+
+    assert result.export_ok, f"export failed: {result.export_error}"
+    assert result.cell_errors == 0
+    assert len(result.checks) == 1, (
+        f"Expected 1 check from sidecar, got {len(result.checks)}. "
+        "Likely rlimit failure — subprocess died before writing sidecar."
+    )
+    assert result.checks[0].status == "success"

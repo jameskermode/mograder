@@ -79,10 +79,16 @@ def _resolve_assignments(
                         )
                 if not d.is_dir():
                     raise click.UsageError(f"Assignment directory not found: {d}")
-            py = sorted(f for f in d.glob("*.py") if not _TIMESTAMP_RE.search(f.stem))
-            if not py:
-                raise click.UsageError(f"No .py files in {d}")
-            resolved.extend(py)
+            # Only include the main notebook (matching directory name), not auxiliary modules
+            main = d / f"{d.name}.py"
+            if main.exists():
+                resolved.append(main)
+            else:
+                # Fallback: all .py files (backward compat for flat layouts)
+                py = sorted(f for f in d.glob("*.py") if not _TIMESTAMP_RE.search(f.stem))
+                if not py:
+                    raise click.UsageError(f"No .py files in {d}")
+                resolved.extend(py)
         else:
             p = Path(s)
             if not p.exists():
@@ -274,7 +280,12 @@ def generate(
                     )
 
             result = run_notebook(
-                filepath, sandbox_dir=shared_sandbox, on_check=check_cb
+                filepath,
+                sandbox_dir=shared_sandbox,
+                on_check=check_cb,
+                rlimit_nproc=0,
+                rlimit_nofile=0,
+                rlimit_as=0,
             )
             if not result.export_ok:
                 click.echo(f"FAIL (export error: {result.export_error})")
@@ -361,7 +372,13 @@ def generate(
             click.echo(f"RELEASE-CHECK: {_rel(release_path)} ... ", nl=False)
             if release_sandbox is None:
                 release_sandbox = create_shared_sandbox(release_path)
-            result = run_notebook(release_path, sandbox_dir=release_sandbox)
+            result = run_notebook(
+                release_path,
+                sandbox_dir=release_sandbox,
+                rlimit_nproc=0,
+                rlimit_nofile=0,
+                rlimit_as=0,
+            )
             if not result.export_ok:
                 click.echo(f"FAIL (export error: {result.export_error})")
                 release_ok = False
@@ -534,7 +551,13 @@ def validate(ctx, file, timeout):
     sandbox = create_shared_sandbox(file)
     click.echo(f"Running {_rel(file)}...")
     result = run_notebook(
-        file, sandbox_dir=sandbox, timeout=timeout, html_dir=file.parent
+        file,
+        sandbox_dir=sandbox,
+        timeout=timeout,
+        html_dir=file.parent,
+        rlimit_nproc=0,
+        rlimit_nofile=0,
+        rlimit_as=0,
     )
 
     if not result.export_ok:
