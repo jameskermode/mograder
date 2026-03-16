@@ -7,10 +7,12 @@ from mograder.workshop import (
     build_exercises_dict,
     build_solution_cell,
     extract_solution_for_key,
+    make_salt_hash,
     parse_exercises_metadata,
     process_workshop,
     release_key,
     reveal_solution,
+    verify_key,
     write_keys,
     xor_decrypt,
     xor_encrypt,
@@ -43,46 +45,69 @@ def test_xor_empty():
     assert xor_encrypt("", "key") == ""
 
 
+def test_verify_key():
+    salt = "mysecret"
+    h = make_salt_hash(salt)
+    assert verify_key("mysecret", h)
+    assert not verify_key("wrong", h)
+
+
 # ---------------------------------------------------------------------------
 # reveal_solution
 # ---------------------------------------------------------------------------
 
 
-def test_reveal_passed():
+def test_reveal_passed_with_key():
     salt = "testsalt"
+    salt_hash = make_salt_hash(salt)
     solution_code = "x = 42"
     encrypted = xor_encrypt(solution_code, salt)
     exercises = {"Q1": {"solution": encrypted}}
 
-    status, solution = reveal_solution("Q1", True, exercises, {}, salt)
+    status, solution = reveal_solution("Q1", True, exercises, {}, salt, salt_hash)
     assert status == "passed"
     assert solution == solution_code
 
 
-def test_reveal_locked():
+def test_reveal_passed_no_key():
     salt = "testsalt"
+    salt_hash = make_salt_hash(salt)
     encrypted = xor_encrypt("x = 42", salt)
     exercises = {"Q1": {"solution": encrypted}}
 
-    status, solution = reveal_solution("Q1", False, exercises, {}, salt)
+    status, solution = reveal_solution("Q1", True, exercises, {}, "", salt_hash)
+    assert status == "no_key"
+    assert solution is None
+
+
+def test_reveal_locked():
+    salt = "testsalt"
+    salt_hash = make_salt_hash(salt)
+    encrypted = xor_encrypt("x = 42", salt)
+    exercises = {"Q1": {"solution": encrypted}}
+
+    status, solution = reveal_solution("Q1", False, exercises, {}, salt, salt_hash)
     assert status == "locked"
     assert solution is None
 
 
-def test_reveal_released():
+def test_reveal_released_with_salt_in_keys():
     salt = "testsalt"
+    salt_hash = make_salt_hash(salt)
     solution_code = "x = 42"
     encrypted = xor_encrypt(solution_code, salt)
     exercises = {"Q1": {"solution": encrypted}}
-    released_keys = {"Q1": True}
+    released_keys = {"Q1": salt}  # salt as decryption key
 
-    status, solution = reveal_solution("Q1", False, exercises, released_keys, salt)
+    status, solution = reveal_solution(
+        "Q1", False, exercises, released_keys, "", salt_hash
+    )
     assert status == "released"
     assert solution == solution_code
 
 
 def test_reveal_unknown_exercise():
-    status, solution = reveal_solution("Q99", True, {}, {}, "salt")
+    status, solution = reveal_solution("Q99", True, {}, {}, "salt", "hash")
     assert status == "locked"
     assert solution is None
 
@@ -188,6 +213,8 @@ def test_build_solution_cell():
     assert "@app.cell" in cell
     assert "reveal_solution" in cell
     assert "WORKSHOP SOLUTION" in cell
+    assert "SALT_HASH" in cell
+    assert "workshop_key" in cell
 
 
 def test_process_workshop_e2e(tmp_path):
@@ -208,8 +235,13 @@ def test_process_workshop_e2e(tmp_path):
     # Should have solution reveal cells
     assert "reveal_solution" in content
 
-    # Should have key fetch cell
+    # Should have key fetch cell and workshop key input
     assert "released_keys" in content
+    assert "workshop_key" in content
+
+    # Salt hash present, but NOT the salt itself as SALT = ...
+    assert "SALT_HASH" in content
+    assert "SALT =" not in content or "SALT_HASH =" in content
 
     # Check cells should return check_passed_<key> booleans
     assert "check_passed_Q1" in content
@@ -223,30 +255,30 @@ def test_process_workshop_e2e(tmp_path):
 
 def test_write_keys_empty(tmp_path):
     path = tmp_path / "keys.json"
-    write_keys(["Q1", "Q2"], path, which="empty")
+    write_keys(["Q1", "Q2"], "salt", path, which="empty")
     assert json.loads(path.read_text()) == {}
 
 
 def test_write_keys_all(tmp_path):
     path = tmp_path / "keys.json"
-    write_keys(["Q1", "Q2"], path, which="all")
+    write_keys(["Q1", "Q2"], "testsalt", path, which="all")
     keys = json.loads(path.read_text())
-    assert keys == {"Q1": True, "Q2": True}
+    assert keys == {"Q1": "testsalt", "Q2": "testsalt"}
 
 
 def test_release_key(tmp_path):
     path = tmp_path / "keys.json"
     path.write_text("{}\n")
-    release_key(path, "Q1")
+    release_key(path, "Q1", "mysalt")
     keys = json.loads(path.read_text())
-    assert keys == {"Q1": True}
+    assert keys == {"Q1": "mysalt"}
 
 
 def test_release_key_new_file(tmp_path):
     path = tmp_path / "keys.json"
-    release_key(path, "Q1")
+    release_key(path, "Q1", "mysalt")
     keys = json.loads(path.read_text())
-    assert keys == {"Q1": True}
+    assert keys == {"Q1": "mysalt"}
 
 
 # ---------------------------------------------------------------------------
@@ -266,10 +298,12 @@ def test_workshop_encrypt_cli(tmp_path):
     output_dir = tmp_path / "release" / "ws"
     runner = CliRunner()
     result = runner.invoke(
-        cli, ["workshop", "encrypt", str(source), "-o", str(output_dir)]
+        cli,
+        ["workshop", "encrypt", str(source), "-o", str(output_dir), "--salt", "abc"],
     )
     assert result.exit_code == 0, result.output
     assert (output_dir / "ws.py").exists()
+    assert "Workshop key" in result.output
 
 
 def test_workshop_release_key_cli(tmp_path):
@@ -281,7 +315,10 @@ def test_workshop_release_key_cli(tmp_path):
     keys_file.write_text("{}\n")
 
     runner = CliRunner()
-    result = runner.invoke(cli, ["workshop", "release-key", str(keys_file), "Q1"])
+    result = runner.invoke(
+        cli,
+        ["workshop", "release-key", str(keys_file), "Q1", "--salt", "mysalt"],
+    )
     assert result.exit_code == 0, result.output
     keys = json.loads(keys_file.read_text())
-    assert keys == {"Q1": True}
+    assert keys == {"Q1": "mysalt"}

@@ -1,14 +1,19 @@
 """Workshop notebooks with encrypted solutions.
 
-Solutions are XOR-encrypted with a salt for obfuscation (not cryptographic
-security). They are revealed automatically when ``check()`` passes, or when
-the instructor releases them via ``keys.json`` during a live workshop.
+Solutions are XOR-encrypted with a secret salt known only to the instructor.
+The generated notebook contains a SHA-256 hash of the salt (for verification)
+and encrypted solution blobs. Solutions are revealed when:
+
+1. The student's ``check()`` passes AND they have entered the correct
+   workshop key (shared verbally by the instructor), or
+2. The instructor releases solutions via ``keys.json``.
 
 Provides encryption helpers, exercise parsing from source notebooks, and
 notebook generation for interactive workshop use (including WASM deployment).
 """
 
 import base64
+import hashlib
 import json
 import re
 import secrets
@@ -34,6 +39,11 @@ _CHECK_CALL_RE = re.compile(r"""check\(\s*["']([^"':]+)""")
 # ---------------------------------------------------------------------------
 
 
+def make_salt_hash(salt: str) -> str:
+    """SHA-256 hash of the salt, for verification without exposing it."""
+    return hashlib.sha256(salt.encode()).hexdigest()
+
+
 def xor_encrypt(data: str, key: str) -> str:
     """XOR encrypt *data* with *key*, return base64-encoded ciphertext."""
     if not data:
@@ -54,16 +64,23 @@ def xor_decrypt(ciphertext: str, key: str) -> str:
     return result.decode("utf-8")
 
 
+def verify_key(workshop_key: str, salt_hash: str) -> bool:
+    """Check whether *workshop_key* matches the stored salt hash."""
+    return make_salt_hash(workshop_key) == salt_hash
+
+
 def reveal_solution(
     exercise_id: str,
     check_passed: bool,
     exercises: dict,
     released_keys: dict,
-    salt: str,
+    workshop_key: str,
+    salt_hash: str,
 ) -> tuple[str, str | None]:
-    """Reveal a solution if the check passed or the key was released.
+    """Reveal a solution if authorised.
 
-    Returns ("passed", solution) | ("released", solution) | ("locked", None).
+    Returns ("passed", solution) | ("released", solution) |
+            ("no_key", None) | ("locked", None).
     """
     ex = exercises.get(exercise_id)
     if ex is None:
@@ -71,11 +88,23 @@ def reveal_solution(
 
     encrypted = ex["solution"]
 
-    if check_passed:
-        return ("passed", xor_decrypt(encrypted, salt))
-
+    # Released keys work regardless of check or key
     if released_keys.get(exercise_id):
-        return ("released", xor_decrypt(encrypted, salt))
+        # Need correct key to decrypt — use the released key value as the salt
+        released_salt = released_keys[exercise_id]
+        if isinstance(released_salt, str) and released_salt:
+            return ("released", xor_decrypt(encrypted, released_salt))
+        # If released_keys has True (legacy), can't decrypt without the key
+        if workshop_key and verify_key(workshop_key, salt_hash):
+            return ("released", xor_decrypt(encrypted, workshop_key))
+        return ("released", None)
+
+    if check_passed:
+        if not workshop_key:
+            return ("no_key", None)
+        if verify_key(workshop_key, salt_hash):
+            return ("passed", xor_decrypt(encrypted, workshop_key))
+        return ("no_key", None)
 
     return ("locked", None)
 
@@ -141,12 +170,10 @@ def extract_solution_for_key(source_lines: list[str], key: str) -> str | None:
         end = cell_starts[i + 1] if i + 1 < len(cell_starts) else len(text)
         cell_code = text[start:end]
 
-        # Check if this cell has a check() call matching our key
         m = _CHECK_CALL_RE.search(cell_code)
         if not m or m.group(1).strip() != key:
             continue
 
-        # Found the check cell — look for the solution in the preceding cell
         if i > 0:
             prev_start = cell_starts[i - 1]
             prev_code = text[prev_start:start]
@@ -219,13 +246,18 @@ def build_solution_cell(key: str) -> str:
     var_name = f"check_passed_{key}"
     return f'''
 @app.cell(hide_code=True)
-def _(mo, EXERCISES, SALT, released_keys, reveal_solution, {var_name}):
+def _(mo, EXERCISES, SALT_HASH, released_keys, reveal_solution, workshop_key, {var_name}):
     {_WORKSHOP_SOLUTION_PREFIX} {key} ===
-    _status, _solution = reveal_solution("{safe_key}", {var_name}, EXERCISES, released_keys(), SALT)
+    _status, _solution = reveal_solution("{safe_key}", {var_name}, EXERCISES, released_keys(), workshop_key.value, SALT_HASH)
     if _status == "passed":
         _out = mo.callout(mo.md(f"**Model solution**\\n\\n```python\\n{{_solution}}\\n```"), kind="success")
     elif _status == "released":
-        _out = mo.callout(mo.md(f"**Released solution**\\n\\n```python\\n{{_solution}}\\n```"), kind="info")
+        if _solution:
+            _out = mo.callout(mo.md(f"**Released solution**\\n\\n```python\\n{{_solution}}\\n```"), kind="info")
+        else:
+            _out = mo.callout(mo.md("**Solution released** — enter the workshop key to view"), kind="info")
+    elif _status == "no_key":
+        _out = mo.callout(mo.md("**Checks passed!** Enter the workshop key below to reveal the model solution"), kind="warn")
     else:
         _out = mo.md("")
     _out
@@ -236,7 +268,7 @@ def _(mo, EXERCISES, SALT, released_keys, reveal_solution, {var_name}):
 
 
 def build_key_fetch_cell() -> str:
-    """Return marimo cells with state-based released keys and fetch button."""
+    """Return marimo cells with released-keys state, workshop key input, and fetch button."""
     return """
 @app.cell(hide_code=True)
 def _(mo):
@@ -245,10 +277,11 @@ def _(mo):
 
 
 @app.cell(hide_code=True)
-def _(mo, fetch_released_keys, set_released_keys):
+def _(mo):
+    workshop_key = mo.ui.text(label="Workshop key", placeholder="Enter key from instructor")
     fetch_btn = mo.ui.run_button(label="Check for released solutions")
-    fetch_btn
-    return (fetch_btn,)
+    mo.hstack([workshop_key, fetch_btn], justify="start", gap=1)
+    return fetch_btn, workshop_key
 
 
 @app.cell(hide_code=True)
@@ -260,7 +293,7 @@ def _(mo, fetch_btn, fetch_released_keys, set_released_keys):
     if _n:
         _out = mo.callout(mo.md(f"**{_n} solution(s) released** — scroll up to see them"), kind="success")
     else:
-        _out = mo.callout(mo.md("No solutions released yet"), kind="neutral")
+        _out = mo.callout(mo.md("No additional solutions released by instructor"), kind="neutral")
     _out
     return
 
@@ -285,14 +318,16 @@ def process_workshop(
     if salt is None:
         salt = secrets.token_hex(8)
 
+    salt_hash = make_salt_hash(salt)
+
     # Build exercises dict from source (before stripping)
     exercises = build_exercises_dict(exercise_keys, salt, source_lines)
 
     # Strip solutions
     stripped = strip_solutions(source_lines)
 
-    # Replace _exercises line with EXERCISES + SALT, add imports
-    processed = _replace_exercises_cell(stripped, exercises, salt)
+    # Replace _exercises line with EXERCISES + SALT_HASH, add imports
+    processed = _replace_exercises_cell(stripped, exercises, salt_hash)
 
     # Add check_passed_<key> returns to exercise check cells,
     # and inject solution reveal cells right after each check cell
@@ -308,8 +343,10 @@ def process_workshop(
     return dest
 
 
-def _replace_exercises_cell(lines: list[str], exercises: dict, salt: str) -> list[str]:
-    """Replace _exercises = [...] with EXERCISES dict + SALT, add imports."""
+def _replace_exercises_cell(
+    lines: list[str], exercises: dict, salt_hash: str
+) -> list[str]:
+    """Replace _exercises = [...] with EXERCISES dict + SALT_HASH, add imports."""
     output = []
     in_exercises_cell = False
     augment_next_return = False
@@ -320,7 +357,7 @@ def _replace_exercises_cell(lines: list[str], exercises: dict, salt: str) -> lis
             output.append(line)
             continue
 
-        # Replace _exercises = [...] with EXERCISES and SALT
+        # Replace _exercises = [...] with EXERCISES and SALT_HASH
         if in_exercises_cell and "_exercises" in line and "=" in line:
             indent = line[: len(line) - len(line.lstrip())]
             exercises_json = json.dumps(exercises, indent=4)
@@ -328,7 +365,7 @@ def _replace_exercises_cell(lines: list[str], exercises: dict, salt: str) -> lis
             output.append(f"{indent}EXERCISES = {ex_lines[0]}\n")
             for ex_line in ex_lines[1:]:
                 output.append(f"{indent}{ex_line}\n")
-            output.append(f"{indent}SALT = {salt!r}\n")
+            output.append(f"{indent}SALT_HASH = {salt_hash!r}\n")
             augment_next_return = True
             in_exercises_cell = False
             continue
@@ -344,7 +381,7 @@ def _replace_exercises_cell(lines: list[str], exercises: dict, salt: str) -> lis
 
         # Augment the return of the exercises cell only
         if augment_next_return and line.strip().startswith("return "):
-            new_names = "EXERCISES, SALT, reveal_solution, fetch_released_keys, "
+            new_names = "EXERCISES, SALT_HASH, reveal_solution, fetch_released_keys, "
             line = line.replace("return ", f"return {new_names}", 1)
             augment_next_return = False
 
@@ -388,8 +425,6 @@ def _add_check_pass_returns(lines: list[str], exercise_keys: list[str]) -> list[
             captured = False
 
         if current_cell_key:
-            # Find the standalone check( call — it's the line starting with
-            # just "check(" (after indent), NOT inside a mo.stop() call.
             stripped = line.strip()
             if stripped.startswith("check(") and not captured:
                 indent = line[: len(line) - len(line.lstrip())]
@@ -420,9 +455,8 @@ def _inject_solution_cells(lines: list[str], exercise_keys: list[str]) -> list[s
         if line.strip().startswith("@app.cell"):
             cell_starts.append(i)
 
-    # Identify which cells return check_passed_<key> (these are the check cells).
-    # Insert the solution cell right after each one.
-    insert_points: list[tuple[int, str]] = []  # (line_index, key)
+    # Identify which cells return check_passed_<key>
+    insert_points: list[tuple[int, str]] = []
     for ci, start in enumerate(cell_starts):
         end = cell_starts[ci + 1] if ci + 1 < len(cell_starts) else len(lines)
         cell_text = "".join(lines[start:end])
@@ -434,30 +468,25 @@ def _inject_solution_cells(lines: list[str], exercise_keys: list[str]) -> list[s
     if not insert_points:
         return lines
 
-    # Find the if __name__ line — nothing should be inserted after it
+    # Find the if __name__ line
     main_idx = len(lines)
     for i, line in enumerate(lines):
         if line.strip().startswith("if __name__"):
             main_idx = i
             break
 
-    # Build output, inserting solution cells at the right points
     output = []
-    # Collect any cells that would land at or past __main__
     deferred: list[str] = []
     insert_map = {pos: key for pos, key in insert_points}
-    # Pre-collect any inserts that would land at or past __main__
     for pos, key in insert_points:
         if pos >= main_idx:
             deferred.append(build_solution_cell(key))
 
     for i, line in enumerate(lines):
-        # Insert deferred cells just before __main__
         if i == main_idx and deferred:
             for sol_text in deferred:
                 output.extend(sol_text.splitlines(keepends=True))
             deferred.clear()
-        # Insert inline solution cells (before __main__ only)
         if i in insert_map and i < main_idx:
             sol_cell = build_solution_cell(insert_map[i])
             output.extend(sol_cell.splitlines(keepends=True))
@@ -465,20 +494,31 @@ def _inject_solution_cells(lines: list[str], exercise_keys: list[str]) -> list[s
     return output
 
 
-def write_keys(exercise_keys: list[str], path: Path, which: str = "empty") -> None:
-    """Write keys JSON file — empty {} or all keys released."""
+def write_keys(
+    exercise_keys: list[str], salt: str, path: Path, which: str = "empty"
+) -> None:
+    """Write keys JSON file.
+
+    ``which="empty"`` writes ``{}``.
+    ``which="all"`` writes all keys with the salt as the decryption value
+    (so released solutions can be decrypted without the workshop key).
+    """
     if which == "empty":
         path.write_text("{}\n")
     else:
-        keys = {k: True for k in exercise_keys}
+        keys = {k: salt for k in exercise_keys}
         path.write_text(json.dumps(keys, indent=2) + "\n")
 
 
-def release_key(keys_path: Path, exercise_id: str) -> None:
-    """Add one key to a keys.json for incremental release during a live workshop."""
+def release_key(keys_path: Path, exercise_id: str, salt: str) -> None:
+    """Add one key to a keys.json for incremental release during a live workshop.
+
+    The value is the salt itself, so the notebook can decrypt without
+    the student needing to know the workshop key.
+    """
     if keys_path.exists():
         keys = json.loads(keys_path.read_text())
     else:
         keys = {}
-    keys[exercise_id] = True
+    keys[exercise_id] = salt
     keys_path.write_text(json.dumps(keys, indent=2) + "\n")

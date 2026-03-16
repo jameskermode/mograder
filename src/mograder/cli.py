@@ -2590,13 +2590,17 @@ def workshop_encrypt(sources, output_dir, salt):
     Parses _exercises list, encrypts solution blocks, strips solutions,
     and injects solution-reveal cells. Output: workshop-ready marimo notebook.
     """
+    import secrets as _secrets
+
     from mograder.workshop import process_workshop
 
+    _salt = salt or _secrets.token_hex(8)
     for src in sources:
         source = Path(src)
         out = output_dir or _infer_output_dir(source, "source", "release", "release")
-        dest = process_workshop(source, out, salt=salt)
+        dest = process_workshop(source, out, salt=_salt)
         click.echo(f"OK: {_rel(source)} → {_rel(dest)}")
+    click.echo(f"Workshop key (share with students verbally): {_salt}")
 
 
 @workshop_group.command("export")
@@ -2636,8 +2640,8 @@ def workshop_export(sources, output_dir, salt):
         click.echo(f"Encrypted: {_rel(source)} → {_rel(dest)}")
 
         # Write keys files
-        write_keys(exercise_keys, output_dir / "keys.json", which="empty")
-        write_keys(exercise_keys, output_dir / "keys_all.json", which="all")
+        write_keys(exercise_keys, _salt, output_dir / "keys.json", which="empty")
+        write_keys(exercise_keys, _salt, output_dir / "keys_all.json", which="all")
         click.echo(
             f"Keys: {_rel(output_dir / 'keys.json')} (empty), keys_all.json (all)"
         )
@@ -2664,9 +2668,10 @@ def workshop_export(sources, output_dir, salt):
 @workshop_group.command("release-key")
 @click.argument("keys_file", type=click.Path(path_type=Path))
 @click.argument("exercise_id")
-def workshop_release_key(keys_file, exercise_id):
+@click.option("--salt", required=True, help="The encryption salt used at generate time")
+def workshop_release_key(keys_file, exercise_id, salt):
     """Add one key to a keys.json for incremental release during a live workshop."""
     from mograder.workshop import release_key
 
-    release_key(keys_file, exercise_id)
+    release_key(keys_file, exercise_id, salt)
     click.echo(f"Released key for {exercise_id} in {_rel(keys_file)}")
