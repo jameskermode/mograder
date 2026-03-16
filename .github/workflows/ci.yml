@@ -80,6 +80,13 @@ jobs:
             git reset --hard origin/main
             $HOME/.local/bin/uv sync --extra grader --extra asgi
             PYTHON=.venv/bin/python MOGRADER=.venv/bin/mograder bash demo/setup_formgrader_demo.sh
+            # Export workshop
+            .venv/bin/mograder workshop export demo/course/demo-workshop/files/demo-workshop.py -o demo/workshop-export --salt mograder
+            # Ensure workshop env vars in systemd service
+            sudo sed -i '/MOGRADER_WORKSHOP/d' /etc/systemd/system/mograder-demo.service
+            sudo sed -i '/ExecStart/i Environment=MOGRADER_WORKSHOP_DIR=/home/ubuntu/mograder/demo/workshop-export' /etc/systemd/system/mograder-demo.service
+            sudo sed -i '/ExecStart/i Environment=MOGRADER_WORKSHOP_SECRET=mograder-demo-secret' /etc/systemd/system/mograder-demo.service
+            sudo systemctl daemon-reload
             sudo systemctl restart mograder-demo
           SCRIPT
 
@@ -88,5 +95,7 @@ jobs:
           sleep 3
           ROOT=$(curl -s -o /dev/null -w "%{http_code}" https://mograder-demo.jrkermode.uk/)
           API=$(curl -s -o /dev/null -w "%{http_code}" https://mograder-demo.jrkermode.uk/assignments)
-          echo "Root: $ROOT, Assignments: $API"
-          [ "$ROOT" = "200" ] && [ "$API" = "200" ] || { echo "::error::Health check failed"; exit 1; }
+          KEYS=$(curl -s -o /dev/null -w "%{http_code}" https://mograder-demo.jrkermode.uk/keys.json)
+          DASH=$(curl -s -o /dev/null -w "%{http_code}" https://mograder-demo.jrkermode.uk/dashboard.html)
+          echo "Root: $ROOT, Assignments: $API, Keys: $KEYS, Dashboard: $DASH"
+          [ "$ROOT" = "200" ] && [ "$API" = "200" ] && [ "$KEYS" = "200" ] && [ "$DASH" = "200" ] || { echo "::error::Health check failed"; exit 1; }
