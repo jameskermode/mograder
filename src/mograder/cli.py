@@ -2783,3 +2783,64 @@ def workshop_serve(export_dir, port, host, salt):
     except KeyboardInterrupt:
         click.echo("\nShutting down.")
         server.shutdown()
+
+
+@cli.command("wasm-edit-links")
+@click.argument("wasm_app", type=click.Path(exists=True, path_type=Path))
+@click.argument(
+    "notebooks", nargs=-1, required=True, type=click.Path(exists=True, path_type=Path)
+)
+@click.option(
+    "-o",
+    "--output",
+    type=click.Path(path_type=Path),
+    help="Output path for modified WASM app (default: overwrite in-place)",
+)
+@click.option(
+    "--url-template",
+    default="https://molab.marimo.io/new/#code/{content_lz}",
+    help="URL template; {content_lz} is replaced with lzstring-compressed content",
+)
+def wasm_edit_links(wasm_app, notebooks, output, url_template):
+    """Inject pre-computed 'Edit in Molab' links into a WASM app source.
+
+    WASM_APP is the student_wasm_app.py file. NOTEBOOKS are the .py notebook
+    files whose compressed content will be embedded as edit links. Each
+    notebook's filename stem is used as the dict key (matching the server's
+    assignment directory name convention).
+    """
+    import lzstring
+
+    lz = lzstring.LZString()
+    links = {}
+    for nb_path in notebooks:
+        nb_path = Path(nb_path)
+        content = nb_path.read_text()
+        compressed = lz.compressToEncodedURIComponent(content)
+        url = url_template.replace("{content_lz}", compressed)
+        key = nb_path.stem
+        links[key] = url
+        click.echo(f"  {key}: {len(compressed)} chars compressed")
+
+    source = Path(wasm_app).read_text()
+
+    # Replace the empty dict in the precomputed_edit_links assignment
+    old = "precomputed_edit_links = {}"
+    if old not in source:
+        raise click.ClickException(
+            f"Could not find '{old}' in {wasm_app}. "
+            "Make sure student_wasm_app.py has the precomputed_edit_links cell."
+        )
+
+    # Build the replacement dict literal
+    dict_lines = ["precomputed_edit_links = {"]
+    for k, v in links.items():
+        dict_lines.append(f"        {k!r}: {v!r},")
+    dict_lines.append("    }")
+    replacement = "\n".join(dict_lines)
+
+    source = source.replace(old, replacement)
+
+    dest = output or wasm_app
+    Path(dest).write_text(source)
+    click.echo(f"Wrote {len(links)} edit link(s) to {_rel(Path(dest))}")

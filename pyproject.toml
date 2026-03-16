@@ -25,6 +25,7 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = [
+    "lzstring>=1.0.4",
     "python-multipart>=0.0.6",
     "pytest",
     "pytest-cov",

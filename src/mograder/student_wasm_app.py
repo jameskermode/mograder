@@ -15,7 +15,7 @@ def _():
 
     params = mo.query_params()
     # Snapshot which params were provided — plain set, no reactive writes
-    provided_params = frozenset(k for k in ("server",) if params.get(k, ""))
+    provided_params = frozenset(k for k in ("server", "title") if params.get(k, ""))
 
     # Auto-detect server URL when running in WASM (browser)
     default_server = ""
@@ -45,7 +45,8 @@ def _(default_server, mo, params, provided_params):
     if "server" not in provided_params and not default_server:
         _rows.append(mo.hstack([server_url]))
 
-    mo.vstack([mo.md("# ES98E Assignment Dashboard")] + _rows)
+    _title = params.get("title", "Assignment Dashboard")
+    mo.vstack([mo.md(f"# {_title}")] + _rows)
     return (server_url,)
 
 
@@ -71,6 +72,14 @@ def _(json, server_url, urllib):
 
 
 @app.cell
+def _():
+    # Pre-computed "Edit in Molab" URLs, populated at build time by
+    # `mograder wasm-edit-links`.  Keys are assignment directory names.
+    precomputed_edit_links = {}
+    return (precomputed_edit_links,)
+
+
+@app.cell
 def _(connection_error, mo):
     if connection_error:
         mo.callout(mo.md(f"**Connection error:** {connection_error}"), kind="danger")
@@ -78,7 +87,7 @@ def _(connection_error, mo):
 
 
 @app.cell
-def _(assignments, datetime, mo, moodle_url, server_url):
+def _(assignments, datetime, mo, moodle_url, precomputed_edit_links, server_url):
     if not assignments:
         mo.output.replace(
             mo.callout(
@@ -120,6 +129,15 @@ def _(assignments, datetime, mo, moodle_url, server_url):
                 _edit_parts.append(f"**[{_label}]({_href})**")
             else:
                 _edit_parts.append(f"[{_label}]({_href})")
+        # Fall back to pre-computed edit links when server didn't provide any
+        if not _a.get("edit_links"):
+            _key = _a.get("dir", "") or _a.get("name", "")
+            if _key in precomputed_edit_links:
+                _pre_href = precomputed_edit_links[_key]
+                if _edit_parts:
+                    _edit_parts.append(f"[Edit in Molab]({_pre_href})")
+                else:
+                    _edit_parts.append(f"**[Edit in Molab]({_pre_href})**")
         _edit = mo.md(" | ".join(_edit_parts)) if _edit_parts else ""
 
         # Download column: link to .py file(s)

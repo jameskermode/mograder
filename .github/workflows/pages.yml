@@ -32,8 +32,17 @@ jobs:
       - name: Install dependencies
         run: uv sync
 
+      - name: Inject edit links into WASM app
+        run: |
+          uv run mograder wasm-edit-links \
+            src/mograder/student_wasm_app.py \
+            demo/course/demo-assignment/files/demo-assignment.py \
+            demo/course/demo-holistic/files/demo-holistic.py \
+            demo/course/demo-workshop/files/demo-workshop.py \
+            -o /tmp/student_wasm_app.py
+
       - name: Export WASM app
-        run: uv run marimo export html-wasm src/mograder/student_wasm_app.py -o dist/index.html --mode run
+        run: uv run marimo export html-wasm /tmp/student_wasm_app.py -o dist/index.html --mode run
 
       - name: Export demo-assignment notebook
         run: uv run marimo export html-wasm demo/course/demo-assignment/files/demo-assignment.py -o dist/notebooks/demo-assignment.html --mode edit
