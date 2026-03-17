@@ -101,15 +101,9 @@ If you're using [Molab](https://molab.marimo.io), no local installation is requi
 
 If your course uses the mograder HTTPS transport (instead of Moodle), your instructor will provide a server URL and an enrollment code.
 
-**Register from the CLI** (one time):
+**Register via the student dashboard** (recommended): launch `uvx mograder student <CONFIG_URL>` and enter your username + enrollment code in the login form. Your token is generated on the server and cached at `~/.config/mograder/https_token.json`.
 
-```bash
-uvx mograder https login --register --url <SERVER_URL>
-```
-
-You'll be prompted for your username and enrollment code. Your token is generated on the server and cached at `~/.config/mograder/https_token.json`.
-
-Alternatively, if your instructor gave you a token directly:
+**Or cache a token from the CLI** if your instructor gave you one directly:
 
 ```bash
 uvx mograder https login --token <YOUR_TOKEN> --url <SERVER_URL>
@@ -124,7 +118,7 @@ uvx mograder https fetch "hw1" -o hw1/
 # Upload to Molab, work on it, then download the completed file
 
 # Submit your work
-uvx mograder https submit hw1/homework.py -a "hw1"
+uvx mograder https submit "hw1" hw1/homework.py
 
 # Check your status
 uvx mograder https feedback "hw1"
