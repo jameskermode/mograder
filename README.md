@@ -92,10 +92,10 @@ course/
 
 ## Workflow
 
-1. **`mograder generate`** — `source/*.py` → `release/*.py` (strip solutions)
+1. **`mograder generate`** — `source/*.py` → `release/*.py` (strip solutions, embed cell hashes)
 2. **`mograder moodle upload`** — zip release files and open Moodle edit page for attachment
 3. **Students** complete and submit `.py` files
-4. **`mograder validate`** — run a notebook in a sandbox and report check results (student self-check)
+4. **`mograder validate`** — run a notebook in a sandbox and report check results (student self-check); warns if non-solution cells have been modified
 5. **`mograder autograde`** — `submitted/*.py` → `autograded/*.py`
    - Integrity check against source notebook (detects tampered check/marks cells)
    - Runs each notebook via `marimo export html`
@@ -266,6 +266,8 @@ Include a [PEP 723](https://peps.python.org/pep-0723/) metadata block at the top
 # ///
 ```
 
+`mograder generate` automatically adds `mograder-assignment` and `mograder-cell-hashes` lines to this block in the release notebook, enabling integrity checking during `mograder validate`.
+
 ### Generate release notebooks
 
 Strip solution blocks from source notebooks:
@@ -352,9 +354,12 @@ Run a notebook in a sandbox and report check results (useful for students to sel
 ```bash
 mograder validate hw1.py
 mograder validate hw1.py --timeout 600
+mograder validate hw1.py --fix --release release/hw1/hw1.py
 ```
 
 Installs dependencies in a sandbox, executes the notebook, and prints PASS/FAIL for each check. Exits with code 1 if any check fails. An HTML report is saved alongside the notebook.
+
+If the release notebook was generated with `mograder generate` (v0.1.1+), cell hashes are embedded in the PEP 723 metadata block. `validate` compares these hashes against the current cells and warns if any non-solution cells have been accidentally modified. Use `--fix` to restore them from the release version (found automatically in `.mograder/release/` if previously fetched, or specify `--release <path>`).
 
 ### Autograde submissions
 
@@ -643,7 +648,7 @@ The dashboard provides:
 - **Assignment table** — lists all course assignments with due dates, status, check validation results, and action buttons.
 - **Download** — downloads assignment `.py` files into per-assignment subdirectories.
 - **Edit** — opens the notebook in a new `marimo edit --sandbox` session.
-- **Validate** — runs the notebook and shows a summary of check results (e.g. "3/5 PASS") with an inline HTML report preview. Results are cached and marked stale when the notebook changes.
+- **Validate** — runs the notebook and shows a summary of check results (e.g. "3/5 PASS") with an inline HTML report preview. Warns if non-solution cells have been accidentally modified. Results are cached and marked stale when the notebook changes.
 - **Submit** — uploads the `.py` file to Moodle and finalizes the submission.
 - **Status tracking** — shows Downloaded, Submitted, or Modified for each assignment.
 - **Activity log** — shows status messages for recent actions with dismiss button.
