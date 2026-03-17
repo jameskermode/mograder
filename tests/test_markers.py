@@ -3,6 +3,9 @@ from mograder.markers import (
     SOLUTION_END,
     SUBMIT_MARKER,
     _extract_return_names,
+    _hash_cell,
+    _inject_assignment_metadata,
+    _inject_cell_hashes,
     build_submit_cell,
     convert_markdown_cells,
     count_markers,
@@ -374,3 +377,163 @@ def test_strip_solutions_sentinel_parenthesised_tuple():
     # forward scan won't match it (it's at 4 spaces, block is at 8).
     # Let's verify the output is sensible
     assert "        # YOUR CODE HERE\n" in result
+
+
+# --- _inject_assignment_metadata ---
+
+
+def test_inject_assignment_metadata():
+    """PEP 723 block gets mograder-assignment line."""
+    lines = [
+        "# /// script\n",
+        '# requires-python = ">=3.11"\n',
+        "# ///\n",
+        "code\n",
+    ]
+    result = _inject_assignment_metadata(lines, "hw1")
+    text = "".join(result)
+    assert '# mograder-assignment = "hw1"' in text
+    # Should be before closing # ///
+    assert text.index("mograder-assignment") < text.index("# ///\n")
+
+
+def test_inject_assignment_metadata_no_pep723():
+    """No PEP 723 block → unchanged."""
+    lines = ["x = 1\n"]
+    assert _inject_assignment_metadata(lines, "hw1") == lines
+
+
+# --- _inject_cell_hashes ---
+
+
+def test_inject_cell_hashes():
+    """Release notebook gets mograder-cell-hashes in PEP 723 block."""
+    import re
+
+    nb = """\
+# /// script
+# requires-python = ">=3.11"
+# ///
+
+import marimo
+
+__generated_with = "0.20.0"
+app = marimo.App()
+
+
+@app.cell
+def _():
+    x = 1
+    return (x,)
+
+
+@app.cell
+def _(x):
+    y = x + 1
+    return (y,)
+
+
+if __name__ == "__main__":
+    app.run()
+"""
+    result = _inject_cell_hashes(nb)
+    assert "mograder-cell-hashes" in result
+    # Should contain comma-separated 8-char hex strings
+    m = re.search(r'mograder-cell-hashes = "([^"]+)"', result)
+    assert m
+    hashes = m.group(1).split(",")
+    assert len(hashes) == 2
+    assert all(len(h) == 8 for h in hashes)
+
+
+def test_inject_cell_hashes_skips_solution_cells():
+    """Solution cells (# YOUR CODE HERE) are NOT hashed."""
+    nb = """\
+# /// script
+# requires-python = ">=3.11"
+# ///
+
+import marimo
+
+__generated_with = "0.20.0"
+app = marimo.App()
+
+
+@app.cell
+def _():
+    x = 1
+    return (x,)
+
+
+@app.cell
+def _():
+    # YOUR CODE HERE
+    pass
+    return
+
+
+@app.cell
+def _(x):
+    y = x + 1
+    return (y,)
+
+
+if __name__ == "__main__":
+    app.run()
+"""
+    import re
+
+    result = _inject_cell_hashes(nb)
+    m = re.search(r'mograder-cell-hashes = "([^"]+)"', result)
+    assert m
+    hashes = m.group(1).split(",")
+    # 3 cells total, 1 solution → 2 hashes
+    assert len(hashes) == 2
+
+
+def test_inject_cell_hashes_no_pep723():
+    """No PEP 723 block → unchanged."""
+    nb = """\
+import marimo
+
+__generated_with = "0.20.0"
+app = marimo.App()
+
+
+@app.cell
+def _():
+    x = 1
+    return (x,)
+
+
+if __name__ == "__main__":
+    app.run()
+"""
+    assert _inject_cell_hashes(nb) == nb
+
+
+# --- process_file metadata injection ---
+
+
+def test_process_file_injects_metadata(tmp_path, fixtures_dir):
+    """process_file output contains assignment name and cell hashes."""
+    source = fixtures_dir / "staff_notebook.py"
+    out_dir = tmp_path / "release"
+    process_file(source, out_dir)
+    content = (out_dir / source.name).read_text()
+    assert "mograder-assignment" in content
+    assert "mograder-cell-hashes" in content
+
+
+# --- _hash_cell ---
+
+
+def test_hash_cell_deterministic():
+    """Same code produces same hash."""
+    assert _hash_cell("x = 1") == _hash_cell("x = 1")
+    assert _hash_cell("x = 1") != _hash_cell("x = 2")
+
+
+def test_hash_cell_strips_whitespace():
+    """Leading/trailing whitespace doesn't affect hash."""
+    assert _hash_cell("  x = 1  ") == _hash_cell("x = 1")

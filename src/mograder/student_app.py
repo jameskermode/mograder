@@ -512,6 +512,15 @@ def _(
                                 "/pluginfile.php/", "/webservice/pluginfile.php/"
                             )
                             _client.download_file(_file_url, _dest)
+                    # Cache release for integrity validation
+                    _cache_dir = COURSE_DIR / ".mograder" / "release" / _slug
+                    _cache_dir.mkdir(parents=True, exist_ok=True)
+                    import shutil as _shutil
+
+                    for _finfo2 in _py_files:
+                        _src = _adir / _finfo2["name"]
+                        if _src.exists():
+                            _shutil.copy2(_src, _cache_dir / _src.name)
                     set_action_log(f"Downloaded **{_name}** to `{_slug}/`")
                 except Exception as _exc:
                     set_action_log(f"Download failed for **{_name}**: {_exc}")
@@ -584,6 +593,14 @@ def _(
                         )
                     if _result.cell_errors > 0:
                         _msg += f" ({_result.cell_errors} cell error(s))"
+                    # Check cell hash integrity
+                    from mograder.integrity import validate_cell_hashes
+
+                    _hw = validate_cell_hashes(_path.read_text())
+                    if _hw:
+                        _msg += "\n\n**Warning:** modified non-solution cells detected:"
+                        for _w in _hw:
+                            _msg += f"\n- Cell {_w.index + 1}: `{_w.snippet}`"
                     set_action_log(_msg)
                     if _result.html_path:
                         set_report_path(str(_result.html_path.resolve()))

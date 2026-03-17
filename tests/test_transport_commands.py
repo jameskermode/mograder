@@ -57,6 +57,14 @@ class TestDoFetch:
         captured = capsys.readouterr()
         assert "Fetched 1 file(s)" in captured.out
 
+    def test_fetch_caches_release(self, tmp_path, capsys):
+        """do_fetch copies .py files to .mograder/release/<assignment>/."""
+        transport = _mock_transport()
+        do_fetch(transport, "HW1", tmp_path)
+        cache = tmp_path / ".mograder" / "release" / "HW1" / "hw1.py"
+        assert cache.exists()
+        assert cache.read_bytes() == b"content"
+
     def test_fetch_no_assignment_errors(self, tmp_path):
         transport = _mock_transport()
         with pytest.raises(click.UsageError, match="Provide an assignment"):

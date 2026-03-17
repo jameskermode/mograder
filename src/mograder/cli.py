@@ -544,10 +544,68 @@ def wasm_export(ctx, assignments, export_all, check_only, mode):
     default=300,
     help="Timeout per notebook in seconds",
 )
+@click.option(
+    "--fix",
+    is_flag=True,
+    default=False,
+    help="Restore modified non-solution cells from the release version",
+)
+@click.option(
+    "--release",
+    "release_path",
+    type=click.Path(exists=True, path_type=Path),
+    default=None,
+    help="Path to release notebook (for --fix); auto-discovered from .mograder/release/ if omitted",
+)
 @click.pass_context
-def validate(ctx, file, timeout):
+def validate(ctx, file, timeout, fix, release_path):
     """Run a notebook in a sandbox and report check results."""
+    from mograder.integrity import (
+        fix_modified_cells,
+        parse_assignment_name,
+        validate_cell_hashes,
+    )
     from mograder.runner import create_shared_sandbox, run_notebook
+
+    # --- Cell hash integrity check ---
+    notebook_text = file.read_text()
+    hash_warnings = validate_cell_hashes(notebook_text)
+    if hash_warnings:
+        click.echo("WARNING: The following non-solution cells have been modified:")
+        for w in hash_warnings:
+            click.echo(f"  Cell {w.index + 1}: {w.snippet}")
+
+        if fix:
+            # Find release notebook
+            release_text = None
+            if release_path:
+                release_text = release_path.read_text()
+            else:
+                # Try .mograder/release/<assignment>/ cache
+                assignment = parse_assignment_name(notebook_text)
+                if assignment:
+                    cache_dir = file.parent / ".mograder" / "release" / assignment
+                    candidates = (
+                        list(cache_dir.glob("*.py")) if cache_dir.is_dir() else []
+                    )
+                    if candidates:
+                        release_text = candidates[0].read_text()
+
+            if release_text:
+                result = fix_modified_cells(release_text, notebook_text)
+                if result.tampered_cells:
+                    file.write_text(result.fixed_source)
+                    click.echo(
+                        f"Fixed {len(result.tampered_cells)} cell(s) from release"
+                    )
+                else:
+                    click.echo("No fixable differences found")
+            else:
+                click.echo(
+                    "Cannot fix: no release notebook found. "
+                    "Use --release <path> or run 'mograder fetch' first."
+                )
+        click.echo()
 
     click.echo("Installing dependencies...")
     sandbox = create_shared_sandbox(file)

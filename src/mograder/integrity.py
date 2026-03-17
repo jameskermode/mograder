@@ -8,6 +8,7 @@ from marimo._convert.converters import MarimoConvert
 from marimo._schemas.serialization import NotebookSerializationV1
 
 from mograder.cells import MARKS_MARKER
+from mograder.markers import _hash_cell
 
 # Pattern to extract question key from check() calls, e.g. check("Q1: ...")
 _CHECK_CALL_RE = re.compile(r"""check\(\s*["']([^"':]+)""")
@@ -108,6 +109,109 @@ def check_cell_integrity(release_text: str, submitted_text: str) -> CellIntegrit
 
     return CellIntegrityResult(
         tampered_cells=tampered_cells,
+        fixed_source=fixed_source,
+    )
+
+
+_ASSIGNMENT_NAME_RE = re.compile(r'#\s*mograder-assignment\s*=\s*"([^"]+)"')
+_CELL_HASHES_RE = re.compile(r'#\s*mograder-cell-hashes\s*=\s*"([^"]+)"')
+
+
+def parse_assignment_name(text: str) -> str | None:
+    """Extract mograder-assignment value from PEP 723 metadata."""
+    m = _ASSIGNMENT_NAME_RE.search(text)
+    return m.group(1) if m else None
+
+
+def parse_cell_hashes(text: str) -> list[str] | None:
+    """Extract mograder-cell-hashes as a list of hex strings."""
+    m = _CELL_HASHES_RE.search(text)
+    if not m:
+        return None
+    return m.group(1).split(",")
+
+
+@dataclasses.dataclass
+class CellHashWarning:
+    """Warning about a modified non-solution cell."""
+
+    index: int  # 0-based index among non-solution cells
+    snippet: str  # first line of the cell for display
+
+
+def validate_cell_hashes(text: str) -> list[CellHashWarning]:
+    """Compare embedded cell hashes against actual cell contents.
+
+    Returns warnings for each non-solution cell whose hash doesn't match.
+    Returns an empty list if no hashes are embedded (graceful degradation).
+    """
+    hashes = parse_cell_hashes(text)
+    if hashes is None:
+        return []
+
+    ir = MarimoConvert.from_py(text).to_ir()
+    warnings: list[CellHashWarning] = []
+    hash_idx = 0
+    for cell in ir.cells:
+        if "# YOUR CODE HERE" in cell.code:
+            continue
+        if hash_idx < len(hashes):
+            actual = _hash_cell(cell.code)
+            if actual != hashes[hash_idx]:
+                snippet = cell.code.strip().split("\n")[0][:60]
+                warnings.append(CellHashWarning(index=hash_idx, snippet=snippet))
+        hash_idx += 1
+
+    return warnings
+
+
+def fix_modified_cells(release_text: str, submitted_text: str) -> CellIntegrityResult:
+    """Replace modified non-solution cells with their release versions.
+
+    Unlike :func:`check_cell_integrity`, this matches non-solution cells by
+    their positional index and replaces them in-place rather than appending.
+    """
+    release_ir = MarimoConvert.from_py(release_text).to_ir()
+    submitted_ir = MarimoConvert.from_py(submitted_text).to_ir()
+
+    # Build ordered list of non-solution cells from release
+    release_nonsol = []
+    for i, cell in enumerate(release_ir.cells):
+        if not _is_solution_cell(cell.code):
+            release_nonsol.append((i, cell))
+
+    # Build ordered list of non-solution cells from submitted
+    submitted_nonsol_indices = []
+    for i, cell in enumerate(submitted_ir.cells):
+        if not _is_solution_cell(cell.code):
+            submitted_nonsol_indices.append(i)
+
+    tampered: list[str] = []
+    new_cells = list(submitted_ir.cells)
+
+    for ns_idx, (_, rel_cell) in enumerate(release_nonsol):
+        if ns_idx >= len(submitted_nonsol_indices):
+            break
+        sub_idx = submitted_nonsol_indices[ns_idx]
+        sub_cell = new_cells[sub_idx]
+        if sub_cell.code != rel_cell.code:
+            snippet = sub_cell.code.strip().split("\n")[0][:60]
+            tampered.append(f"modified: {snippet}")
+            new_cells[sub_idx] = dataclasses.replace(sub_cell, code=rel_cell.code)
+
+    new_ir = NotebookSerializationV1(
+        app=submitted_ir.app,
+        header=submitted_ir.header,
+        version=submitted_ir.version,
+        cells=new_cells,
+        violations=submitted_ir.violations,
+        valid=submitted_ir.valid,
+        filename=submitted_ir.filename,
+    )
+    fixed_source = generate_filecontents_from_ir(new_ir)
+
+    return CellIntegrityResult(
+        tampered_cells=tampered,
         fixed_source=fixed_source,
     )
 

@@ -1,5 +1,6 @@
 """Marker validation and solution stripping for marimo notebooks."""
 
+import hashlib
 import os
 import re
 import sys
@@ -289,6 +290,70 @@ def _inject_before_main(lines: list[str], cell_text: str) -> list[str]:
     return lines[:insert_idx] + cell_text.splitlines(keepends=True) + lines[insert_idx:]
 
 
+def _inject_assignment_metadata(lines: list[str], assignment_name: str) -> list[str]:
+    """Insert ``mograder-assignment`` into a PEP 723 script block.
+
+    If no PEP 723 block is found, the lines are returned unchanged.
+    """
+    # Find the closing # /// line
+    close_idx = None
+    in_block = False
+    for i, line in enumerate(lines):
+        stripped = line.strip()
+        if stripped == "# /// script":
+            in_block = True
+        elif in_block and stripped == "# ///":
+            close_idx = i
+            break
+
+    if close_idx is None:
+        return lines
+
+    new_line = f'# mograder-assignment = "{assignment_name}"\n'
+    return lines[:close_idx] + [new_line] + lines[close_idx:]
+
+
+def _hash_cell(code: str) -> str:
+    """Return first 8 hex chars of SHA-256 of the stripped cell code."""
+    return hashlib.sha256(code.strip().encode()).hexdigest()[:8]
+
+
+def _inject_cell_hashes(text: str) -> str:
+    """Compute hashes of non-solution cells and inject into PEP 723 block.
+
+    Non-solution cells are those NOT containing ``# YOUR CODE HERE``.
+    """
+    from marimo._convert.converters import MarimoConvert
+
+    ir = MarimoConvert.from_py(text).to_ir()
+    hashes = []
+    for cell in ir.cells:
+        if "# YOUR CODE HERE" not in cell.code:
+            hashes.append(_hash_cell(cell.code))
+
+    if not hashes:
+        return text
+
+    lines = text.splitlines(keepends=True)
+    close_idx = None
+    in_block = False
+    for i, line in enumerate(lines):
+        stripped = line.strip()
+        if stripped == "# /// script":
+            in_block = True
+        elif in_block and stripped == "# ///":
+            close_idx = i
+            break
+
+    if close_idx is None:
+        return text
+
+    csv = ",".join(hashes)
+    new_line = f'# mograder-cell-hashes = "{csv}"\n'
+    lines = lines[:close_idx] + [new_line] + lines[close_idx:]
+    return "".join(lines)
+
+
 def process_file(
     source: Path,
     output_dir: Path | None,
@@ -335,6 +400,17 @@ def process_file(
         output_dir = Path("release")
     output_dir.mkdir(parents=True, exist_ok=True)
     dest = output_dir / source.name
+
+    # Inject assignment metadata into PEP 723 block
+    assignment_name = source.parent.name
+    student_lines = _inject_assignment_metadata(student_lines, assignment_name)
+
     dest.write_text("".join(student_lines))
+
+    # Inject cell hashes (needs parsed marimo IR, so operates on written text)
+    text = dest.read_text()
+    text = _inject_cell_hashes(text)
+    dest.write_text(text)
+
     print(f"OK: {_rel(source)} → {_rel(dest)} ({n_solutions} solution blocks stripped)")
     return True

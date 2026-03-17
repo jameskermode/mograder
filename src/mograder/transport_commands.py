@@ -79,6 +79,15 @@ def do_fetch(
                 zf.extractall(output_dir)
                 click.echo(f"  Extracted: {dest.name} ({len(zf.namelist())} files)")
 
+    # Cache .py files for integrity validation (--fix)
+    cache_dir = output_dir / ".mograder" / "release" / match.name
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    for dest in downloaded:
+        if dest.suffix == ".py":
+            import shutil
+
+            shutil.copy2(dest, cache_dir / dest.name)
+
     click.echo(f"Fetched {len(downloaded)} file(s) for '{match.name}'")
 
 

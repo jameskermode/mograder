@@ -4,6 +4,8 @@
 #     "marimo",
 #     "mograder",
 # ]
+# mograder-assignment = "demo-holistic"
+# mograder-cell-hashes = "bb1d4527,a0c27baa,27c75308,d0c40b37,601961a7,7579b131,90b6af02,f26057ad"
 # ///
 
 import marimo

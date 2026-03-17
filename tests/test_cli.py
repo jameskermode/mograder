@@ -12,6 +12,7 @@ from mograder.cli import (
     _resolve_assignments,
     cli,
 )
+from mograder.markers import _inject_cell_hashes
 from mograder.models import CheckResult, NotebookResult
 
 
@@ -661,3 +662,125 @@ def test_feedback_assignment_name(mock_grades, mock_export, tmp_path, monkeypatc
     result = runner.invoke(cli, ["feedback", "hw1"])
     assert result.exit_code == 0, result.output
     assert "1/1 notebooks have been graded" in result.output
+
+
+# -- Validate hash warnings ---------------------------------------------------
+
+_VALIDATE_NB = """\
+# /// script
+# requires-python = ">=3.11"
+# ///
+
+import marimo
+
+__generated_with = "0.20.0"
+app = marimo.App()
+
+
+@app.cell
+def _():
+    x = 1
+    return (x,)
+
+
+@app.cell
+def _():
+    # YOUR CODE HERE
+    pass
+    return
+
+
+@app.cell
+def _(x):
+    y = x + 1
+    return (y,)
+
+
+if __name__ == "__main__":
+    app.run()
+"""
+
+
+@patch("mograder.runner.create_shared_sandbox", return_value=None)
+@patch("mograder.runner.run_notebook")
+def test_validate_warns_on_modified_cells(mock_run_nb, mock_sandbox, tmp_path):
+    """validate prints warnings when non-solution cells are modified."""
+    nb_text = _inject_cell_hashes(_VALIDATE_NB)
+    # Modify a non-solution cell
+    nb_text = nb_text.replace("x = 1", "x = 999")
+    nb = tmp_path / "student.py"
+    nb.write_text(nb_text)
+
+    mock_run_nb.return_value = NotebookResult(
+        path=nb, checks=[CheckResult("Q1", "success")], cell_errors=0
+    )
+
+    runner = CliRunner()
+    result = runner.invoke(cli, ["validate", str(nb)])
+    assert "WARNING" in result.output
+    assert "non-solution cell" in result.output.lower()
+
+
+@patch("mograder.runner.create_shared_sandbox", return_value=None)
+@patch("mograder.runner.run_notebook")
+def test_validate_no_warning_on_clean_notebook(mock_run_nb, mock_sandbox, tmp_path):
+    """validate shows no warnings when cells are unmodified."""
+    nb_text = _inject_cell_hashes(_VALIDATE_NB)
+    nb = tmp_path / "student.py"
+    nb.write_text(nb_text)
+
+    mock_run_nb.return_value = NotebookResult(
+        path=nb, checks=[CheckResult("Q1", "success")], cell_errors=0
+    )
+
+    runner = CliRunner()
+    result = runner.invoke(cli, ["validate", str(nb)])
+    assert "WARNING" not in result.output
+
+
+@patch("mograder.runner.create_shared_sandbox", return_value=None)
+@patch("mograder.runner.run_notebook")
+def test_validate_fix_restores_cells(mock_run_nb, mock_sandbox, tmp_path):
+    """validate --fix with --release restores modified cells."""
+    nb_text = _inject_cell_hashes(_VALIDATE_NB)
+    release = tmp_path / "release.py"
+    release.write_text(nb_text)
+
+    # Modify a non-solution cell
+    modified = nb_text.replace("x = 1", "x = 999")
+    nb = tmp_path / "student.py"
+    nb.write_text(modified)
+
+    mock_run_nb.return_value = NotebookResult(
+        path=nb, checks=[CheckResult("Q1", "success")], cell_errors=0
+    )
+
+    runner = CliRunner()
+    result = runner.invoke(
+        cli, ["validate", "--fix", "--release", str(release), str(nb)]
+    )
+    assert "Fixed" in result.output
+    # The file should be restored
+    restored = nb.read_text()
+    assert "x = 1" in restored
+    assert "x = 999" not in restored
+
+
+@patch("mograder.runner.create_shared_sandbox", return_value=None)
+@patch("mograder.runner.run_notebook")
+def test_validate_fix_no_release_shows_instructions(
+    mock_run_nb, mock_sandbox, tmp_path
+):
+    """validate --fix without available release prints help message."""
+    nb_text = _inject_cell_hashes(_VALIDATE_NB)
+    modified = nb_text.replace("x = 1", "x = 999")
+    nb = tmp_path / "student.py"
+    nb.write_text(modified)
+
+    mock_run_nb.return_value = NotebookResult(
+        path=nb, checks=[CheckResult("Q1", "success")], cell_errors=0
+    )
+
+    runner = CliRunner()
+    result = runner.invoke(cli, ["validate", "--fix", str(nb)])
+    assert "Cannot fix" in result.output

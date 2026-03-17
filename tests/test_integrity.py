@@ -1,6 +1,13 @@
 """Tests for integrity checking of check/marks cells."""
 
-from mograder.integrity import check_cell_integrity, check_integrity
+from mograder.integrity import (
+    check_cell_integrity,
+    check_integrity,
+    parse_assignment_name,
+    parse_cell_hashes,
+    validate_cell_hashes,
+)
+from mograder.markers import _inject_cell_hashes
 
 # -- Minimal notebook templates -----------------------------------------------
 
@@ -255,3 +262,94 @@ def test_cell_integrity_deleted_cell():
     assert len(result.tampered_cells) > 0
     # The fixed source should have the setup cell reinjected
     assert "x = 42" in result.fixed_source
+
+
+# -- Hash-based validation tests -----------------------------------------------
+
+
+_HASH_NOTEBOOK_TEMPLATE = """\
+# /// script
+# requires-python = ">=3.11"
+# ///
+
+import marimo
+
+__generated_with = "0.20.0"
+app = marimo.App()
+
+
+@app.cell
+def _():
+    x = 1
+    return (x,)
+
+
+@app.cell
+def _():
+    # YOUR CODE HERE
+    pass
+    return
+
+
+@app.cell
+def _(x):
+    y = x + 1
+    return (y,)
+
+
+if __name__ == "__main__":
+    app.run()
+"""
+
+
+def test_parse_assignment_name():
+    text = '# mograder-assignment = "demo-hw"\nother stuff'
+    assert parse_assignment_name(text) == "demo-hw"
+
+
+def test_parse_assignment_name_missing():
+    assert parse_assignment_name("no metadata here") is None
+
+
+def test_parse_cell_hashes():
+    text = '# mograder-cell-hashes = "abc12345,def67890"\nother'
+    assert parse_cell_hashes(text) == ["abc12345", "def67890"]
+
+
+def test_parse_cell_hashes_missing():
+    assert parse_cell_hashes("no hashes") is None
+
+
+def test_validate_cell_hashes_no_tampering():
+    """Unmodified notebook → no warnings."""
+    nb_with_hashes = _inject_cell_hashes(_HASH_NOTEBOOK_TEMPLATE)
+    assert "mograder-cell-hashes" in nb_with_hashes
+    warnings = validate_cell_hashes(nb_with_hashes)
+    assert warnings == []
+
+
+def test_validate_cell_hashes_modified_cell():
+    """Modified non-solution cell → warning returned."""
+    nb_with_hashes = _inject_cell_hashes(_HASH_NOTEBOOK_TEMPLATE)
+    # Modify a non-solution cell
+    modified = nb_with_hashes.replace("x = 1", "x = 999")
+    warnings = validate_cell_hashes(modified)
+    assert len(warnings) == 1
+    assert "x = 999" in warnings[0].snippet
+
+
+def test_validate_cell_hashes_solution_cell_modified():
+    """Modified solution cell → no warning (allowed)."""
+    nb_with_hashes = _inject_cell_hashes(_HASH_NOTEBOOK_TEMPLATE)
+    # Modify the solution cell
+    modified = nb_with_hashes.replace(
+        "# YOUR CODE HERE\n    pass", "# YOUR CODE HERE\n    x = 42"
+    )
+    warnings = validate_cell_hashes(modified)
+    assert warnings == []
+
+
+def test_validate_cell_hashes_no_hashes():
+    """Notebook without hashes → empty list (graceful degradation)."""
+    assert validate_cell_hashes("plain notebook without PEP 723") == []
+    assert validate_cell_hashes(_HASH_NOTEBOOK_TEMPLATE) == []
