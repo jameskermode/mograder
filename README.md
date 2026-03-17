@@ -2,17 +2,28 @@
 
 Semi-automated grading for [Marimo](https://marimo.io) notebooks.
 
-mograder is the Marimo equivalent of [nbgrader](https://nbgrader.readthedocs.io/). Coding exercises support optional per-question marks via `Grader` (auto-scored pass/fail), while written analysis sections are hand-graded. Alternatively, without per-question marks, a single holistic mark (0-100) is assigned.
+mograder asprises to become a Marimo equivalent of [nbgrader](https://nbgrader.readthedocs.io/). It doesn't yet have full feature parity but should already be useable. mograder has been developed based on my experiences teaching computational modelling and machine learning with Jupyter and nbgrader in [HetSys CDT](https://warwick.ac.uk/fac/sci/hetsys/) and the [Predictive Modelling and Scientific Computing MSc course](https://warwick.ac.uk/study/postgraduate/courses/pga-pgcert-pgdip-msc-predictive-modelling-scientific-computing/), both at the University of Warwick, so it is an personal and opinionated take on the ngrader workflow which may or may not suit other users!
+
+Three modes of operation are supported:
+- **Workshop mode** which is fully formative (i.e. no marks are assigned). Model solutions can be unlocked automatically by students when they pass automated tests. Solutions can also be released one by one by an instructor from a web dashboard, allowing 'un-sticking' of students during a live workshop.
+- **Manual grading** of a single holistic mark. Instance formative feedbck is available to students on coding questions, while reflective interpretation is manually graded.
+- **Hybrid grading** Automated per-question marks on coding exericies, plus a single mark for the reflective component.
+
+Two transports are currently availble: Moodle integration, and HTTPS transport for standalone usage.
+
+Thanks to Marimo's WASM support, notebooks with dependendencies which are [Pyodide comptabile](https://pyodide.com/what-python-packages-are-available-in-pyodide/) can be deployed as a standalone HTML file which runs entirely in students' browsers with no need for a server. It is also possible to run notebooks on [MoLab](https://molab.marimo.io/), which allows for full dependencies, to run your own [Marimo edit server]. Thanks to Marimo's [UV](https://docs.astral.sh/uv/) integration and support for [PEP 723](https://peps.python.org/pep-0723/) script dependencies (`--sandbox` mode) which automatically installs notebooks dependencies in an isolated environment, it is also [straightforward for students](docs/student-setup.md) to install and run themselves locally.
 
 ## Try it
 
 A live demo is available with three components:
 
 1. **[Student Dashboard](https://jameskermode.github.io/mograder/?server=https://mograder-demo.jrkermode.uk&wasm_base=notebooks)** — WASM app hosted on GitHub Pages. Lists assignments and links to self-hosted WASM notebooks for editing in the browser.
-2. **[Formgrader + Assignment Server](https://mograder-demo.jrkermode.uk)** — Combined ASGI app. The formgrader UI shows the full grading workflow (assignments, submissions, grading, students tabs) with pre-populated demo data. The same service also handles the assignment API at `/assignments`. No login required.
-3. **Notebook Editor** — Click "Edit in Browser" in the dashboard to open a notebook as a standalone WASM app with full edit mode. Each notebook has a submit cell to send your work back to the assignment server.
-4. **[Demo Workshop](https://jameskermode.github.io/mograder/notebooks/demo-workshop.html)** — WASM notebook demonstrating hints and encrypted solutions for formative workshops. The **[Instructor Dashboard](https://mograder-demo.jrkermode.uk/dashboard.html#token=mograder-demo-secret)** controls which model solutions are visible to students.
-5. **[GitHub Codespaces](https://codespaces.new/jameskermode/mograder)** — Open the repo in a Codespace for a full development environment with uv, marimo, and the student dashboard pre-configured. Assignments are served from the demo server.
+2. **[Formgrader + Assignment Server](https://mograder-demo.jrkermode.uk)** — Combined ASGI app. The formgrader UI shows the full grading workflow (assignments, submissions, grading, students tabs) with pre-populated demo data. The same service also handles the assignment API at `/assignments`. No login required (for a real server, token-based authentication should be used, described below).
+3. **Notebook Editor** — Click "Edit in Browser" in the dashboard to open a notebook as a standalone WASM app with full edit mode or "Edit in Molab" to open a full editor. Each notebook has a submit cell to send your work back to the demonstration assignment server.
+
+There is also a **[Demo Workshop](https://jameskermode.github.io/mograder/notebooks/demo-workshop.html)** which is a WASM notebook demonstrating hints and encrypted solutions for formative workshops. The **[Instructor Dashboard](https://mograder-demo.jrkermode.uk/dashboard.html#token=mograder-demo-secret)** controls which model solutions are visible to students.
+
+A demonstration **[GitHub Codespaces](https://codespaces.new/jameskermode/mograder)** shows how to open this repo in a Codespace for a full development environment with uv, marimo, and the student dashboard pre-configured. Assignments are served from the demo server.
 
 ## For students
 
@@ -26,7 +37,7 @@ uvx mograder student <CONFIG_URL>
 
 **Or open in [GitHub Codespaces](docs/student-setup.md#option-2-github-codespaces)** — one click, no install needed.
 
-## Directory convention
+## Directory Convention
 
 mograder follows [nbgrader's terminology](https://nbgrader.readthedocs.io/en/latest/user_guide/philosophy.html): **source** → **release** → **submitted** → **autograded** → **feedback**.
 
@@ -51,8 +62,6 @@ course/
   feedback/
     assignment-name/
       student1.html          ← output of mograder feedback
-  import/
-    assignment-name.csv      ← Moodle offline grading worksheet (optional)
 ```
 
 ## Workflow
