@@ -71,8 +71,8 @@ class TestE2EStudentWorkflow:
                 str(sol),
                 "--url",
                 base_url,
-                "--user",
-                "alice",
+                "--token",
+                "alice:fake",
             ],
         )
         assert result.exit_code == 0, result.output
@@ -96,15 +96,15 @@ class TestE2EStudentWorkflow:
                 str(sol),
                 "--url",
                 base_url,
-                "--user",
-                "alice",
+                "--token",
+                "alice:fake",
             ],
         )
 
         # Check status
         result = runner.invoke(
             cli,
-            ["https", "feedback", "hw1", "--url", base_url, "--user", "alice"],
+            ["https", "feedback", "hw1", "--url", base_url, "--token", "alice:fake"],
         )
         assert result.exit_code == 0, result.output
         assert "submitted" in result.output
@@ -133,15 +133,16 @@ class TestE2EStudentWorkflow:
                 str(out_dir / "homework.py"),
                 "--url",
                 base_url,
-                "--user",
-                "alice",
+                "--token",
+                "alice:fake",
             ],
         )
         assert result.exit_code == 0, result.output
 
         # 3. Check status
         result = runner.invoke(
-            cli, ["https", "feedback", "hw1", "--url", base_url, "--user", "alice"]
+            cli,
+            ["https", "feedback", "hw1", "--url", base_url, "--token", "alice:fake"],
         )
         assert result.exit_code == 0, result.output
         assert "submitted" in result.output

@@ -79,19 +79,6 @@ class MoodleAPIClient:
                 )
         return assignments
 
-    def get_assignment_files(self, assignment_id: int) -> list[dict]:
-        """Get files attached to an assignment's description.
-
-        Returns list of {filename, fileurl, filesize}.
-        """
-        # We need to call get_assignments and filter — Moodle doesn't have
-        # a get-single-assignment endpoint, but the data is already cached
-        # by the caller via get_assignments/find_assignment.
-        # This method is for when we already have the assignment dict.
-        raise NotImplementedError(
-            "Use the introattachments from the assignment dict directly"
-        )
-
     def download_file(self, file_url: str, dest: Path) -> Path:
         """Download a file from Moodle, appending the token for auth."""
         sep = "&" if "?" in file_url else "?"
@@ -493,6 +480,7 @@ def save_cached_token(url: str, token: str, fullname: str) -> None:
     TOKEN_CACHE.write_text(
         json.dumps({"url": url.rstrip("/"), "token": token, "fullname": fullname})
     )
+    os.chmod(TOKEN_CACHE, 0o600)
 
 
 def clear_cached_token() -> None:

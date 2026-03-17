@@ -32,6 +32,16 @@ class TestLoadOrCreateSecret:
         assert len(secret) == 64
         assert (tmp_path / ".mograder-secret").is_file()
 
+    def test_creates_file_with_restricted_permissions(self, tmp_path):
+        import os
+        import sys
+
+        load_or_create_secret(tmp_path)
+        secret_path = tmp_path / ".mograder-secret"
+        if sys.platform != "win32":
+            mode = os.stat(secret_path).st_mode & 0o777
+            assert mode == 0o600, f"Expected 0o600, got {oct(mode)}"
+
     def test_reads_existing(self, tmp_path):
         (tmp_path / ".mograder-secret").write_text("mysecret\n")
         assert load_or_create_secret(tmp_path) == "mysecret"
@@ -111,6 +121,17 @@ class TestHTTPSTokenCache:
         assert cache_path.is_file()
         clear_cached_https_token()
         assert not cache_path.is_file()
+
+    def test_file_permissions(self, tmp_path, monkeypatch):
+        import os
+        import sys
+
+        cache_path = tmp_path / "https_token.json"
+        monkeypatch.setattr("mograder.auth.HTTPS_TOKEN_CACHE", cache_path)
+        save_cached_https_token("http://example.com", "tok:abc", "alice")
+        if sys.platform != "win32":
+            mode = os.stat(cache_path).st_mode & 0o777
+            assert mode == 0o600, f"Expected 0o600, got {oct(mode)}"
 
     def test_url_trailing_slash(self, tmp_path, monkeypatch):
         cache_path = tmp_path / "https_token.json"

@@ -286,6 +286,9 @@ def create_workshop_starlette_routes(
     resolved_keys = keys_path.resolve()
 
     def _cors(response: Response) -> Response:
+        # Allow-Origin: * is intentional — the workshop serves WASM apps that
+        # run from file:// or arbitrary origins. Mutation endpoints are
+        # protected by a secret token query parameter.
         response.headers["Access-Control-Allow-Origin"] = "*"
         response.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
         response.headers["Access-Control-Allow-Headers"] = "Content-Type"

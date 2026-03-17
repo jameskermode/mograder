@@ -19,6 +19,8 @@ import os
 
 import marimo as mo
 
+__all__ = ["check", "Grader", "hint", "fetch", "submit", "status"]
+
 
 def _write_sidecar(label: str, check_status: str, details: list[str]) -> None:
     """Append a check result to the sidecar JSONL file (if configured).
@@ -33,7 +35,7 @@ def _write_sidecar(label: str, check_status: str, details: list[str]) -> None:
         f.write(json.dumps(record) + "\n")
 
 
-def hint(*hints):
+def hint(*hints: str) -> mo.Html:
     """Display progressive hints in a collapsed accordion."""
     if len(hints) == 1:
         items = {"Hint": mo.md(hints[0])}
@@ -42,7 +44,7 @@ def hint(*hints):
     return mo.accordion(items)
 
 
-def check(label, checks):
+def check(label: str, checks: list[tuple[bool, str]]) -> mo.Html:
     """Run a list of (condition, message) checks and display coloured feedback.
 
     Args:
@@ -79,12 +81,12 @@ class Grader:
     Call ``grader.scores()`` to display a reactive score table.
     """
 
-    def __init__(self, mo, marks):
+    def __init__(self, mo, marks: dict[str, int | float]):
         self.mo = mo
         self.marks = marks
         self._state, self._set = mo.state({})
 
-    def check(self, label, checks):
+    def check(self, label: str, checks: list[tuple[bool, str]]) -> mo.Html:
         """Check with auto marks badge and state tracking.
 
         Looks up marks from ``self.marks`` using the question key

@@ -11,7 +11,7 @@ from pathlib import Path
 
 import click
 
-from mograder.transport import Transport
+from mograder.transport import Transport, TransportError
 
 
 def _rel(p: Path) -> str:
@@ -32,7 +32,10 @@ def do_fetch(
     """Download assignment files, or list available assignments."""
     from datetime import datetime, timezone
 
-    assignments = transport.list_assignments()
+    try:
+        assignments = transport.list_assignments()
+    except TransportError as e:
+        raise click.ClickException(str(e))
 
     if list_only:
         click.echo(f"{'ID':<8} {'Name':<40} {'Due date':<20} {'Files':>5}")
@@ -95,7 +98,10 @@ def do_submit(
         return
 
     click.echo(f"Uploading {_rel(filepath)}...")
-    transport.submit_file(assignment, filepath)
+    try:
+        transport.submit_file(assignment, filepath)
+    except TransportError as e:
+        raise click.ClickException(str(e))
     click.echo(f"Submitted '{filepath.name}' to '{assignment}'")
 
 
@@ -132,7 +138,10 @@ def do_fetch_submissions(
     Skips submissions that haven't changed since the last fetch (unless
     *force* is True).
     """
-    submissions = transport.get_submissions(assignment)
+    try:
+        submissions = transport.get_submissions(assignment)
+    except TransportError as e:
+        raise click.ClickException(str(e))
     output_dir.mkdir(parents=True, exist_ok=True)
 
     meta = _load_fetch_meta(output_dir)
@@ -183,7 +192,10 @@ def do_upload_feedback(
         click.echo("No grades to upload")
         return
 
-    transport.upload_grades(assignment, grades, workflow_state=workflow_state)
+    try:
+        transport.upload_grades(assignment, grades, workflow_state=workflow_state)
+    except TransportError as e:
+        raise click.ClickException(str(e))
     click.echo(f"Uploaded {len(grades)} grade(s) to '{assignment}'")
 
 
@@ -193,7 +205,10 @@ def do_status(
 ) -> None:
     """Show submission status, grade, and feedback."""
     click.echo(f"Assignment: {assignment}")
-    status = transport.get_status(assignment)
+    try:
+        status = transport.get_status(assignment)
+    except TransportError as e:
+        raise click.ClickException(str(e))
     click.echo(f"Status: {status.status}")
 
     if status.graded:

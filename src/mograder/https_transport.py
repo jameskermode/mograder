@@ -7,6 +7,7 @@ from pathlib import Path
 import requests
 
 from mograder.models import RemoteAssignment, RemoteStatus, RemoteSubmission
+from mograder.transport import TransportError
 
 
 def register(base_url: str, user: str, enrollment_code: str) -> dict:
@@ -19,7 +20,7 @@ def register(base_url: str, user: str, enrollment_code: str) -> dict:
     resp.raise_for_status()
     data = resp.json()
     if "error" in data:
-        raise RuntimeError(data["error"])
+        raise TransportError(data["error"])
     return data
 
 
@@ -81,7 +82,7 @@ class HTTPSTransport:
         resp.raise_for_status()
         data = resp.json()
         if "error" in data:
-            raise RuntimeError(data["error"])
+            raise TransportError(data["error"])
 
     def get_submissions(self, assignment: str) -> list[RemoteSubmission]:
         resp = requests.get(
@@ -119,7 +120,7 @@ class HTTPSTransport:
         resp.raise_for_status()
         data = resp.json()
         if "error" in data:
-            raise RuntimeError(data["error"])
+            raise TransportError(data["error"])
 
     def get_status(self, assignment: str) -> RemoteStatus:
         resp = requests.get(

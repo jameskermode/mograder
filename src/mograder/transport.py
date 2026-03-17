@@ -8,6 +8,10 @@ from typing import Protocol, runtime_checkable
 from mograder.models import RemoteAssignment, RemoteStatus, RemoteSubmission
 
 
+class TransportError(Exception):
+    """Raised when a transport operation fails."""
+
+
 @runtime_checkable
 class Transport(Protocol):
     """Protocol for fetching/submitting assignments from a remote server."""
@@ -43,7 +47,7 @@ def build_transport(config) -> Transport:
 
         url = getattr(config, "https_url", None)
         if not url:
-            raise ValueError(
+            raise TransportError(
                 "HTTPS transport selected but no URL configured. "
                 "Set [https] url in mograder.toml"
             )
@@ -70,16 +74,16 @@ def build_transport(config) -> Transport:
         url = getattr(config, "moodle_url", None)
         course_id = getattr(config, "moodle_course_id", None)
         if not url or not course_id:
-            raise ValueError(
+            raise TransportError(
                 "Moodle transport selected but URL or course_id not configured. "
                 "Set [moodle] url and course_id in mograder.toml"
             )
         cached = load_cached_token(url)
         if not cached:
-            raise ValueError(
+            raise TransportError(
                 "No Moodle token found. Run 'mograder moodle login' first."
             )
         client = MoodleAPIClient(url, cached["token"])
         return MoodleTransport(client, course_id)
 
-    raise ValueError(f"Unknown transport type: {transport_type!r}")
+    raise TransportError(f"Unknown transport type: {transport_type!r}")

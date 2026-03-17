@@ -37,6 +37,9 @@ def create_student_api(course_dir: Path, config: MograderConfig) -> Starlette:
     source_dir = (course_dir / config.source_dir).resolve()
 
     def _cors(response: Response) -> Response:
+        # Allow-Origin: * is intentional — this API serves the student WASM app
+        # which runs from file:// or arbitrary origins (e.g. molab, Codespaces).
+        # All endpoints are read-only and unauthenticated.
         response.headers["Access-Control-Allow-Origin"] = "*"
         response.headers["Access-Control-Allow-Methods"] = "GET, OPTIONS"
         response.headers["Access-Control-Allow-Headers"] = "Content-Type"

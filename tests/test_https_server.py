@@ -669,6 +669,91 @@ class TestReleaseDirAutoDiscover:
         assert resp.status_code == 404
 
 
+# --- Security tests ---
+
+
+class TestPathTraversal:
+    """Verify path traversal attacks are blocked."""
+
+    def test_download_file_path_traversal(self, server):
+        base_url, _, _ = server
+        resp = requests.get(f"{base_url}/assignments/hw1/files/../../etc/passwd")
+        assert resp.status_code in (403, 404)
+
+    def test_download_file_dotdot_in_assignment(self, server):
+        base_url, _, _ = server
+        resp = requests.get(f"{base_url}/assignments/../../../etc/passwd/files/x")
+        assert resp.status_code in (403, 404)
+
+    def test_download_submission_path_traversal(self, auth_server):
+        base_url, _, _, secret = auth_server
+        token = make_token(secret, INSTRUCTOR_USER)
+        resp = requests.get(
+            f"{base_url}/assignments/hw1/submissions/../../etc/passwd",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert resp.status_code in (403, 404)
+
+    def test_download_file_path_traversal_release_dir(self, release_server):
+        base_url, _, _, _, _ = release_server
+        resp = requests.get(f"{base_url}/assignments/hw1/files/../../etc/passwd")
+        assert resp.status_code in (403, 404)
+
+
+class TestUsernameValidation:
+    """Verify malicious usernames are rejected."""
+
+    def test_submit_traversal_username(self, server):
+        base_url, _, _ = server
+        resp = requests.post(
+            f"{base_url}/assignments/hw1/submit?user=../../evil",
+            files={"file": ("solution.py", b"code")},
+        )
+        assert resp.status_code == 400
+
+    def test_submit_slash_username(self, server):
+        base_url, _, _ = server
+        resp = requests.post(
+            f"{base_url}/assignments/hw1/submit?user=a/b",
+            files={"file": ("solution.py", b"code")},
+        )
+        assert resp.status_code == 400
+
+    def test_submit_backslash_username(self, server):
+        base_url, _, _ = server
+        resp = requests.post(
+            f"{base_url}/assignments/hw1/submit?user=a\\b",
+            files={"file": ("solution.py", b"code")},
+        )
+        assert resp.status_code == 400
+
+    def test_register_traversal_username(self, reg_server):
+        base_url, _, _, _, enrollment_code = reg_server
+        resp = requests.post(
+            f"{base_url}/register",
+            json={"user": "../../evil", "enrollment_code": enrollment_code},
+        )
+        assert resp.status_code == 400
+
+    def test_register_slash_username(self, reg_server):
+        base_url, _, _, _, enrollment_code = reg_server
+        resp = requests.post(
+            f"{base_url}/register",
+            json={"user": "foo/bar", "enrollment_code": enrollment_code},
+        )
+        assert resp.status_code == 400
+
+    def test_valid_usernames_accepted(self, server):
+        """Usernames with dots, hyphens, underscores should work."""
+        base_url, _, _ = server
+        for username in ["alice", "bob-smith", "user_1", "first.last"]:
+            resp = requests.post(
+                f"{base_url}/assignments/hw1/submit?user={username}",
+                files={"file": ("solution.py", b"code")},
+            )
+            assert resp.status_code == 200, f"Failed for username: {username}"
+
+
 class TestGradesDir:
     def test_upload_grades_to_separate_dir(self, release_server):
         base_url, _, _, _, grades_dir = release_server

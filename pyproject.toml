@@ -4,13 +4,13 @@ build-backend = "hatchling.build"
 
 [project]
 name = "mograder"
-version = "0.0.13"
+version = "0.1.0"
 description = "Semi-automated grading for Marimo notebooks"
 readme = "README.md"
 license = "MIT"
 authors = [{ name = "James Kermode" }]
 classifiers = [
-    "Development Status :: 3 - Alpha",
+    "Development Status :: 4 - Beta",
     "Programming Language :: Python :: 3",
     "License :: OSI Approved :: MIT License",
 ]
@@ -54,6 +54,8 @@ mograder = "mograder.cli:cli"
 [project.urls]
 Homepage = "https://github.com/jameskermode/mograder"
 Repository = "https://github.com/jameskermode/mograder"
+Documentation = "https://github.com/jameskermode/mograder#readme"
+"Bug Tracker" = "https://github.com/jameskermode/mograder/issues"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/mograder"]

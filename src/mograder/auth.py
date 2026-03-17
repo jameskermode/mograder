@@ -28,7 +28,14 @@ def load_or_create_secret(root_dir: Path) -> str:
     if secret_path.is_file():
         return secret_path.read_text().strip()
     secret = generate_secret()
-    secret_path.write_text(secret + "\n")
+    # Create with restrictive permissions (owner-only read/write)
+    import os
+
+    fd = os.open(str(secret_path), os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    try:
+        os.write(fd, (secret + "\n").encode())
+    finally:
+        os.close(fd)
     return secret
 
 
@@ -75,10 +82,13 @@ def load_cached_https_token(url: str) -> dict | None:
 
 def save_cached_https_token(url: str, token: str, user: str) -> None:
     """Persist an HTTPS token to the cache file."""
+    import os
+
     HTTPS_TOKEN_CACHE.parent.mkdir(parents=True, exist_ok=True)
     HTTPS_TOKEN_CACHE.write_text(
         json.dumps({"url": url.rstrip("/"), "token": token, "user": user})
     )
+    os.chmod(HTTPS_TOKEN_CACHE, 0o600)
 
 
 def clear_cached_https_token() -> None:

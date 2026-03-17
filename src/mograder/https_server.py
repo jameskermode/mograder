@@ -53,12 +53,42 @@ from urllib.parse import parse_qs, urlparse
 # Regex to detect timestamped submission stems like alice_20260310T200800
 _TIMESTAMP_RE = re.compile(r"_\d{8}T\d{6}$")
 
+# Allowed username characters: alphanumeric, underscore, hyphen, dot
+_USERNAME_RE = re.compile(r"^[a-zA-Z0-9._-]+$")
+
+
+def _safe_path(base: Path, *parts: str) -> Path:
+    """Join *parts* onto *base* and verify the result is under *base*.
+
+    Raises ``ValueError`` if the resolved path escapes *base* (e.g. via ``..``).
+    """
+    joined = base.joinpath(*parts).resolve()
+    base_resolved = base.resolve()
+    if not (
+        joined == base_resolved or str(joined).startswith(str(base_resolved) + os.sep)
+    ):
+        raise ValueError(f"Path escapes base directory: {joined}")
+    return joined
+
+
+def _validate_username(user: str) -> str | None:
+    """Return an error message if *user* is not a valid username, else None."""
+    if not user or not _USERNAME_RE.match(user):
+        return "Invalid username: must be alphanumeric, underscore, hyphen, or dot"
+    if ".." in user:
+        return "Invalid username: must not contain '..'"
+    return None
+
 
 def _write_submission(target_dir: Path, user: str, file_data: bytes) -> Path:
     """Atomically write a timestamped submission and update the symlink.
 
     Returns the path to the timestamped file.
+    Raises ``ValueError`` if the username is invalid.
     """
+    err = _validate_username(user)
+    if err:
+        raise ValueError(err)
     target_dir.mkdir(parents=True, exist_ok=True)
     ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S")
     timestamped = target_dir / f"{user}_{ts}.py"
@@ -285,19 +315,37 @@ class AssignmentHandler(BaseHTTPRequestHandler):
         self._send_json(data)
 
     def _handle_download_file(self, assignment: str, filename: str):
-        if self.server.release_dir is not None:
-            file_path = self.server.release_dir / assignment / filename
-        else:
-            file_path = self.root / assignment / "files" / filename
+        base = (
+            self.server.release_dir
+            if self.server.release_dir is not None
+            else self.root
+        )
+        try:
+            file_path = (
+                _safe_path(base, assignment, filename)
+                if self.server.release_dir
+                else _safe_path(base, assignment, "files", filename)
+            )
+        except ValueError:
+            self._send_error(403, "Invalid path")
+            return
         self._send_file(file_path)
 
     def _handle_download_submission(self, assignment: str, filename: str):
-        file_path = self.server.submitted_dir / assignment / filename
+        try:
+            file_path = _safe_path(self.server.submitted_dir, assignment, filename)
+        except ValueError:
+            self._send_error(403, "Invalid path")
+            return
         self._send_file(file_path)
 
     def _handle_submit(self, assignment: str, user: str | None):
         if not user:
             self._send_error(400, "Missing 'user' query parameter")
+            return
+        err = _validate_username(user)
+        if err:
+            self._send_error(400, err)
             return
 
         content_type = self.headers.get("Content-Type", "")
@@ -415,6 +463,10 @@ class AssignmentHandler(BaseHTTPRequestHandler):
         code = data.get("enrollment_code", "")
         if not user:
             self._send_error(400, "Missing 'user' field")
+            return
+        err = _validate_username(user)
+        if err:
+            self._send_error(400, err)
             return
         from mograder.auth import INSTRUCTOR_USER
 
@@ -670,9 +722,15 @@ def create_starlette_routes(
             return err
         name = request.path_params["name"]
         filename = request.path_params["file"]
-        if resolved_release_dir is not None:
-            return _file(resolved_release_dir / name / filename)
-        return _file(root / name / "files" / filename)
+        base = resolved_release_dir if resolved_release_dir is not None else root
+        try:
+            if resolved_release_dir is not None:
+                file_path = _safe_path(base, name, filename)
+            else:
+                file_path = _safe_path(base, name, "files", filename)
+        except ValueError:
+            return _json({"error": "Invalid path"}, 403)
+        return _file(file_path)
 
     async def download_submission(request: Request):
         err = _check_instructor(request)
@@ -680,13 +738,20 @@ def create_starlette_routes(
             return err
         name = request.path_params["name"]
         filename = request.path_params["file"]
-        return _file(resolved_submitted_dir / name / filename)
+        try:
+            file_path = _safe_path(resolved_submitted_dir, name, filename)
+        except ValueError:
+            return _json({"error": "Invalid path"}, 403)
+        return _file(file_path)
 
     async def submit(request: Request):
         name = request.path_params["name"]
         user = request.query_params.get("user")
         if not user:
             return _json({"error": "Missing 'user' query parameter"}, 400)
+        user_err = _validate_username(user)
+        if user_err:
+            return _json({"error": user_err}, 400)
         err = _check_user_match(request, user)
         if err:
             return err
@@ -804,6 +869,9 @@ def create_starlette_routes(
         code = data.get("enrollment_code", "")
         if not user:
             return _json({"error": "Missing 'user' field"}, 400)
+        user_err = _validate_username(user)
+        if user_err:
+            return _json({"error": user_err}, 400)
         from mograder.auth import INSTRUCTOR_USER, make_token
 
         if user == INSTRUCTOR_USER or user.startswith("__"):

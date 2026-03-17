@@ -2306,12 +2306,9 @@ def https_fetch(ctx, assignment, list_assignments, url, token, output_dir):
 @click.argument("file", type=click.Path(exists=True, path_type=Path))
 @click.option("--url", default=None, help="Server URL (overrides config)")
 @click.option("--token", default=None, help="Auth token (overrides cached token)")
-@click.option(
-    "--user", default=None, help="Username (deprecated — extracted from token)"
-)
 @click.option("--dry-run", is_flag=True, help="Show what would happen")
 @click.pass_context
-def https_submit(ctx, assignment, file, url, token, user, dry_run):
+def https_submit(ctx, assignment, file, url, token, dry_run):
     """Submit a .py notebook to an HTTPS assignment server."""
     from mograder.https_transport import HTTPSTransport
     from mograder.transport_commands import do_submit
@@ -2323,10 +2320,9 @@ def https_submit(ctx, assignment, file, url, token, user, dry_run):
             "No HTTPS URL configured. Provide --url or set [https] url in mograder.toml"
         )
     token = _resolve_https_token(config, token)
+    user = _user_from_token(token)
     if not user:
-        user = _user_from_token(token)
-    if not user:
-        raise click.UsageError("No user specified. Provide --token or --user.")
+        raise click.UsageError("Cannot determine username from token. Provide --token.")
     transport = HTTPSTransport(url, user=user, token=token)
     do_submit(transport, file, assignment, dry_run=dry_run)
 
@@ -2401,11 +2397,8 @@ def https_upload_grades(ctx, assignment, url, token, grades_csv, dry_run):
 @click.argument("assignment")
 @click.option("--url", default=None, help="Server URL (overrides config)")
 @click.option("--token", default=None, help="Auth token (overrides cached token)")
-@click.option(
-    "--user", default=None, help="Username (deprecated — extracted from token)"
-)
 @click.pass_context
-def https_feedback(ctx, assignment, url, token, user):
+def https_feedback(ctx, assignment, url, token):
     """Check submission status and view grade/feedback."""
     from mograder.https_transport import HTTPSTransport
     from mograder.transport_commands import do_status
@@ -2417,8 +2410,7 @@ def https_feedback(ctx, assignment, url, token, user):
             "No HTTPS URL configured. Provide --url or set [https] url in mograder.toml"
         )
     token = _resolve_https_token(config, token)
-    if not user:
-        user = _user_from_token(token)
+    user = _user_from_token(token)
     transport = HTTPSTransport(url, user=user, token=token)
     do_status(transport, assignment)
 
