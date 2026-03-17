@@ -208,10 +208,10 @@ def convert_markdown_cells(lines: list[str]) -> list[str]:
 
     After ``strip_solutions()``, markdown answer cells look like::
 
-        _response = "placeholder text"
+        response_text = "placeholder text"
         # YOUR CODE HERE
         pass
-        mo.md(_response)
+        mo.md(response_text)
 
     This function converts them to::
 
@@ -231,12 +231,12 @@ def convert_markdown_cells(lines: list[str]) -> list[str]:
             line1 = lines[i + 1]
             line2 = lines[i + 2]
             line3 = lines[i + 3]
-            m = re.match(r'^(\s*)_response\s*=\s*["\'](.+?)["\']\s*$', line0)
+            m = re.match(r'^(\s*)response_text\s*=\s*["\'](.+?)["\']\s*$', line0)
             if (
                 m
                 and line1.strip() == "# YOUR CODE HERE"
                 and line2.strip() == "pass"
-                and line3.strip() == "mo.md(_response)"
+                and line3.strip() == "mo.md(response_text)"
             ):
                 indent = m.group(1)
                 placeholder = m.group(2)

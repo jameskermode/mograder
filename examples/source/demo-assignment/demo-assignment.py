@@ -196,9 +196,9 @@ def _(mo):
 
 @app.cell
 def _(mo):
-    _response = "*Write your analysis here...*"
+    response_text = "*Write your analysis here...*"
     ### BEGIN SOLUTION
-    _response = r"""
+    response_text = r"""
     The finite difference method approximates derivatives using nearby function
     values. Central differences achieve second-order accuracy O(h^2) because the
     leading error terms cancel by symmetry, while forward and backward differences
@@ -213,8 +213,8 @@ def _(mo):
     interpolation between points is a poor approximation.
     """
     ### END SOLUTION
-    mo.md(_response)
-    return
+    mo.md(response_text)
+    return (response_text,)
 
 
 @app.cell(hide_code=True)

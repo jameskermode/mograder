@@ -195,7 +195,7 @@ def _(mo):
     mo.md(r"""
     *Write your analysis here...*
     """)
-    return
+    return (response_text,)
 
 
 @app.cell(hide_code=True)

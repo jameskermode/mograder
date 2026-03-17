@@ -136,7 +136,7 @@ def _(mo):
     mo.md(r"""
     *Write your analysis here...*
     """)
-    return
+    return (response_text,)
 
 
 if __name__ == "__main__":

@@ -58,6 +58,7 @@ An argument is treated as an assignment name if it contains no `/` and doesn't e
 
 - **`runtime.py`** — Runtime helpers imported by notebooks. `check()` for holistic grading, `Grader` class for per-question marks with reactive score tracking via `mo.state`.
 - **`markers.py`** — Solution stripping (`### BEGIN/END SOLUTION` → `# YOUR CODE HERE`), marker validation, and `convert_markdown_cells()` post-processing. Entry point: `process_file()`.
+- **Written analysis cells**: Use `response_text` (not `_response`) as the variable name for the student's written response, and `return (response_text,)` so the word count cell can reactively consume it.
 - **`parser.py`** — Regex-based HTML parsing of marimo's `<marimo-callout-output>` elements to extract check results and cell error counts.
 - **`runner.py`** — Notebook execution via `subprocess` (`python -m marimo export html`), parallel batch processing with `ProcessPoolExecutor`, summary table printing, and CSV/ZIP output.
 - **`cells.py`** — Generates and injects two grading cells (verification summary + GTA feedback) before `if __name__`. Parses `_mark`/`_feedback`/`_marks` back out of graded notebooks. `parse_marks_metadata()` reads `_marks` dict only. Idempotent.

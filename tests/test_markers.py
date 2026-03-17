@@ -105,10 +105,10 @@ def test_count_markers():
 
 def test_convert_markdown_cells_basic():
     lines = [
-        '    _response = "*Write your analysis here...*"\n',
+        '    response_text = "*Write your analysis here...*"\n',
         "    # YOUR CODE HERE\n",
         "    pass\n",
-        "    mo.md(_response)\n",
+        "    mo.md(response_text)\n",
     ]
     result = convert_markdown_cells(lines)
     assert len(result) == 3
@@ -119,10 +119,10 @@ def test_convert_markdown_cells_basic():
 
 def test_convert_markdown_cells_preserves_indentation():
     lines = [
-        '        _response = "placeholder"\n',
+        '        response_text = "placeholder"\n',
         "        # YOUR CODE HERE\n",
         "        pass\n",
-        "        mo.md(_response)\n",
+        "        mo.md(response_text)\n",
     ]
     result = convert_markdown_cells(lines)
     assert len(result) == 3
@@ -146,10 +146,10 @@ def test_convert_markdown_cells_mixed():
     """Non-matching lines before/after a match are preserved."""
     lines = [
         "    x = 1\n",
-        '    _response = "hello"\n',
+        '    response_text = "hello"\n',
         "    # YOUR CODE HERE\n",
         "    pass\n",
-        "    mo.md(_response)\n",
+        "    mo.md(response_text)\n",
         "    y = 2\n",
     ]
     result = convert_markdown_cells(lines)
@@ -211,11 +211,11 @@ def test_process_file_converts_markdown_cells(tmp_path):
         "\n",
         "@app.cell\n",
         "def _(mo):\n",
-        '    _response = "*Write here...*"\n',
+        '    response_text = "*Write here...*"\n',
         f"    {SOLUTION_BEGIN}\n",
-        '    _response = "My detailed answer"\n',
+        '    response_text = "My detailed answer"\n',
         f"    {SOLUTION_END}\n",
-        "    mo.md(_response)\n",
+        "    mo.md(response_text)\n",
         "    return\n",
         "\n",
         "\n",

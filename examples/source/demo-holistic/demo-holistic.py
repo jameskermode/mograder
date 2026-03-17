@@ -137,9 +137,9 @@ def _(mo):
 
 @app.cell
 def _(mo):
-    _response = "*Write your analysis here...*"
+    response_text = "*Write your analysis here...*"
     ### BEGIN SOLUTION
-    _response = r"""
+    response_text = r"""
     The `is_palindrome` function runs in O(n) time and O(n) space where n is
     the length of the input string, due to creating the cleaned and reversed
     copies. An in-place two-pointer approach could reduce space to O(1).
@@ -149,8 +149,8 @@ def _(mo):
     Space is O(k) where k is the number of unique words.
     """
     ### END SOLUTION
-    mo.md(_response)
-    return
+    mo.md(response_text)
+    return (response_text,)
 
 
 if __name__ == "__main__":
