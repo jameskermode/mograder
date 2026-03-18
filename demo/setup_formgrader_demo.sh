@@ -50,11 +50,12 @@ cp examples/moodle_worksheet.csv "$COURSE/import/demo-assignment.csv"
 echo "=== Importing student names ==="
 (cd "$COURSE" && $MOGRADER import-students import/demo-assignment.csv)
 
-# Copy release notebooks with submit cells from demo/course if available
+# Copy source and release notebooks from demo/course if available
 if [ -d demo/course ]; then
     for d in demo/course/*/; do
         name=$(basename "$d")
-        mkdir -p "$COURSE/release/$name"
+        mkdir -p "$COURSE/source/$name" "$COURSE/release/$name"
+        cp "$d"/files/*.py "$COURSE/source/$name/" 2>/dev/null || true
         cp "$d"/files/*.py "$COURSE/release/$name/" 2>/dev/null || true
     done
 fi
