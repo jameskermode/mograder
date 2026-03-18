@@ -32,7 +32,7 @@ class MograderConfig:
     headless_edit: bool = False
     # [rlimits] — resource caps for notebook subprocesses (0 = no limit)
     rlimit_cpu: int = 600  # seconds
-    rlimit_nproc: int = 64  # total user processes
+    rlimit_nproc: int = 512  # total user processes
     rlimit_nofile: int = 256  # open file descriptors
     # [dirs]
     source_dir: str = "source"
@@ -93,7 +93,7 @@ def load_config(course_dir: Path) -> MograderConfig:
         no_actions=defaults.get("no_actions", defaults.get("headless", False)),
         headless_edit=defaults.get("headless_edit", False),
         rlimit_cpu=rlimits.get("cpu", 600),
-        rlimit_nproc=rlimits.get("nproc", 64),
+        rlimit_nproc=rlimits.get("nproc", 512),
         rlimit_nofile=rlimits.get("nofile", 256),
         source_dir=dirs.get("source", "source"),
         release_dir=dirs.get("release", "release"),

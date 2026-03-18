@@ -818,10 +818,16 @@ def autograde(
         _skipped = 0
         for nb in notebooks:
             dest = output_dir / nb.name
+            _html_dest = dest.with_suffix(".html")
             if dest.is_file():
                 _dest_mtime = dest.stat().st_mtime
                 _sub_mtime = nb.stat().st_mtime
-                if _sub_mtime <= _dest_mtime and _source_mtime <= _dest_mtime:
+                _html_ok = _html_dest.is_file() and _html_dest.stat().st_size > 0
+                if (
+                    _sub_mtime <= _dest_mtime
+                    and _source_mtime <= _dest_mtime
+                    and _html_ok
+                ):
                     _skipped += 1
                     continue
             _to_grade.append(nb)

@@ -62,6 +62,27 @@ def test_inject_check_data():
     assert "_cell_errors = 3" in text
 
 
+def test_inject_empty_checks_valid_syntax():
+    """inject_grading_cells with no checks must produce valid Python."""
+    import ast
+
+    lines = _make_notebook_lines()
+    # No checks, no marks
+    result = inject_grading_cells(lines, [], cell_errors=0)
+    text = "".join(result)
+    ast.parse(text)  # would raise SyntaxError on `[,]`
+    assert VERIFICATION_MARKER in text
+    assert "_mograder_checks = []" in text
+
+    # No checks, with marks
+    marks = {"Q1": 10, "Q2": 15}
+    result = inject_grading_cells(lines, [], cell_errors=0, marks=marks)
+    text = "".join(result)
+    ast.parse(text)
+    assert "_mograder_checks = []" in text
+    assert "_mograder_marks" in text
+
+
 def test_inject_idempotent():
     lines = _make_notebook_lines()
     checks = _make_checks()

@@ -19,7 +19,7 @@ from mograder.parser import count_cell_errors, parse_check_results
 
 
 def _make_apply_rlimits(
-    cpu: int = 600, nproc: int = 64, nofile: int = 256, address_space: int = 1 << 30
+    cpu: int = 600, nproc: int = 512, nofile: int = 256, address_space: int = 1 << 30
 ):
     """Return a preexec_fn that sets resource limits on the subprocess.
 
@@ -220,7 +220,7 @@ def run_notebook(
     on_check: Callable[[CheckResult], None] | None = None,
     safety_check: bool = False,
     rlimit_cpu: int = 600,
-    rlimit_nproc: int = 64,
+    rlimit_nproc: int = 512,
     rlimit_nofile: int = 256,
     rlimit_as: int = 1 << 30,
 ) -> NotebookResult:
@@ -324,7 +324,9 @@ def run_notebook(
             )
             stderr = proc.stderr
 
-        if proc.returncode != 0 and not tmp_path.exists():
+        if proc.returncode != 0 and (
+            not tmp_path.exists() or tmp_path.stat().st_size == 0
+        ):
             result.export_ok = False
             result.export_error = stderr[:500]
             return result
@@ -342,7 +344,7 @@ def run_notebook(
         if "some cells failed to execute" in stderr:
             result.export_error = "some cells failed to execute"
 
-        if html_dir is not None:
+        if html_dir is not None and html_content:
             saved = html_dir / f"{notebook_path.stem}.html"
             shutil.copy2(tmp_path, saved)
             result.html_path = saved
@@ -369,7 +371,7 @@ def run_batch(
     sandbox_dir: Path | None = None,
     safety_check: bool = False,
     rlimit_cpu: int = 600,
-    rlimit_nproc: int = 64,
+    rlimit_nproc: int = 512,
     rlimit_nofile: int = 256,
     rlimit_as: int = 1 << 30,
 ) -> list[NotebookResult]:

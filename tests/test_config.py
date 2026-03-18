@@ -191,7 +191,7 @@ def test_load_config_rlimits_defaults(tmp_path):
     (tmp_path / "mograder.toml").write_text("")
     config = load_config(tmp_path)
     assert config.rlimit_cpu == 600
-    assert config.rlimit_nproc == 64
+    assert config.rlimit_nproc == 512
     assert config.rlimit_nofile == 256
 
 

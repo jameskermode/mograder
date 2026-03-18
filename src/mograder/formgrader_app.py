@@ -179,25 +179,30 @@ def _(COURSE_DIR, DIR_NAMES, GRADEBOOK, get_data_version, refresh_btn):
 
 
 @app.cell
-def _(assignments, get_selected, mo, set_selected):
+def _(assignments, get_selected, mo, set_grading_index, set_selected):
     _options = {a.name: a.name for a in assignments}
     _current = get_selected()
     # Clear stale state if the previously selected assignment is no longer available
     if _current and _current not in _options:
         set_selected("")
         _current = ""
+
+    def _on_assignment_change(val):
+        set_selected(val or "")
+        set_grading_index(0)
+
     assignment_dropdown = mo.ui.dropdown(
         options=_options,
         value=_current if _current else None,
         label="Assignment",
-        on_change=lambda val: set_selected(val or ""),
+        on_change=_on_assignment_change,
     )
     # Second independent dropdown bound to the same state for the Grading tab
     assignment_dropdown_grading = mo.ui.dropdown(
         options=_options,
         value=_current if _current else None,
         label="Assignment",
-        on_change=lambda val: set_selected(val or ""),
+        on_change=_on_assignment_change,
     )
     return assignment_dropdown, assignment_dropdown_grading
 
@@ -1077,8 +1082,6 @@ def _(
         grading_subs = [s for s in grading_subs if s.autograded_path]
     else:
         grading_subs = []
-    # Reset index when assignment changes
-    set_grading_index(0)
     grading_assignment_name = _sel
     return grading_assignment_name, grading_subs
 
@@ -1463,7 +1466,7 @@ def _(grading_current_sub, mo):
 
     if grading_current_sub is not None and grading_current_sub.autograded_path:
         _html_path = grading_current_sub.autograded_path.with_suffix(".html")
-        if _html_path.exists():
+        if _html_path.exists() and _html_path.stat().st_size > 0:
             _html_bytes = _html_path.read_bytes()
             _encoded = _b64.b64encode(_html_bytes).decode("ascii")
             grading_preview = mo.Html(

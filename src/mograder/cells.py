@@ -124,6 +124,7 @@ def _build_verification_cell(
         else:
             status_map.append(f'("{c.label}", "WAIT")')
     checks_list = ",\n        ".join(status_map)
+    checks_block = f"\n        {checks_list},\n    " if checks_list else ""
 
     if marks is None:
         return f"""\
@@ -131,9 +132,7 @@ def _build_verification_cell(
 @app.cell(hide_code=True)
 def _(mo):
     {VERIFICATION_MARKER}
-    _mograder_checks = [
-        {checks_list},
-    ]
+    _mograder_checks = [{checks_block}]
     _cell_errors = {cell_errors}
     _table = "\\n".join(
         f"| {{label}} | {{'PASS' if s == 'PASS' else 'FAIL' if s == 'FAIL' else 'WAIT'}} |"
@@ -165,9 +164,7 @@ def _(mo):
 @app.cell(hide_code=True)
 def _(mo):
     {VERIFICATION_MARKER}
-    _mograder_checks = [
-        {checks_list},
-    ]
+    _mograder_checks = [{checks_block}]
     _mograder_marks = {marks_repr}
     _cell_errors = {cell_errors}
     _auto_earned = 0
