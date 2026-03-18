@@ -68,6 +68,12 @@ def create_shared_sandbox(notebook_path: Path) -> Path | None:
 
     Returns the venv directory, or None if the notebook has no inline deps.
     """
+    # Ensure ~/.local/bin is on PATH so we can find uv (e.g. under systemd).
+    env = os.environ.copy()
+    local_bin = str(Path.home() / ".local" / "bin")
+    if local_bin not in env.get("PATH", "").split(os.pathsep):
+        env["PATH"] = local_bin + os.pathsep + env.get("PATH", "")
+
     # Extract requirements from PEP 723 metadata
     try:
         proc = subprocess.run(
@@ -75,6 +81,7 @@ def create_shared_sandbox(notebook_path: Path) -> Path | None:
             capture_output=True,
             text=True,
             timeout=30,
+            env=env,
         )
     except (FileNotFoundError, subprocess.TimeoutExpired):
         return None
@@ -94,6 +101,7 @@ def create_shared_sandbox(notebook_path: Path) -> Path | None:
                 text=True,
                 timeout=60,
                 check=True,
+                env=env,
             )
 
         # Always run install — uv is fast on cache hits
@@ -113,6 +121,7 @@ def create_shared_sandbox(notebook_path: Path) -> Path | None:
             text=True,
             timeout=300,
             check=True,
+            env=env,
         )
     except (
         subprocess.CalledProcessError,
