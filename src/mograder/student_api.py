@@ -142,17 +142,23 @@ def create_student_api(course_dir: Path, config: MograderConfig) -> Starlette:
         return links
 
     def _discover_files(matched_dir: Path, dir_key: str) -> list[dict]:
-        """List downloadable files in a release directory."""
-        files = []
-        for f in sorted(matched_dir.iterdir()):
-            if f.is_file() and not f.name.startswith("."):
-                files.append(
-                    {
-                        "filename": f.name,
-                        "url": f"/assignments/{dir_key}/files/{f.name}",
-                    }
-                )
-        return files
+        """List downloadable files in a release directory.
+
+        If a ``.zip`` file is present, only zip files are listed (the
+        ``generate`` command builds one zip per assignment).  Otherwise
+        fall back to listing ``.py`` files.
+        """
+        zips = sorted(matched_dir.glob("*.zip"))
+        if zips:
+            return [
+                {"filename": z.name, "url": f"/assignments/{dir_key}/files/{z.name}"}
+                for z in zips
+            ]
+        return [
+            {"filename": f.name, "url": f"/assignments/{dir_key}/files/{f.name}"}
+            for f in sorted(matched_dir.iterdir())
+            if f.is_file() and f.suffix == ".py" and not f.name.startswith(".")
+        ]
 
     async def list_assignments(request: Request):
         assignments = config.assignments or config.moodle_assignments

@@ -231,8 +231,9 @@ def generate(
         from .runner import create_shared_sandbox, run_notebook
 
         if progress:
+            # Phase 1: validate source (N) + strip (1) + Phase 3: validate release (N)
             click.echo(
-                json.dumps({"event": "start", "total": len(py_files) + 1}),
+                json.dumps({"event": "start", "total": len(py_files) * 2 + 1}),
                 err=True,
             )
             click.echo(json.dumps({"event": "sandbox_start"}), err=True)
@@ -355,6 +356,14 @@ def generate(
                     shutil.copy2(f, dest)
                     click.echo(f"COPY: {_rel(f)} → {_rel(dest)}")
 
+    # Build release zip for each processed directory
+    if not dry_run and not validate:
+        for src_dir in processed_dirs:
+            rel_dir = output_dir / src_dir.name if src_dir.name != "." else output_dir
+            if rel_dir.is_dir():
+                zip_path = markers.build_release_zip(rel_dir)
+                click.echo(f"ZIP: {_rel(zip_path)}")
+
     # Phase 3: Validate release notebooks (no cell errors allowed)
     if not dry_run and not validate and not no_validate:
         from .runner import create_shared_sandbox, run_notebook
@@ -362,7 +371,7 @@ def generate(
         click.echo("\n--- Phase 3: Validating release notebooks ---")
         release_ok = True
         release_sandbox = None
-        for filepath in py_files:
+        for ri, filepath in enumerate(py_files):
             dest_dir = (
                 output_dir / filepath.parent.name
                 if filepath.parent.name != "."
@@ -372,6 +381,18 @@ def generate(
             if not release_path.exists():
                 continue
             click.echo(f"RELEASE-CHECK: {_rel(release_path)} ... ", nl=False)
+            if progress:
+                click.echo(
+                    json.dumps(
+                        {
+                            "event": "progress",
+                            "completed": len(py_files) + 1 + ri,
+                            "total": len(py_files) * 2 + 1,
+                            "notebook": f"checking release {release_path.name}",
+                        }
+                    ),
+                    err=True,
+                )
             if release_sandbox is None:
                 release_sandbox = create_shared_sandbox(release_path)
             result = run_notebook(

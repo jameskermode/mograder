@@ -1,3 +1,5 @@
+import zipfile
+
 from mograder.markers import (
     SOLUTION_BEGIN,
     SOLUTION_END,
@@ -6,6 +8,7 @@ from mograder.markers import (
     _hash_cell,
     _inject_assignment_metadata,
     _inject_cell_hashes,
+    build_release_zip,
     build_submit_cell,
     convert_markdown_cells,
     count_markers,
@@ -537,3 +540,37 @@ def test_hash_cell_deterministic():
 def test_hash_cell_strips_whitespace():
     """Leading/trailing whitespace doesn't affect hash."""
     assert _hash_cell("  x = 1  ") == _hash_cell("x = 1")
+
+
+# --- build_release_zip ---
+
+
+def test_build_release_zip(tmp_path):
+    """Zip contains student files, excludes .html, .hidden, and .zip."""
+    release = tmp_path / "hw1"
+    release.mkdir()
+    (release / "hw1.py").write_text("# code")
+    (release / "data.csv").write_text("a,b\n1,2\n")
+    (release / "report.html").write_text("<html>")
+    (release / ".hidden").write_text("secret")
+
+    zip_path = build_release_zip(release)
+    assert zip_path == release / "hw1.zip"
+    assert zip_path.exists()
+    with zipfile.ZipFile(zip_path) as zf:
+        names = sorted(zf.namelist())
+    assert names == ["data.csv", "hw1.py"]
+
+
+def test_build_release_zip_skips_dirs(tmp_path):
+    """Zip excludes subdirectories like __marimo__/."""
+    release = tmp_path / "hw1"
+    release.mkdir()
+    (release / "hw1.py").write_text("# code")
+    (release / "__marimo__").mkdir()
+    (release / "__marimo__" / "session.json").write_text("{}")
+
+    zip_path = build_release_zip(release)
+    with zipfile.ZipFile(zip_path) as zf:
+        names = zf.namelist()
+    assert names == ["hw1.py"]

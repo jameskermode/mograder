@@ -65,6 +65,58 @@ def test_generate_failure_exits_nonzero(mock_pf, tmp_path):
     assert result.exit_code != 0
 
 
+@patch("mograder.markers.build_release_zip")
+@patch("mograder.markers.process_file")
+def test_generate_creates_zip(mock_pf, mock_zip, tmp_path):
+    """generate calls build_release_zip for each processed directory."""
+    src_dir = tmp_path / "source" / "hw1"
+    src_dir.mkdir(parents=True)
+    nb = src_dir / "hw1.py"
+    nb.write_text("# notebook")
+
+    out = tmp_path / "release"
+    rel_dir = out / "hw1"
+    rel_dir.mkdir(parents=True)
+
+    mock_pf.return_value = True
+    mock_zip.return_value = rel_dir / "hw1.zip"
+
+    runner = CliRunner()
+    result = runner.invoke(
+        cli, ["generate", str(nb), "-o", str(out), "--no-validate"]
+    )
+    assert result.exit_code == 0
+    mock_zip.assert_called_once()
+
+
+@patch("mograder.markers.build_release_zip")
+@patch("mograder.markers.process_file")
+def test_generate_dry_run_no_zip(mock_pf, mock_zip, tmp_path):
+    """--dry-run should NOT call build_release_zip."""
+    nb = tmp_path / "staff.py"
+    nb.write_text("# notebook")
+    mock_pf.return_value = True
+
+    runner = CliRunner()
+    result = runner.invoke(cli, ["generate", str(nb), "--dry-run"])
+    assert result.exit_code == 0
+    mock_zip.assert_not_called()
+
+
+@patch("mograder.markers.build_release_zip")
+@patch("mograder.markers.process_file")
+def test_generate_validate_no_zip(mock_pf, mock_zip, tmp_path):
+    """--validate should NOT call build_release_zip."""
+    nb = tmp_path / "staff.py"
+    nb.write_text("# notebook")
+    mock_pf.return_value = True
+
+    runner = CliRunner()
+    result = runner.invoke(cli, ["generate", str(nb), "--validate"])
+    assert result.exit_code == 0
+    mock_zip.assert_not_called()
+
+
 @patch("mograder.cells.inject_grading_cells")
 @patch("mograder.runner.run_batch")
 def test_autograde_runs_and_injects(mock_batch, mock_inject, tmp_path):

@@ -1,5 +1,6 @@
 """Tests for shared transport command logic (do_fetch, do_submit, etc.)."""
 
+import zipfile
 from pathlib import Path
 from unittest.mock import MagicMock
 
@@ -177,6 +178,93 @@ class TestDoFetchSubmissions:
         captured = capsys.readouterr()
         assert "Downloaded 1" in captured.out
         assert transport.download_file.call_count == 2
+
+    def test_fetch_submissions_extracts_zip(self, tmp_path, capsys):
+        """When a student submits a .zip, extract .py and save as {username}.py."""
+        # Build a zip containing a .py file
+        zip_bytes = _make_zip({"A1.py": b"# student code\nprint('hello')"})
+
+        transport = _mock_transport()
+        transport.get_submissions.return_value = [
+            RemoteSubmission(
+                userid="100",
+                username="alice",
+                filename="A1.zip",
+                url="http://example.com/A1.zip",
+            )
+        ]
+        transport.download_file.side_effect = lambda url, dest: (
+            dest.write_bytes(zip_bytes) or dest
+        )
+
+        do_fetch_submissions(transport, "HW1", tmp_path)
+        # Should extract and save as alice.py
+        assert (tmp_path / "alice.py").exists()
+        assert b"student code" in (tmp_path / "alice.py").read_bytes()
+        captured = capsys.readouterr()
+        assert "Downloaded 1" in captured.out
+
+    def test_fetch_submissions_zip_with_multiple_py(self, tmp_path, capsys):
+        """Zip with multiple .py — only largest saved as {user}.py, extras skipped."""
+        zip_bytes = _make_zip({
+            "A1.py": b"# main assignment (largest)",
+            "helper.py": b"# helper",
+        })
+
+        transport = _mock_transport()
+        transport.get_submissions.return_value = [
+            RemoteSubmission(
+                userid="100",
+                username="alice",
+                filename="A1.zip",
+                url="http://example.com/A1.zip",
+            )
+        ]
+        transport.download_file.side_effect = lambda url, dest: (
+            dest.write_bytes(zip_bytes) or dest
+        )
+
+        do_fetch_submissions(transport, "HW1", tmp_path)
+        # alice.py should contain the main (largest) .py
+        assert (tmp_path / "alice.py").exists()
+        assert b"main assignment" in (tmp_path / "alice.py").read_bytes()
+        # Extra .py files should NOT be extracted (avoids polluting submissions dir)
+        assert not (tmp_path / "helper.py").exists()
+
+    def test_fetch_submissions_zip_extracts_data_files(self, tmp_path, capsys):
+        """Non-.py files (data, configs) from zip should be extracted."""
+        zip_bytes = _make_zip({
+            "A1.py": b"# assignment",
+            "data.csv": b"x,y\n1,2\n",
+        })
+
+        transport = _mock_transport()
+        transport.get_submissions.return_value = [
+            RemoteSubmission(
+                userid="100",
+                username="alice",
+                filename="A1.zip",
+                url="http://example.com/A1.zip",
+            )
+        ]
+        transport.download_file.side_effect = lambda url, dest: (
+            dest.write_bytes(zip_bytes) or dest
+        )
+
+        do_fetch_submissions(transport, "HW1", tmp_path)
+        assert (tmp_path / "alice.py").exists()
+        assert (tmp_path / "data.csv").exists()
+
+
+def _make_zip(files: dict[str, bytes]) -> bytes:
+    """Create an in-memory zip with the given {name: content} entries."""
+    import io
+
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        for name, content in files.items():
+            zf.writestr(name, content)
+    return buf.getvalue()
 
 
 class TestDoUploadFeedback:

@@ -657,6 +657,28 @@ class TestReleaseDirAutoDiscover:
         filenames = {f["filename"] for f in data[0]["files"]}
         assert filenames == {"homework.py", "data.csv"}
 
+    def test_auto_discover_flat_layout_prefers_zip(self, tmp_path):
+        """When a .zip is present in release dir, only the zip is listed."""
+        root = tmp_path / "root"
+        root.mkdir()
+        release = tmp_path / "release"
+        hw1_release = release / "hw1"
+        hw1_release.mkdir(parents=True)
+        (hw1_release / "homework.py").write_text("# code")
+        (hw1_release / "hw1.zip").write_bytes(b"PK\x03\x04fake")
+
+        srv, thread = run_server_background(root, port=0, release_dir=release)
+        port = srv.server_address[1]
+        try:
+            resp = requests.get(f"http://127.0.0.1:{port}/assignments")
+            data = resp.json()
+            assert len(data) == 1
+            files = data[0]["files"]
+            assert len(files) == 1
+            assert files[0]["filename"] == "hw1.zip"
+        finally:
+            srv.shutdown()
+
     def test_download_from_flat_layout(self, release_server):
         base_url, _, _, _, _ = release_server
         resp = requests.get(f"{base_url}/assignments/hw1/files/homework.py")

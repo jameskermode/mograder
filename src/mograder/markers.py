@@ -4,6 +4,7 @@ import hashlib
 import os
 import re
 import sys
+import zipfile
 from pathlib import Path
 
 
@@ -414,3 +415,15 @@ def process_file(
 
     print(f"OK: {_rel(source)} → {_rel(dest)} ({n_solutions} solution blocks stripped)")
     return True
+
+
+def build_release_zip(release_dir: Path) -> Path:
+    """Create a zip of student-facing release files, excluding artifacts."""
+    zip_path = release_dir / f"{release_dir.name}.zip"
+    _EXCLUDE_SUFFIXES = {".html", ".zip"}
+    with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
+        for f in sorted(release_dir.iterdir()):
+            if f.is_dir() or f.name.startswith(".") or f.suffix in _EXCLUDE_SUFFIXES:
+                continue
+            zf.write(f, f.name)
+    return zip_path

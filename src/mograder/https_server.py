@@ -57,6 +57,21 @@ _TIMESTAMP_RE = re.compile(r"_\d{8}T\d{6}$")
 _USERNAME_RE = re.compile(r"^[a-zA-Z0-9._-]+$")
 
 
+def _list_release_files(d: Path, dir_name: str) -> list[dict]:
+    """List release files in *d*, preferring .zip when present."""
+    zips = sorted(d.glob("*.zip"))
+    if zips:
+        return [
+            {"filename": z.name, "url": f"/assignments/{dir_name}/files/{z.name}"}
+            for z in zips
+        ]
+    return [
+        {"filename": f.name, "url": f"/assignments/{dir_name}/files/{f.name}"}
+        for f in sorted(d.iterdir())
+        if f.is_file()
+    ]
+
+
 def _safe_path(base: Path, *parts: str) -> Path:
     """Join *parts* onto *base* and verify the result is under *base*.
 
@@ -288,29 +303,13 @@ class AssignmentHandler(BaseHTTPRequestHandler):
                 # Flat layout: release_dir/<assignment>/<file>
                 for d in sorted(self.server.release_dir.iterdir()):
                     if d.is_dir():
-                        files = []
-                        for f in sorted(d.iterdir()):
-                            if f.is_file():
-                                files.append(
-                                    {
-                                        "filename": f.name,
-                                        "url": f"/assignments/{d.name}/files/{f.name}",
-                                    }
-                                )
+                        files = _list_release_files(d, d.name)
                         if files:
                             data.append({"name": d.name, "id": d.name, "files": files})
             else:
                 for d in sorted(self.root.iterdir()):
                     if d.is_dir() and (d / "files").is_dir():
-                        files = []
-                        for f in sorted((d / "files").iterdir()):
-                            if f.is_file():
-                                files.append(
-                                    {
-                                        "filename": f.name,
-                                        "url": f"/assignments/{d.name}/files/{f.name}",
-                                    }
-                                )
+                        files = _list_release_files(d / "files", d.name)
                         data.append({"name": d.name, "id": d.name, "files": files})
         self._send_json(data)
 
@@ -690,29 +689,13 @@ def create_starlette_routes(
             if resolved_release_dir is not None:
                 for d in sorted(resolved_release_dir.iterdir()):
                     if d.is_dir():
-                        files = []
-                        for f in sorted(d.iterdir()):
-                            if f.is_file():
-                                files.append(
-                                    {
-                                        "filename": f.name,
-                                        "url": f"/assignments/{d.name}/files/{f.name}",
-                                    }
-                                )
+                        files = _list_release_files(d, d.name)
                         if files:
                             data.append({"name": d.name, "id": d.name, "files": files})
             else:
                 for d in sorted(root.iterdir()):
                     if d.is_dir() and (d / "files").is_dir():
-                        files = []
-                        for f in sorted((d / "files").iterdir()):
-                            if f.is_file():
-                                files.append(
-                                    {
-                                        "filename": f.name,
-                                        "url": f"/assignments/{d.name}/files/{f.name}",
-                                    }
-                                )
+                        files = _list_release_files(d / "files", d.name)
                         data.append({"name": d.name, "id": d.name, "files": files})
         return _json(data)
 

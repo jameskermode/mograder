@@ -83,6 +83,19 @@ def _():
                 )
         return None
 
+    def moodle_upload_url(local_name: str) -> str | None:
+        """Return the Moodle assignment edit page URL (for uploading files)."""
+        _assignments = MOGRADER_CONFIG.assignments or MOGRADER_CONFIG.moodle_assignments
+        _base = MOGRADER_CONFIG.moodle_url
+        if not _base:
+            return None
+        for a in _assignments:
+            d = a.get("dir")
+            cmid = a.get("cmid")
+            if cmid and ((d and d in local_name) or a["name"] == local_name):
+                return f"{_base.rstrip('/')}/course/modedit.php?update={cmid}"
+        return None
+
     def _get_user_attr(attr: str, default=None):
         """Read an attribute from the request user (dict or object)."""
         req = mo.app_meta().request
@@ -122,6 +135,7 @@ def _():
         Path,
         match_transport_assignment,
         moodle_grading_url,
+        moodle_upload_url,
         get_user_display,
         is_instructor,
         io,
@@ -216,6 +230,7 @@ def _(
     TRANSPORT_TYPE,
     match_transport_assignment,
     moodle_grading_url,
+    moodle_upload_url,
     assignments,
     io,
     is_instructor,
@@ -235,8 +250,10 @@ def _(
 
     # --- build per-assignment buttons ---
     _src_btns_list = []
+    _MOODLE_ICON_B64 = "iVBORw0KGgoAAAANSUhEUgAAADAAAAAwCAYAAABXAvmHAAAACXBIWXMAAAsTAAALEwEAmpwYAAACaUlEQVR4nO2WP2gTURzHL0N1EYQOKorgv9ElEVpwee/94iVWkAxakBB6v5fTA4coiG3WDsW6KIoulboIdniHo38mNf4ZdNBFp47aOumkoULNTw4STdK7486cDQfvA7/lcr+X7+f94wxDo9FoNBpNyrAsa5eUUkkpKWZ9QcTJYWbPSCmnEPFrzOAtKeU927ZHh5bctu1DiPg07qwj4nK1WhVDC+44zggi1hFxLWbwlmVZt2q12tahhUfEo4j4Me6sl8tlKhaLBADLpmnu2PTgjuNsR8SbiPgrTnDLstZKpZIXvLsebmp4RDxZqVS+xZ31C2fPNE3T7A9Pp06IG/3/QQr2kMvrpPgLUnyVXPaTXLZCijVI8RlaOrZ7UI/ZdvUghDjXHzCsrp4HIpc3yeVXaOHICKnJLeTy+fYz7zf/UuwHuWzOez9RAQCYjxq+NAH0/X5PqFek2OvQ4O4GkQapwmiSKzAXVeD2RRE9qBtaL/9lJYJWYCKqwNvriQmQt50SEaAHbK+3f5tLnD4tcnpzTdDCJUHV0xsFVhf5swjhHpOCMVJsG7l8nBR7EngmYh5sfwHv5ggIUiiACQCNtsAHIiMTGKgTnoxMz/hhPYpNDy7gXXu+g8NY5x3G2GEA2NkWHg8+oH97ugnuYc+NwVeArfgO/ui47+eC9zxQIHYP+5yEwLrf4GEDBQnE72HrkdPncrn32Wz23f8Lk3zPH4QQB9sHsWWa5v40Ckx1XYeV1AkAQL0jIISYTqPATJfA5dQIi7VsoX88f6BxixNj+1Al4AcBdALhj9JEaASC0gKsFNBqNRqPRaIwE+Q3s1bniQ173EAAAAAASUVORK5CYII="
     _rel_btns_list = []
     _rel_dl_list = []
+    _rel_moodle_list = []
     _imp_list = []
     _gen = []
     _auto = []
@@ -298,9 +315,21 @@ def _(
             _rel_dl_list.append(
                 mo.download(data=_make_zip, filename=_zip_name, label=" ")
             )
+            _moodle_url = moodle_upload_url(_a.name)
+            if _moodle_url:
+                _rel_moodle_list.append(
+                    mo.Html(
+                        f'<a href="{_moodle_url}" target="_blank" title="Upload to Moodle">'
+                        f'<img src="data:image/png;base64,{_MOODLE_ICON_B64}" '
+                        f'style="height:18px;vertical-align:middle;display:block" /></a>'
+                    )
+                )
+            else:
+                _rel_moodle_list.append(None)
         else:
             _rel_btns_list.append(mo.md("\u2013"))
             _rel_dl_list.append(None)
+            _rel_moodle_list.append(None)
 
         # Per-assignment: can this assignment sync via transport?
         _transport_name = (
@@ -595,11 +624,13 @@ def _(
             f"{_a.num_feedback}/{_a.num_autograded}" if _a.num_autograded else "\u2013"
         )
 
-        # Release column: combine edit + download
+        # Release column: combine edit + download + moodle upload link
         _rel_items = [_rel_cell]
         if _rel_dl_list[_i] is not None and rel_downloads is not None:
             _rel_items.append(rel_downloads[_rel_dl_idx])
             _rel_dl_idx += 1
+        if _rel_moodle_list[_i] is not None:
+            _rel_items.append(_rel_moodle_list[_i])
         _rel_combined = (
             mo.hstack(_rel_items, justify="start", gap=0.25)
             if len(_rel_items) > 1
@@ -1850,7 +1881,7 @@ def _(
                 _bar_ctx = None
                 _bar_inner = None
                 _results_data = None
-                for _line in _proc.stderr:
+                for _line in iter(_proc.stderr.readline, ""):
                     _line = _line.strip()
                     if not _line.startswith("{"):
                         continue

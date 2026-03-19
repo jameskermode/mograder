@@ -146,12 +146,13 @@ def _(
                     _edit_parts.append(f"**[Edit in Molab]({_pre_href})**")
         _edit = mo.md(" | ".join(_edit_parts)) if _edit_parts else ""
 
-        # Download column: link to .py file(s)
+        # Download column: link to file(s); show "Download" for zip bundles
         _downloads = []
         for _f in _files:
             _fname = _f["filename"]
+            _label = "Download" if _fname.endswith(".zip") else _fname
             _url = f"{_base}{_f['url']}"
-            _downloads.append(mo.md(f"[{_fname}]({_url})"))
+            _downloads.append(mo.md(f"[{_label}]({_url})"))
         _download = mo.hstack(_downloads, gap=0.5) if _downloads else ""
 
         # Submit column: Moodle link if available

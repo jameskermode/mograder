@@ -151,6 +151,28 @@ class TestListAssignments:
         assert data[1]["files"] == []
 
 
+    def test_list_assignments_prefers_zip(self, course_dir, config):
+        """When a .zip file exists in release dir, only the zip appears."""
+        release = course_dir / "release" / "ES98E-A1-Intro-to-SciML"
+        (release / "ES98E-A1-Intro-to-SciML.zip").write_bytes(b"PK\x03\x04fake")
+
+        app = create_student_api(course_dir, config)
+        client = TestClient(app, raise_server_exceptions=False)
+        resp = client.get("/assignments")
+        data = resp.json()
+        files = data[0]["files"]
+        assert len(files) == 1
+        assert files[0]["filename"] == "ES98E-A1-Intro-to-SciML.zip"
+
+    def test_list_assignments_falls_back_to_py(self, client):
+        """Without a .zip file, .py files are returned (existing behaviour)."""
+        resp = client.get("/assignments")
+        data = resp.json()
+        files = data[0]["files"]
+        assert len(files) == 1
+        assert files[0]["filename"] == "ES98E-A1-Intro-to-SciML.py"
+
+
 class TestDownloadFile:
     def test_download_file(self, client):
         resp = client.get("/assignments/A1/files/ES98E-A1-Intro-to-SciML.py")

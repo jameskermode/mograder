@@ -49,16 +49,19 @@ class MoodleTransport:
         result = []
         for sub in raw:
             username = user_map.get(sub["userid"], f"user_{sub['userid']}")
+            # Prefer .py files; fall back to .zip if no .py
             py_files = [f for f in sub["files"] if f["filename"].endswith(".py")]
-            if py_files:
+            zip_files = [f for f in sub["files"] if f["filename"].endswith(".zip")]
+            pick = (py_files or zip_files or [None])[0]
+            if pick:
                 result.append(
                     RemoteSubmission(
                         userid=str(sub["userid"]),
                         username=username,
-                        filename=py_files[0]["filename"],
-                        url=py_files[0]["fileurl"],
+                        filename=pick["filename"],
+                        url=pick["fileurl"],
                         status=sub.get("status", ""),
-                        timemodified=py_files[0].get("timemodified", 0),
+                        timemodified=pick.get("timemodified", 0),
                     )
                 )
         return result

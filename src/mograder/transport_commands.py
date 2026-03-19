@@ -114,6 +114,33 @@ def do_submit(
     click.echo(f"Submitted '{filepath.name}' to '{assignment}'")
 
 
+def _extract_zip_submission(zip_path: Path, main_dest: Path, output_dir: Path) -> None:
+    """Extract a student-submitted zip, saving the main .py to *main_dest*.
+
+    If the zip contains multiple .py files, the largest one (likely the main
+    assignment notebook) is saved to *main_dest*.  Non-Python auxiliary files
+    (data, configs) are extracted alongside; extra ``.py`` files are ignored
+    to avoid polluting the submissions directory.
+    """
+    with zipfile.ZipFile(zip_path) as zf:
+        py_names = [n for n in zf.namelist() if n.endswith(".py")]
+        if not py_names:
+            # No .py inside — extract everything and hope for the best
+            zf.extractall(output_dir)
+            return
+        # Pick the largest .py as the "main" file
+        main_name = max(py_names, key=lambda n: zf.getinfo(n).file_size)
+        main_dest.write_bytes(zf.read(main_name))
+        # Extract non-.py auxiliary files (data, configs) but skip extra .py
+        py_set = {n for n in zf.namelist() if n.endswith(".py")}
+        for name in zf.namelist():
+            if name in py_set:
+                continue
+            target = output_dir / name
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_bytes(zf.read(name))
+
+
 def _load_fetch_meta(output_dir: Path) -> dict:
     """Load previously fetched submission timestamps from sidecar file."""
     import json
@@ -168,7 +195,13 @@ def do_fetch_submissions(
         ):
             skipped += 1
             continue
-        transport.download_file(sub.url, dest)
+        if sub.filename.endswith(".zip"):
+            zip_dest = output_dir / f"{sub.username}.zip"
+            transport.download_file(sub.url, zip_dest)
+            _extract_zip_submission(zip_dest, dest, output_dir)
+            zip_dest.unlink(missing_ok=True)
+        else:
+            transport.download_file(sub.url, dest)
         if sub.timemodified:
             meta[sub.username] = sub.timemodified
         click.echo(f"  {sub.username}.py")

@@ -58,3 +58,77 @@ class TestTransportProtocol:
 
         client = MagicMock(spec=MoodleAPIClient)
         assert isinstance(MoodleTransport(client, 1), Transport)
+
+
+class TestMoodleTransportGetSubmissions:
+    """MoodleTransport.get_submissions should accept .zip as well as .py."""
+
+    def test_get_submissions_includes_zip(self):
+        from unittest.mock import MagicMock
+
+        from mograder.moodle_api import MoodleAPIClient
+        from mograder.moodle_transport import MoodleTransport
+
+        client = MagicMock(spec=MoodleAPIClient)
+        client.get_assignments.return_value = [
+            {"id": 10, "name": "A1", "duedate": 0, "introattachments": []}
+        ]
+        client.list_participants.return_value = [
+            {"id": 100, "username": "alice", "fullname": "Alice"}
+        ]
+        client.get_submissions.return_value = [
+            {
+                "userid": 100,
+                "status": "submitted",
+                "files": [
+                    {
+                        "filename": "A1.zip",
+                        "fileurl": "https://moodle.example.com/file/99",
+                        "filesize": 1024,
+                        "timemodified": 1700000000,
+                    }
+                ],
+            }
+        ]
+        transport = MoodleTransport(client, 1)
+        subs = transport.get_submissions("A1")
+        assert len(subs) == 1
+        assert subs[0].username == "alice"
+        assert subs[0].filename == "A1.zip"
+
+    def test_get_submissions_prefers_py_over_zip(self):
+        """When both .py and .zip are submitted, prefer .py."""
+        from unittest.mock import MagicMock
+
+        from mograder.moodle_api import MoodleAPIClient
+        from mograder.moodle_transport import MoodleTransport
+
+        client = MagicMock(spec=MoodleAPIClient)
+        client.get_assignments.return_value = [
+            {"id": 10, "name": "A1", "duedate": 0, "introattachments": []}
+        ]
+        client.list_participants.return_value = [
+            {"id": 100, "username": "alice", "fullname": "Alice"}
+        ]
+        client.get_submissions.return_value = [
+            {
+                "userid": 100,
+                "status": "submitted",
+                "files": [
+                    {
+                        "filename": "solution.py",
+                        "fileurl": "https://moodle.example.com/file/1",
+                        "filesize": 256,
+                    },
+                    {
+                        "filename": "A1.zip",
+                        "fileurl": "https://moodle.example.com/file/2",
+                        "filesize": 1024,
+                    },
+                ],
+            }
+        ]
+        transport = MoodleTransport(client, 1)
+        subs = transport.get_submissions("A1")
+        assert len(subs) == 1
+        assert subs[0].filename == "solution.py"
