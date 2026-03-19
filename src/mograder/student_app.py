@@ -578,6 +578,12 @@ def _(
                         _url = rewrite_codespaces_url(_hs.url)
                     else:
                         _url = _hs.url
+                        if _os.environ.get("TAURI"):
+                            # Open in system browser — Tauri webview
+                            # silently blocks target=_blank links
+                            import webbrowser as _wb
+
+                            _wb.open(_url)
                     set_action_log(f"Opened **{_name}** for editing: [{_url}]({_url})")
                 except TimeoutError:
                     set_action_log(
