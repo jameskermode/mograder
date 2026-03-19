@@ -2235,7 +2235,8 @@ def _refresh_config(course: Path):
 @click.argument("course_dir_or_url", default=".")
 @click.option("-p", "--port", type=int, default=None, help="Port for marimo app")
 @click.option("--headless", is_flag=True, help="Don't open browser")
-def student(course_dir_or_url, port, headless):
+@click.option("--no-token", is_flag=True, help="Disable marimo auth token")
+def student(course_dir_or_url, port, headless, no_token):
     """Launch the student course browser for fetching and submitting assignments.
 
     COURSE_DIR_OR_URL can be a local directory (default: .) or an HTTPS URL
@@ -2280,6 +2281,8 @@ def student(course_dir_or_url, port, headless):
         cmd.extend(["--port", str(port)])
     if headless:
         cmd.append("--headless")
+    if no_token:
+        cmd.append("--no-token")
 
     click.echo(f"Launching student dashboard for: {course}")
     try:
