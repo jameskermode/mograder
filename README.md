@@ -47,7 +47,7 @@ A live demo is available with three components:
 2. **[Formgrader + Assignment Server](https://mograder-demo.jrkermode.uk)** — Combined ASGI app. The formgrader UI shows the full grading workflow (assignments, submissions, grading, students tabs) with pre-populated demo data. The same service also handles the assignment API at `/assignments`. No login required (for a real server, token-based authentication should be used, described below).
 3. **Notebook Editor** — Click "Edit in Browser" in the dashboard to open a notebook as a standalone WASM app with full edit mode or "Edit in Molab" to open a full editor. Each notebook has a submit cell to send your work back to the demonstration assignment server.
 
-There is also a **[Demo Workshop](https://jameskermode.github.io/mograder/notebooks/demo-workshop.html)** which is a WASM notebook demonstrating hints and encrypted solutions for formative workshops. The **[Instructor Dashboard](https://mograder-demo.jrkermode.uk/dashboard.html#token=mograder-demo-secret)** controls which model solutions are visible to students.
+There is also a **[Demo Workshop](https://jameskermode.github.io/mograder/notebooks/demo-workshop.html)** which is a WASM notebook demonstrating hints and encrypted solutions for formative workshops. The **[Instructor Dashboard](https://mograder-demo.jrkermode.uk/dashboard.html#token=mograder-demo-secret)** controls which model solutions are visible to students. The workshop key for this demo is `mograder`.
 
 A demonstration **[GitHub Codespaces](https://codespaces.new/jameskermode/mograder)** shows how to open this repo in a Codespace for a full development environment with uv, marimo, and the student dashboard pre-configured. Assignments are served from the demo server.
 
