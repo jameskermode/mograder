@@ -1744,6 +1744,7 @@ def moodle_sync(ctx, course_id, url, token, include_pattern):
     from mograder.moodle_api import (
         MoodleAPIClient,
         resolve_credentials,
+        sync_assignments,
     )
 
     config = ctx.obj["config"]
@@ -1751,49 +1752,18 @@ def moodle_sync(ctx, course_id, url, token, include_pattern):
     cid = _get_course_id(course_id, config)
     client = MoodleAPIClient(url, token)
 
-    assignments = client.get_assignments(cid)
+    toml_assignments = sync_assignments(client, cid, include_pattern=include_pattern)
 
-    # Fetch visibility from course contents (cmid → visible)
-    course_contents = client._call("core_course_get_contents", courseid=cid)
-    visible_cmids = set()
-    for section in course_contents:
-        for mod in section.get("modules", []):
-            if mod.get("modname") == "assign" and mod.get("visible"):
-                visible_cmids.add(mod["id"])
-
-    # Compile include filter if provided
-    include_re = None
+    # Count skipped/filtered for reporting
+    all_assignments = client.get_assignments(cid)
+    skipped = len(all_assignments) - len(toml_assignments)
+    filtered = 0
     if include_pattern:
         import re
 
         include_re = re.compile(include_pattern)
-
-    # Build assignment entries for toml (only visible ones)
-    toml_assignments = []
-    skipped = 0
-    filtered = 0
-    for a in assignments:
-        if a["cmid"] not in visible_cmids:
-            skipped += 1
-            continue
-        if include_re and not include_re.search(a["name"]):
-            filtered += 1
-            continue
-        # Convert webservice/pluginfile.php URLs to pluginfile.php (browser-accessible)
-        files = []
-        for att in a.get("introattachments", []):
-            file_url = att["fileurl"].replace(
-                "/webservice/pluginfile.php/", "/pluginfile.php/"
-            )
-            files.append({"name": att["filename"], "url": file_url})
-        entry = {
-            "name": a["name"],
-            "id": a["id"],
-            "cmid": a["cmid"],
-            "duedate": a["duedate"],
-            "files": files,
-        }
-        toml_assignments.append(entry)
+        filtered = sum(1 for a in all_assignments if not include_re.search(a["name"]))
+        skipped -= filtered
 
     # Update mograder.toml — preserve existing content, replace assignments
     toml_path = Path.cwd() / "mograder.toml"
@@ -1818,7 +1788,9 @@ def moodle_sync(ctx, course_id, url, token, include_pattern):
     toml_data["assignments"] = toml_assignments
 
     # Write back — tomllib is read-only, so we use a simple writer
-    _write_toml(toml_path, toml_data)
+    from mograder.config import write_toml
+
+    write_toml(toml_path, toml_data)
 
     click.echo(
         f"Synced {len(toml_assignments)} visible assignment(s) to {_rel(toml_path)}"
@@ -1830,87 +1802,6 @@ def moodle_sync(ctx, course_id, url, token, include_pattern):
     for a in toml_assignments:
         n_files = len(a["files"])
         click.echo(f"  {a['name']} ({n_files} file(s))")
-
-
-def _write_toml(path: Path, data: dict) -> None:
-    """Write a dict to a TOML file (simple serializer for our config subset)."""
-    lines = []
-
-    # Write top-level scalars first
-    for key, value in data.items():
-        if not isinstance(value, (dict, list)):
-            lines.append(f"{key} = {_toml_value(value)}")
-    if any(not isinstance(v, (dict, list)) for v in data.values()):
-        lines.append("")
-
-    # Write top-level array-of-tables (e.g. [[assignments]])
-    for key, value in data.items():
-        if isinstance(value, list) and value and isinstance(value[0], dict):
-            for item in value:
-                lines.append(f"[[{key}]]")
-                for ik, iv in item.items():
-                    if isinstance(iv, list) and iv and isinstance(iv[0], dict):
-                        for sub in iv:
-                            lines.append(f"  [[{key}.{ik}]]")
-                            for sk, sv in sub.items():
-                                lines.append(f"  {sk} = {_toml_value(sv)}")
-                    else:
-                        lines.append(f"{ik} = {_toml_value(iv)}")
-                lines.append("")
-
-    # Write sections (dicts)
-    for section_name, section_data in data.items():
-        if isinstance(section_data, dict):
-            # Separate scalar fields from nested structures
-            scalars = {}
-            nested = {}
-            for k, v in section_data.items():
-                if isinstance(v, list) and v and isinstance(v[0], dict):
-                    nested[k] = v
-                else:
-                    scalars[k] = v
-
-            lines.append(f"[{section_name}]")
-            for k, v in scalars.items():
-                lines.append(f"{k} = {_toml_value(v)}")
-            lines.append("")
-
-            for k, items in nested.items():
-                for item in items:
-                    lines.append(f"[[{section_name}.{k}]]")
-                    for ik, iv in item.items():
-                        if isinstance(iv, list) and iv and isinstance(iv[0], dict):
-                            # Inline array of tables
-                            for sub in iv:
-                                lines.append(f"  [[{section_name}.{k}.{ik}]]")
-                                for sk, sv in sub.items():
-                                    lines.append(f"  {sk} = {_toml_value(sv)}")
-                        else:
-                            lines.append(f"{ik} = {_toml_value(iv)}")
-                    lines.append("")
-
-    path.write_text("\n".join(lines) + "\n")
-
-
-def _toml_value(v) -> str:
-    """Format a Python value as a TOML literal."""
-    if isinstance(v, str):
-        # Escape backslashes and quotes
-        escaped = v.replace("\\", "\\\\").replace('"', '\\"')
-        return f'"{escaped}"'
-    elif isinstance(v, bool):
-        return "true" if v else "false"
-    elif isinstance(v, int):
-        return str(v)
-    elif isinstance(v, float):
-        return str(v)
-    elif isinstance(v, list):
-        if not v:
-            return "[]"
-        items = ", ".join(_toml_value(x) for x in v)
-        return f"[{items}]"
-    else:
-        return repr(v)
 
 
 @moodle_group.command("login")

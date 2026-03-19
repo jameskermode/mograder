@@ -377,6 +377,58 @@ def find_assignment(
     raise click.UsageError(f"No assignment matching '{name}'. Available:\n  {names}")
 
 
+def sync_assignments(
+    client: MoodleAPIClient,
+    course_id: int,
+    *,
+    include_pattern: str | None = None,
+) -> list[dict]:
+    """Fetch visible assignments from Moodle and return config-ready dicts.
+
+    Each dict has keys: name, id, cmid, duedate, files.
+    File URLs use ``pluginfile.php`` (browser-accessible); callers using
+    token auth should go through ``MoodleAPIClient.download_file`` which
+    converts automatically.
+    """
+    import re
+
+    assignments = client.get_assignments(course_id)
+
+    # Fetch visibility from course contents (cmid → visible)
+    course_contents = client._call("core_course_get_contents", courseid=course_id)
+    visible_cmids = set()
+    for section in course_contents:
+        for mod in section.get("modules", []):
+            if mod.get("modname") == "assign" and mod.get("visible"):
+                visible_cmids.add(mod["id"])
+
+    include_re = re.compile(include_pattern) if include_pattern else None
+
+    result = []
+    for a in assignments:
+        if a["cmid"] not in visible_cmids:
+            continue
+        if include_re and not include_re.search(a["name"]):
+            continue
+        # Convert webservice/pluginfile.php URLs to pluginfile.php (browser-accessible)
+        files = []
+        for att in a.get("introattachments", []):
+            file_url = att["fileurl"].replace(
+                "/webservice/pluginfile.php/", "/pluginfile.php/"
+            )
+            files.append({"name": att["filename"], "url": file_url})
+        result.append(
+            {
+                "name": a["name"],
+                "id": a["id"],
+                "cmid": a["cmid"],
+                "duedate": a["duedate"],
+                "files": files,
+            }
+        )
+    return result
+
+
 # ---------------------------------------------------------------------------
 # Token authentication and caching
 # ---------------------------------------------------------------------------

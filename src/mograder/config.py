@@ -107,3 +107,81 @@ def load_config(course_dir: Path) -> MograderConfig:
         sync_remote_venv_dir=sync.get("remote_venv_dir"),
         edit_links=tuple((k, v) for k, v in edit_links_data.items()),
     )
+
+
+def _toml_value(v) -> str:
+    """Format a Python value as a TOML literal."""
+    if isinstance(v, str):
+        escaped = v.replace("\\", "\\\\").replace('"', '\\"')
+        return f'"{escaped}"'
+    elif isinstance(v, bool):
+        return "true" if v else "false"
+    elif isinstance(v, int):
+        return str(v)
+    elif isinstance(v, float):
+        return str(v)
+    elif isinstance(v, list):
+        if not v:
+            return "[]"
+        items = ", ".join(_toml_value(x) for x in v)
+        return f"[{items}]"
+    else:
+        return repr(v)
+
+
+def write_toml(path: Path, data: dict) -> None:
+    """Write a dict to a TOML file (simple serializer for our config subset)."""
+    lines: list[str] = []
+
+    # Write top-level scalars first
+    for key, value in data.items():
+        if not isinstance(value, (dict, list)):
+            lines.append(f"{key} = {_toml_value(value)}")
+    if any(not isinstance(v, (dict, list)) for v in data.values()):
+        lines.append("")
+
+    # Write top-level array-of-tables (e.g. [[assignments]])
+    for key, value in data.items():
+        if isinstance(value, list) and value and isinstance(value[0], dict):
+            for item in value:
+                lines.append(f"[[{key}]]")
+                for ik, iv in item.items():
+                    if isinstance(iv, list) and iv and isinstance(iv[0], dict):
+                        for sub in iv:
+                            lines.append(f"  [[{key}.{ik}]]")
+                            for sk, sv in sub.items():
+                                lines.append(f"  {sk} = {_toml_value(sv)}")
+                    else:
+                        lines.append(f"{ik} = {_toml_value(iv)}")
+                lines.append("")
+
+    # Write sections (dicts)
+    for section_name, section_data in data.items():
+        if isinstance(section_data, dict):
+            scalars = {}
+            nested = {}
+            for k, v in section_data.items():
+                if isinstance(v, list) and v and isinstance(v[0], dict):
+                    nested[k] = v
+                else:
+                    scalars[k] = v
+
+            lines.append(f"[{section_name}]")
+            for k, v in scalars.items():
+                lines.append(f"{k} = {_toml_value(v)}")
+            lines.append("")
+
+            for k, items in nested.items():
+                for item in items:
+                    lines.append(f"[[{section_name}.{k}]]")
+                    for ik, iv in item.items():
+                        if isinstance(iv, list) and iv and isinstance(iv[0], dict):
+                            for sub in iv:
+                                lines.append(f"  [[{section_name}.{k}.{ik}]]")
+                                for sk, sv in sub.items():
+                                    lines.append(f"  {sk} = {_toml_value(sv)}")
+                        else:
+                            lines.append(f"{ik} = {_toml_value(iv)}")
+                    lines.append("")
+
+    path.write_text("\n".join(lines) + "\n")

@@ -130,8 +130,36 @@ def _(
     moodle_url = CONFIG.moodle_url
     token_input = mo.ui.text(label="", value="")
 
-    # For HTTPS transport, fetch assignments from the server if not in config
+    # Auto-sync assignments from Moodle when a token is available
     _assignments_cfg = CONFIG.assignments or CONFIG.moodle_assignments
+    if not IS_HTTPS and moodle_url and CONFIG.moodle_course_id and get_token():
+        try:
+            from mograder.moodle_api import sync_assignments as _sync_assignments
+
+            _sync_client = MoodleAPIClient(moodle_url, get_token())
+            _synced = _sync_assignments(_sync_client, CONFIG.moodle_course_id)
+            if _synced:
+                # Update config in memory for this session
+                _assignments_cfg = tuple(_synced)
+                # Persist to mograder.toml
+                import tomllib as _tomllib
+
+                from mograder.config import write_toml as _write_toml
+
+                _toml_path = COURSE_DIR / "mograder.toml"
+                if _toml_path.is_file():
+                    with open(_toml_path, "rb") as _f:
+                        _toml_data = _tomllib.load(_f)
+                else:
+                    _toml_data = {}
+                _moodle_section = _toml_data.get("moodle", {})
+                _moodle_section["assignments"] = list(_synced)
+                _toml_data["moodle"] = _moodle_section
+                _toml_data["assignments"] = list(_synced)
+                _write_toml(_toml_path, _toml_data)
+        except Exception:
+            pass  # Sync is best-effort; stale config still works
+
     https_assignments = ()
     if IS_HTTPS and not _assignments_cfg and get_token():
         try:
