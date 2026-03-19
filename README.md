@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="assets/mograder.svg" alt="mograder logo" width="128" height="128">
+</p>
+
 # mograder
 
 Semi-automated grading for [Marimo](https://marimo.io) notebooks.
