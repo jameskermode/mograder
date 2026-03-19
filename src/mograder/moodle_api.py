@@ -80,7 +80,19 @@ class MoodleAPIClient:
         return assignments
 
     def download_file(self, file_url: str, dest: Path) -> Path:
-        """Download a file from Moodle, appending the token for auth."""
+        """Download a file from Moodle, appending the token for auth.
+
+        Automatically converts ``pluginfile.php`` URLs to
+        ``webservice/pluginfile.php`` so token authentication works.
+        """
+        # Token auth requires the webservice endpoint
+        if (
+            "/pluginfile.php/" in file_url
+            and "/webservice/pluginfile.php/" not in file_url
+        ):
+            file_url = file_url.replace(
+                "/pluginfile.php/", "/webservice/pluginfile.php/"
+            )
         sep = "&" if "?" in file_url else "?"
         authed_url = f"{file_url}{sep}token={self.token}"
         resp = requests.get(authed_url, stream=True, timeout=60)

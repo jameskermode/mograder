@@ -508,10 +508,7 @@ def _(
                         if _transport:
                             _transport.download_file(_finfo["url"], _dest)
                         else:
-                            _file_url = _finfo["url"].replace(
-                                "/pluginfile.php/", "/webservice/pluginfile.php/"
-                            )
-                            _client.download_file(_file_url, _dest)
+                            _client.download_file(_finfo["url"], _dest)
                     # Cache release for integrity validation
                     _cache_dir = COURSE_DIR / ".mograder" / "release" / _slug
                     _cache_dir.mkdir(parents=True, exist_ok=True)
