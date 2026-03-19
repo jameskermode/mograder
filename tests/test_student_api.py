@@ -150,7 +150,6 @@ class TestListAssignments:
         assert len(data[0]["files"]) == 1
         assert data[1]["files"] == []
 
-
     def test_list_assignments_prefers_zip(self, course_dir, config):
         """When a .zip file exists in release dir, only the zip appears."""
         release = course_dir / "release" / "ES98E-A1-Intro-to-SciML"

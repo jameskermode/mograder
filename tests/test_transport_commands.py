@@ -206,10 +206,12 @@ class TestDoFetchSubmissions:
 
     def test_fetch_submissions_zip_with_multiple_py(self, tmp_path, capsys):
         """Zip with multiple .py — only largest saved as {user}.py, extras skipped."""
-        zip_bytes = _make_zip({
-            "A1.py": b"# main assignment (largest)",
-            "helper.py": b"# helper",
-        })
+        zip_bytes = _make_zip(
+            {
+                "A1.py": b"# main assignment (largest)",
+                "helper.py": b"# helper",
+            }
+        )
 
         transport = _mock_transport()
         transport.get_submissions.return_value = [
@@ -233,10 +235,12 @@ class TestDoFetchSubmissions:
 
     def test_fetch_submissions_zip_extracts_data_files(self, tmp_path, capsys):
         """Non-.py files (data, configs) from zip should be extracted."""
-        zip_bytes = _make_zip({
-            "A1.py": b"# assignment",
-            "data.csv": b"x,y\n1,2\n",
-        })
+        zip_bytes = _make_zip(
+            {
+                "A1.py": b"# assignment",
+                "data.csv": b"x,y\n1,2\n",
+            }
+        )
 
         transport = _mock_transport()
         transport.get_submissions.return_value = [

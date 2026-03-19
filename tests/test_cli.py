@@ -82,9 +82,7 @@ def test_generate_creates_zip(mock_pf, mock_zip, tmp_path):
     mock_zip.return_value = rel_dir / "hw1.zip"
 
     runner = CliRunner()
-    result = runner.invoke(
-        cli, ["generate", str(nb), "-o", str(out), "--no-validate"]
-    )
+    result = runner.invoke(cli, ["generate", str(nb), "-o", str(out), "--no-validate"])
     assert result.exit_code == 0
     mock_zip.assert_called_once()
 

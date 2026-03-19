@@ -418,12 +418,19 @@ def process_file(
 
 
 def build_release_zip(release_dir: Path) -> Path:
-    """Create a zip of student-facing release files, excluding artifacts."""
+    """Create a zip of student-facing release files, excluding artifacts.
+
+    Uses a fixed timestamp so the zip is reproducible across runs.
+    """
     zip_path = release_dir / f"{release_dir.name}.zip"
     _EXCLUDE_SUFFIXES = {".html", ".zip"}
+    # Fixed date_time for reproducible output (2025-01-01 00:00:00)
+    _FIXED_TIME = (2025, 1, 1, 0, 0, 0)
     with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
         for f in sorted(release_dir.iterdir()):
             if f.is_dir() or f.name.startswith(".") or f.suffix in _EXCLUDE_SUFFIXES:
                 continue
-            zf.write(f, f.name)
+            info = zipfile.ZipInfo(f.name, date_time=_FIXED_TIME)
+            info.compress_type = zipfile.ZIP_DEFLATED
+            zf.writestr(info, f.read_bytes())
     return zip_path
