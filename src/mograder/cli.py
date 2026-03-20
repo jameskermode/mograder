@@ -1826,7 +1826,8 @@ def moodle_sync(ctx, course_id, url, token, include_pattern, edit_links):
         from mograder.moodle_api import MoodleAPIError
 
         # Build a map from cmid → existing intro from the API response
-        intro_map = {a["cmid"]: a.get("intro", "") for a in assignments}
+        intro_map = {a["cmid"]: a.get("intro", "") for a in all_assignments}
+        release_dir = Path.cwd() / config.release_dir
 
         pushed = 0
         manual_entries: list[tuple[str, str, str]] = []  # (name, edit_url, html)
