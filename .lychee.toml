@@ -29,13 +29,13 @@ exclude = [
 exclude_path = ["site/404.html"]
 
 # Accept 429 (rate limit) as valid
-accept = [200, 429]
+accept = ["200", "429"]
 
 # Timeout per request
 timeout = 30
 
 # Don't check mail addresses
-exclude_mail = true
+include_mail = false
 
 # Don't require HTTPS (some links are intentionally HTTP for localhost examples)
 require_https = false
