@@ -119,10 +119,13 @@ def _():
     def get_user_display() -> str:
         """Return 'username@host' for display in the navbar."""
         username = _get_user_attr("username", "")
-        if not username:
+        if not username or username == "user":
             username = os.environ.get("USER", "local")
         hostname = socket.gethostname().split(".")[0]
-        return f"{username}@{hostname}"
+        # Skip ugly serial-number hostnames (e.g. "20-G3-033585-24")
+        if hostname.isalpha():
+            return f"{username}@{hostname}"
+        return username
 
     return (
         COURSE_DIR,
