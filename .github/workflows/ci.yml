@@ -25,6 +25,16 @@ jobs:
       - name: Install dependencies
         run: uv sync --extra dev
 
+      - name: Install bubblewrap (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get install -y bubblewrap
+          # Ubuntu 24.04+ restricts unprivileged user namespaces via AppArmor.
+          # Relax this for CI so bwrap integration tests can run.
+          if [ -f /proc/sys/kernel/apparmor_restrict_unprivileged_userns ]; then
+            echo 0 | sudo tee /proc/sys/kernel/apparmor_restrict_unprivileged_userns
+          fi
+
       - name: Lint
         if: matrix.os == 'ubuntu-latest'
         run: uv run ruff check src/
