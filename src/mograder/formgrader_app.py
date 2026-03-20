@@ -1222,22 +1222,19 @@ def _(
                 _max_mark = int(_assign["max_mark"])
                 _marks_meta = _assign.get("marks_metadata")
 
-        # Compute auto_max (marks available for auto-graded questions)
+        # Compute auto_max (marks available for auto-graded questions).
+        # Use auto_check_keys from the assignment record (derived from the
+        # source notebook's check() calls at autograde time) — NOT the
+        # student's check_results, which may be incomplete when mo.stop
+        # guards prevent checks from running.
         if _marks_meta and _auto_mark is not None:
-            _db_sub2 = (
-                GRADEBOOK.get_submission(
-                    grading_assignment_name, grading_current_sub.student
-                )
-                if GRADEBOOK
-                else None
-            )
-            if _db_sub2:
-                _check_keys = {
-                    c["label"].split(":")[0].strip() for c in _db_sub2["check_results"]
-                }
-                _auto_max = sum(v for k, v in _marks_meta.items() if k in _check_keys)
+            _auto_keys = set(_assign.get("auto_check_keys") or []) if _assign else set()
+            if _auto_keys:
+                _auto_max = sum(v for k, v in _marks_meta.items() if k in _auto_keys)
             else:
-                _auto_max = 0
+                # Fallback for DBs created before auto_check_keys was stored:
+                # treat all marks-dict keys as auto-graded (conservative).
+                _auto_max = sum(_marks_meta.values())
         else:
             _auto_max = 0
 

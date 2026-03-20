@@ -439,3 +439,47 @@ def test_write_gta_feedback_none_mark(tmp_path):
     write_gta_feedback(nb_path, None, "")
     mark, feedback = parse_gta_feedback(nb_path.read_text().splitlines(keepends=True))
     assert mark is None
+
+
+# --- source_check_keys regression ---
+
+
+def test_inject_source_check_keys_uses_full_denominator():
+    """When source_check_keys is provided, auto denominator reflects all
+    auto-graded questions even if student checks are incomplete (mo.stop
+    guards prevented some from running).
+
+    Regression test: without source_check_keys, a student who fails
+    everything would show Auto: 0/15 instead of 0/40 because only the
+    checks that ran (Q2) would be counted.
+    """
+    marks = {"Q1": 10, "Q2": 15, "Q3": 15, "Analysis": 60}
+    # Student only has Q2 check result (Q1 and Q3 stopped by mo.stop guards)
+    student_checks = [CheckResult("Q2: Finite differences", "danger")]
+    # Source notebook has all three check() calls
+    source_keys = {"Q1", "Q2", "Q3"}
+
+    result = inject_grading_cells(
+        _make_notebook_lines(),
+        student_checks,
+        marks=marks,
+        source_check_keys=source_keys,
+    )
+    text = "".join(result)
+    # Auto total should be Q1+Q2+Q3 = 40, NOT just Q2 = 15
+    assert "Auto marks: 0/40" in text
+    # Manual should be Analysis = 60
+    assert "out of 60" in text
+
+
+def test_inject_without_source_check_keys_falls_back_to_student_checks():
+    """Without source_check_keys, falls back to inferring from student checks."""
+    marks = {"Q1": 10, "Q2": 15, "Analysis": 75}
+    checks = [
+        CheckResult("Q1: Array creation", "success"),
+        CheckResult("Q2: Finite differences", "danger"),
+    ]
+    result = inject_grading_cells(_make_notebook_lines(), checks, marks=marks)
+    text = "".join(result)
+    # Both Q1 and Q2 are in student checks, so auto total = 25
+    assert "Auto marks: 10/25" in text

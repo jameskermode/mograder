@@ -936,6 +936,14 @@ def autograde(
             total = sum(marks.values())
             click.echo(f"  Marks metadata: {marks_info} (total: {total})")
 
+    # Extract auto-graded question keys from source check results.
+    # These keys determine which marks-dict entries are auto vs manual.
+    source_check_keys: set[str] | None = None
+    if source_path and source_result.checks:
+        source_check_keys = {
+            c.label.split(":")[0].strip() for c in source_result.checks
+        }
+
     # Resolve release notebook for cell integrity checking
     release_text: str | None = None
     if safety_check and source_path:
@@ -1066,7 +1074,11 @@ def autograde(
             continue
         source_lines = result.path.read_text().splitlines(keepends=True)
         modified = cells.inject_grading_cells(
-            source_lines, result.checks, result.cell_errors, marks
+            source_lines,
+            result.checks,
+            result.cell_errors,
+            marks,
+            source_check_keys=source_check_keys,
         )
         dest = output_dir / result.path.name
         dest.write_text("".join(modified))
@@ -1101,7 +1113,12 @@ def autograde(
             else notebooks[0].parent.name
         )
         max_mark = sum(marks.values()) if marks else 100
-        gb.upsert_assignment(assignment_name, max_mark=max_mark, marks_metadata=marks)
+        gb.upsert_assignment(
+            assignment_name,
+            max_mark=max_mark,
+            marks_metadata=marks,
+            auto_check_keys=sorted(source_check_keys) if source_check_keys else None,
+        )
         for result in results:
             if not result.export_ok:
                 continue

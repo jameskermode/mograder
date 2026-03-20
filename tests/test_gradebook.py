@@ -75,6 +75,27 @@ def test_upsert_assignment(tmp_path):
         assert a["name"] == "hw1"
         assert a["max_mark"] == 100
         assert a["marks_metadata"] is None
+        assert a.get("auto_check_keys") is None
+
+
+def test_upsert_assignment_with_auto_check_keys(tmp_path):
+    """auto_check_keys round-trips through upsert/get."""
+    with Gradebook(tmp_path / "test.db") as gb:
+        marks = {"Q1": 10, "Q2": 15, "Q3": 15, "Analysis": 60}
+        gb.upsert_assignment(
+            "hw1",
+            max_mark=100,
+            marks_metadata=marks,
+            auto_check_keys=["Q1", "Q2", "Q3"],
+        )
+        a = gb.get_assignment("hw1")
+        assert a is not None
+        assert a["marks_metadata"] == marks
+        assert a["auto_check_keys"] == ["Q1", "Q2", "Q3"]
+        # auto_max should be Q1+Q2+Q3 = 40, not 100
+        auto_keys = set(a["auto_check_keys"])
+        auto_max = sum(v for k, v in a["marks_metadata"].items() if k in auto_keys)
+        assert auto_max == 40
 
 
 def test_upsert_assignment_with_marks(tmp_path):

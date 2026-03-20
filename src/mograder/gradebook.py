@@ -41,7 +41,8 @@ class Gradebook:
             CREATE TABLE IF NOT EXISTS assignments (
                 name            TEXT PRIMARY KEY,
                 max_mark        REAL NOT NULL DEFAULT 100,
-                marks_metadata  TEXT
+                marks_metadata  TEXT,
+                auto_check_keys TEXT
             );
             CREATE TABLE IF NOT EXISTS students (
                 username  TEXT PRIMARY KEY,
@@ -67,11 +68,15 @@ class Gradebook:
 
     def _migrate(self) -> None:
         """Add columns that may be missing in existing databases."""
-        try:
-            self._conn.execute("ALTER TABLE submissions ADD COLUMN updated_at TEXT")
-            self._conn.commit()
-        except sqlite3.OperationalError:
-            pass  # column already exists
+        for stmt in [
+            "ALTER TABLE submissions ADD COLUMN updated_at TEXT",
+            "ALTER TABLE assignments ADD COLUMN auto_check_keys TEXT",
+        ]:
+            try:
+                self._conn.execute(stmt)
+                self._conn.commit()
+            except sqlite3.OperationalError:
+                pass  # column already exists
 
     def close(self) -> None:
         self._conn.close()
@@ -124,18 +129,21 @@ class Gradebook:
         name: str,
         max_mark: float = 100,
         marks_metadata: dict | None = None,
+        auto_check_keys: list[str] | None = None,
     ) -> None:
         meta_json = json.dumps(marks_metadata) if marks_metadata else None
+        keys_json = json.dumps(sorted(auto_check_keys)) if auto_check_keys else None
         with self._conn:
             self._conn.execute(
                 """
-                INSERT INTO assignments (name, max_mark, marks_metadata)
-                VALUES (?, ?, ?)
+                INSERT INTO assignments (name, max_mark, marks_metadata, auto_check_keys)
+                VALUES (?, ?, ?, ?)
                 ON CONFLICT(name) DO UPDATE SET
                     max_mark = excluded.max_mark,
-                    marks_metadata = excluded.marks_metadata
+                    marks_metadata = excluded.marks_metadata,
+                    auto_check_keys = excluded.auto_check_keys
                 """,
-                (name, max_mark, meta_json),
+                (name, max_mark, meta_json, keys_json),
             )
 
     def get_assignment(self, name: str) -> dict | None:
@@ -147,6 +155,8 @@ class Gradebook:
         d = dict(row)
         if d["marks_metadata"]:
             d["marks_metadata"] = json.loads(d["marks_metadata"])
+        if d.get("auto_check_keys"):
+            d["auto_check_keys"] = json.loads(d["auto_check_keys"])
         return d
 
     # --- Submissions ---

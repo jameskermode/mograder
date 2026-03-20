@@ -284,6 +284,7 @@ def inject_grading_cells(
     checks: list[CheckResult],
     cell_errors: int = 0,
     marks: dict[str, int | float] | None = None,
+    source_check_keys: set[str] | None = None,
 ) -> list[str]:
     """Insert verification summary + GTA feedback cells before ``if __name__``.
 
@@ -292,13 +293,22 @@ def inject_grading_cells(
 
     When ``marks`` is provided, the verification cell includes a marks column
     and the feedback cell is pre-configured for manual-only grading.
+
+    ``source_check_keys``, if given, determines which marks-dict keys are
+    auto-graded (have a ``check()`` call in the source notebook).  When omitted,
+    keys are inferred from the student's executed checks — which may be
+    incomplete if ``mo.stop`` guards prevented some checks from running.
     """
     if has_grading_cells(source_lines):
         return source_lines
 
     if marks is not None:
-        # Compute auto marks (fractional) and manual available
-        check_keys = {c.label.split(":")[0].strip() for c in checks}
+        # Compute auto marks (fractional) and manual available.
+        # Prefer source_check_keys (from source notebook run) over student
+        # checks, which may be incomplete due to mo.stop guards.
+        check_keys = source_check_keys or {
+            c.label.split(":")[0].strip() for c in checks
+        }
         auto_mark = 0.0
         for c in checks:
             key = c.label.split(":")[0].strip()
