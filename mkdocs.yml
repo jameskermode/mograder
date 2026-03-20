@@ -5,18 +5,16 @@ repo_name: jameskermode/mograder
 
 theme:
   name: material
-  logo: assets/mograder.svg
+  logo: assets/mograder-white.svg
   favicon: assets/icon-32.png
   palette:
     - media: "(prefers-color-scheme: light)"
       scheme: default
-      primary: blue
       toggle:
         icon: material/brightness-7
         name: Switch to dark mode
     - media: "(prefers-color-scheme: dark)"
       scheme: slate
-      primary: blue
       toggle:
         icon: material/brightness-4
         name: Switch to light mode
@@ -28,6 +26,9 @@ theme:
     - search.highlight
     - content.code.copy
     - toc.follow
+
+extra_css:
+  - stylesheets/extra.css
 
 plugins:
   - search
