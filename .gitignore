@@ -12,3 +12,7 @@ htmlcov/
 .mograder/
 __marimo__/
 site/
+.DS_Store
+*.db
+*.db-shm
+*.db-wal
