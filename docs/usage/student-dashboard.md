@@ -10,6 +10,9 @@ mograder student --port 8080        # custom port
 mograder student --headless         # no browser auto-open
 ```
 
+!!! tip
+    The [desktop app](https://github.com/jameskermode/mograder-tauri/releases/latest) launches the student dashboard automatically with no CLI needed — just paste your course URL on first launch.
+
 The dashboard provides:
 
 - **Login** — for Moodle courses, paste your Moodle security token (from your Moodle Security Keys page). For HTTPS transport courses, register with your username and the enrollment code provided by your instructor (or paste a token directly). Tokens are cached at `~/.config/mograder/`.

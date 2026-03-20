@@ -51,3 +51,16 @@ mograder feedback hw1         # export HTML → feedback/
 ```
 
 See the [Installation](installation.md) page for full details, the [Instructor Guide](instructor-guide.md) for a step-by-step walkthrough, or the [Usage](usage/index.md) section for reference on each command.
+
+## For students
+
+**Easiest:** download the [desktop app](https://github.com/jameskermode/mograder-tauri/releases/latest) — no terminal needed.
+
+**Or via the command line:**
+
+```bash
+curl -LsSf https://astral.sh/uv/install.sh | sh
+uvx mograder student <CONFIG_URL>
+```
+
+Or open in **[GitHub Codespaces](student-guide.md#option-3-github-codespaces)** — one click, no install needed.

@@ -39,7 +39,7 @@ def _(mo):
 
 ## Autograding checks
 
-Import `check` from `mograder.runtime` and call it with a label and a list of `(condition, failure_message)` tuples. The result is a coloured callout (green/red/amber) that gives students instant feedback:
+Import `check` from `mograder.runtime` and call it with a label and a list of `(condition, failure_message)` tuples. Each tuple can optionally include a weight as a third element (default 1). The result is a coloured callout that gives students instant feedback:
 
 ```python
 from mograder.runtime import check

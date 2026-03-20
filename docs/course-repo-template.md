@@ -8,9 +8,19 @@ Use this as a starting point for your course repository's README. Replace placeh
 
 ### Getting started
 
-There are three ways to work on assignments — pick one:
+There are four ways to work on assignments — pick one:
 
-#### Option A: GitHub Codespaces (recommended)
+#### Option A: Desktop app (recommended)
+
+No install needed — download and run:
+
+1. **[Download the installer](https://github.com/jameskermode/mograder-tauri/releases/latest)** for your platform (Windows `.exe` / macOS `.dmg` / Linux `.AppImage`)
+2. Launch and paste the course URL: `<CONFIG_URL>`
+3. The app sets up everything automatically
+
+> Windows: SmartScreen may prompt — click **More info** → **Run anyway**.
+
+#### Option B: GitHub Codespaces
 
 No install needed — works entirely in your browser:
 
@@ -18,9 +28,9 @@ No install needed — works entirely in your browser:
 2. Wait for the environment to build (~1 minute)
 3. The student dashboard starts automatically — open port **2718** in the Ports tab
 
-See the [full Codespaces guide](https://jameskermode.github.io/mograder/student-guide/#option-2-github-codespaces) for usage tips and managing hours.
+See the [full Codespaces guide](https://jameskermode.github.io/mograder/student-guide/#option-3-github-codespaces) for usage tips and managing hours.
 
-#### Option B: Local install
+#### Option C: Local install
 
 **1. Install uv (one time)**
 
@@ -56,7 +66,7 @@ cd <course-directory>
 uvx mograder student
 ```
 
-#### Option C: Molab
+#### Option D: Molab
 
 If you're working on [Molab](https://molab.marimo.io) (no install needed, but Validate is not available):
 

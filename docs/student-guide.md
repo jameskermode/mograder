@@ -1,15 +1,31 @@
 # Student Setup Guide
 
-There are three ways to work on assignments. Pick whichever suits you best:
+There are four ways to work on assignments. Pick whichever suits you best:
 
-| | **Local install** | **GitHub Codespaces** | **Molab** |
-|---|---|---|---|
-| Setup | Install uv (2 commands) | One click | None |
-| Platforms | macOS, Linux, Windows | Any browser | Any browser |
-| Best for | Full offline workflow | Windows users, quick start | Light editing, no install |
-| Validate | Yes | Yes | Via assessment cell |
+| | **Desktop app** | **Local install** | **GitHub Codespaces** | **Molab** |
+|---|---|---|---|---|
+| Setup | Download installer | Install uv (2 commands) | One click | None |
+| Platforms | Windows, macOS, Linux | macOS, Linux, Windows | Any browser | Any browser |
+| Best for | No-terminal workflow | Full offline workflow | Windows users, quick start | Light editing, no install |
+| Validate | Yes | Yes | Yes | Via assessment cell |
 
-## Option 1: Local install
+## Option 1: Desktop app
+
+Download and run the installer — no terminal or Python needed.
+
+1. Download the installer for your platform from the [latest release](https://github.com/jameskermode/mograder-tauri/releases/latest):
+   - **Windows:** `.exe` (per-user install, no admin required)
+   - **macOS:** `.dmg`
+   - **Linux:** `.AppImage`
+2. Launch the app and paste the **course configuration URL** provided by your instructor
+3. The app downloads everything automatically and opens the student dashboard
+
+!!! warning "Unsigned app warnings"
+    **Windows:** SmartScreen may show "Windows protected your PC" — click **More info** → **Run anyway** (the app is not yet code-signed).
+
+    **macOS:** Right-click the app and choose **Open** on first launch (unsigned app).
+
+## Option 2: Local install
 
 ### macOS / Linux
 
@@ -38,7 +54,7 @@ uvx mograder student <CONFIG_URL>
 ```
 
 !!! tip
-    If you have trouble with the Windows install, try [GitHub Codespaces](#option-2-github-codespaces) instead — it works entirely in your browser with no local setup.
+    If you have trouble with the Windows install, try the [Desktop app](#option-1-desktop-app) which provides a point-and-click installer with no terminal needed, or [GitHub Codespaces](#option-3-github-codespaces) which works entirely in your browser with no local setup.
 
 ### Returning sessions (all platforms)
 
@@ -60,7 +76,7 @@ The dashboard will automatically fetch the latest assignment list.
 - **macOS / Linux**: The `curl` command installs uv to `~/.local/bin`. You may need to restart your shell or run `source ~/.bashrc` (or `~/.zshrc`) for the `uvx` command to be available.
 - **Windows**: After running the PowerShell installer, you **must** restart your terminal for `uvx` to be on your PATH.
 
-## Option 2: GitHub Codespaces
+## Option 3: GitHub Codespaces
 
 GitHub Codespaces gives you a full development environment in your browser — no local install needed.
 
@@ -85,7 +101,7 @@ GitHub gives free accounts **120 core-hours/month** of Codespaces time. To avoid
 
 Codespaces automatically stop after 30 minutes of inactivity. Your work is saved until the Codespace is deleted (default: after 30 days of inactivity).
 
-## Option 3: Molab (cloud)
+## Option 4: Molab (cloud)
 
 If you're using [Molab](https://molab.marimo.io), no local installation is required:
 
@@ -177,7 +193,7 @@ Make sure you're either:
 
 ### Windows issues
 
-If you experience problems with uv or marimo on Windows (PATH issues, permission errors, antivirus interference), consider using [GitHub Codespaces](#option-2-github-codespaces) as a hassle-free alternative.
+If you experience problems with uv or marimo on Windows (PATH issues, permission errors, antivirus interference), consider using [GitHub Codespaces](#option-3-github-codespaces) as a hassle-free alternative.
 
 ### Network / proxy issues
 
