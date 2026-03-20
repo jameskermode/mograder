@@ -73,7 +73,21 @@ An argument is treated as an assignment name if it contains no `/` and doesn't e
 - **`moodle_transport.py`** — `MoodleTransport` adapter wrapping `MoodleAPIClient` to implement `Transport`.
 - **`transport_commands.py`** — Shared command logic: `do_fetch`, `do_submit`, `do_fetch_submissions`, `do_upload_feedback`, `do_status`. Used by both `moodle` and `https` CLI groups.
 - **`https_server.py`** — stdlib `http.server`-based assignment server. REST endpoints for listing, downloading, submitting, grading. Directory-structure convention with auto-discovery. `create_server()` factory. Also a pytest fixture.
-- **`cli.py`** — Click CLI wiring. Commands: `generate`, `validate`, `autograde`, `feedback`, `moodle` (group), `https` (group), `serve`, `student`, `formgrader`. The `moodle` group has subcommands: `export`, `fetch`, `submit`, `fetch-submissions`, `upload-feedback`, `upload`, `feedback`, `sync`, `login`. The `https` group mirrors fetch/submit/feedback. `serve` starts the assignment server. Smart output directory defaults infer from nbgrader convention. `--source` auto-discovery. Integrity checking integrated into autograde.
+- **`auth.py`** — Token generation and verification for HTTPS transport authentication using HMAC-SHA256 tokens (format: `username:hmac_hex`).
+- **`config.py`** — TOML configuration file support (`mograder.toml`) with dataclass-based `MograderConfig` for course metadata, transport selection, and assignment definitions.
+- **`edit_links.py`** — Build and inject edit-link HTML snippets into Moodle assignment descriptions with markers for in-place replacement.
+- **`edit_sessions.py`** — Shared headless edit session utilities and ASGI reverse proxy: spawn `marimo edit` processes, manage session lifecycle, and proxy HTTP/WebSocket traffic.
+- **`formgrader.py`** — Directory scanning for formgrader dashboard with assignment discovery, automatic marks parsing, and GTA feedback extraction.
+- **`formgrader_asgi.py`** — ASGI formgrader app with trusted-proxy authentication middleware (localhost=instructor, trusted proxies read `X-Remote-User` header).
+- **`gradebook.py`** — SQLite-backed gradebook for persistent grade storage using WAL mode for safe concurrent access.
+- **`models.py`** — Data models: `CheckResult` (single check callout), `NotebookResult` (aggregated results for a submitted notebook).
+- **`remote.py`** — Stdlib-only helpers for fetching, submitting, and checking assignment status via `urllib` (no `requests` dependency, works in Pyodide/WASM).
+- **`safety.py`** — AST-based safety scanner for submitted notebook code that detects denied module imports and dangerous function calls.
+- **`student_api.py`** — Read-only Starlette student API for assignment browsing and file download (`/assignments`, `/config`, file serving).
+- **`student_wasm_app.py`** — Marimo WASM app for student assignment browsing, validation, submission, and feedback viewing (auto-detects server from browser origin).
+- **`wasm_compat.py`** — WASM compatibility checking for marimo notebooks using a static blocklist of packages with native extensions incompatible with Pyodide.
+- **`workshop.py`** — Workshop notebooks with XOR-encrypted solutions revealed via student check pass + instructor key or release via `keys.json`.
+- **`cli.py`** — Click CLI wiring. Commands: `generate`, `validate`, `autograde`, `feedback`, `moodle` (group), `https` (group), `token`, `serve`, `student`, `formgrader`. The `moodle` group has subcommands: `export`, `fetch`, `submit`, `fetch-submissions`, `upload-feedback`, `upload`, `feedback`, `sync`, `login`. The `https` group has subcommands: `login`, `fetch`, `submit`, `fetch-submissions`, `upload-grades`, `feedback`. `token` generates HMAC-SHA256 auth tokens for given usernames. `serve` starts the assignment server. Smart output directory defaults infer from nbgrader convention. `--source` auto-discovery. Integrity checking integrated into autograde.
 
 ### Key data flow
 
