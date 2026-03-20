@@ -82,10 +82,13 @@ jobs:
       - name: Build docs
         run: uv run mkdocs build --strict
 
+      - name: Remove 404 page (contains absolute nav links that only resolve when deployed)
+        run: rm -f site/404.html
+
       - name: Check links in built site and README
         uses: lycheeverse/lychee-action@v2
         with:
-          args: "'site/**/*.html' README.md --root-dir site --no-progress"
+          args: "'site/**/*.html' README.md --config .lychee.toml --root-dir site --no-progress"
           fail: true
 
   deploy-demo:
