@@ -60,6 +60,15 @@ if [ -d demo/course ]; then
     done
 fi
 
+# Create release zips for directories that don't have one yet
+for d in "$COURSE/release"/*/; do
+    name=$(basename "$d")
+    if [ ! -f "$d/$name.zip" ]; then
+        (cd "$d" && zip -q "$name.zip" *.py)
+        echo "ZIP: $d$name.zip"
+    fi
+done
+
 echo "=== Done ==="
 echo "Course directory: $COURSE"
 ls -la "$COURSE"
