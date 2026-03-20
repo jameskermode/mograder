@@ -30,6 +30,16 @@ Three modes of operation are supported:
 
 Two transports are currently available: [Moodle integration](#moodle-integration), and [HTTPS transport](#https-transport-moodle-free-alternative) for standalone usage.
 
+**How it works:** Instructors author source notebooks with solution blocks and automated checks. `mograder generate` strips solutions to create release versions. Students complete the notebooks and get instant formative feedback from `check()` calls. `mograder autograde` executes submissions in sandboxed subprocesses, parses results, and stores grades in an SQLite gradebook. GTAs review and add manual marks via the formgrader dashboard. `mograder feedback` exports annotated HTML for students.
+
+## Documentation
+
+- **[Instructor Quickstart](docs/instructor-quickstart.md)** — step-by-step guide to setting up and grading your first assignment
+- **[Grader API Reference](docs/grader-api.md)** — detailed docs for `check()`, `Grader`, `hint()`, and solution markers
+- **[Student Setup Guide](docs/student-setup.md)** — share this with your students (local install, Codespaces, Molab)
+- **[Security](docs/security.md)** — threat model and hardening options for autograde
+- **[Course Repo Template](docs/course-repo-template/)** — starter README for your course repository
+
 Thanks to Marimo's WASM support, notebooks with dependencies which are [Pyodide compatible](https://pyodide.org/en/stable/usage/packages-in-pyodide.html) can be deployed as a standalone HTML file which runs entirely in students' browsers with no need for a server. It is also possible to run notebooks on [MoLab](https://molab.marimo.io/), which allows for full dependencies, or to run your own [Marimo edit server](https://docs.marimo.io/guides/deploying/). Thanks to Marimo's [UV](https://docs.astral.sh/uv/) integration and support for [PEP 723](https://peps.python.org/pep-0723/) script dependencies (`--sandbox` mode) which automatically installs notebook dependencies in an isolated environment, it is also [straightforward for students](docs/student-setup.md) to install and run themselves locally.
 
 ## Table of Contents
