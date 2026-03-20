@@ -82,16 +82,10 @@ jobs:
       - name: Build docs
         run: uv run mkdocs build --strict
 
-      - name: Check links in built site
+      - name: Check links in built site and README
         uses: lycheeverse/lychee-action@v2
         with:
-          args: "site/ --base site --no-progress"
-          fail: true
-
-      - name: Check links in README
-        uses: lycheeverse/lychee-action@v2
-        with:
-          args: "README.md --no-progress"
+          args: "'site/**/*.html' README.md --root-dir site --no-progress"
           fail: true
 
   deploy-demo:
