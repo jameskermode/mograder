@@ -1,9 +1,12 @@
 import csv
+import os
 import subprocess
 import sys
 import zipfile
 from pathlib import Path
 from unittest.mock import MagicMock, patch
+
+import pytest
 
 from mograder.models import CheckResult, NotebookResult
 from mograder.runner import (
@@ -507,6 +510,7 @@ def test_maybe_bwrap_cmd_disabled():
     assert _maybe_bwrap_cmd(cmd, Path("/tmp"), False) is cmd
 
 
+@pytest.mark.skipif(os.name == "nt", reason="bwrap is Unix-only")
 def test_maybe_bwrap_cmd_prepended():
     """With use_bwrap=True and bwrap available, command is wrapped."""
     from mograder.runner import _maybe_bwrap_cmd
@@ -525,6 +529,7 @@ def test_maybe_bwrap_cmd_prepended():
     assert wrapped[-len(cmd) :] == cmd
 
 
+@pytest.mark.skipif(os.name == "nt", reason="bwrap is Unix-only")
 def test_maybe_bwrap_cmd_ro_bind_extra():
     """Extra paths are added as --ro-bind pairs."""
     from mograder.runner import _maybe_bwrap_cmd
