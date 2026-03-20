@@ -1,3 +1,4 @@
+title = "mograder demo"
 transport = "https"
 
 [https]

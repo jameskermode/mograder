@@ -227,13 +227,13 @@ def test_app_assignments_table_no_stats_columns():
 
 
 def test_app_title_is_mograder():
-    """Header should be '# mograder' not '# mograder formgrader'."""
+    """App title should be 'mograder' and heading should say 'mograder'."""
     from pathlib import Path
 
     app_path = Path(__file__).parent.parent / "src" / "mograder" / "formgrader_app.py"
     source = app_path.read_text(encoding="utf-8")
-    assert '"# mograder"' in source
-    assert "formgrader" not in source.split('"# mograder"')[0].split("@app.cell")[-1]
+    assert 'app_title="mograder"' in source
+    assert ">mograder</span>" in source
 
 
 def test_app_assignments_table_selection_none():

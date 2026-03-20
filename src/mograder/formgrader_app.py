@@ -1,7 +1,7 @@
 import marimo
 
 __generated_with = "0.20.0"
-app = marimo.App(width="medium")
+app = marimo.App(width="medium", app_title="mograder", html_head_file="head.html")
 
 
 @app.cell
@@ -18,6 +18,7 @@ def _():
     import matplotlib.pyplot as plt
     import seaborn as sns
 
+    from mograder._brand import logo_html as brand_logo_html
     from mograder.config import load_config
     from mograder.formgrader import DirNames
     from mograder.gradebook import Gradebook
@@ -133,6 +134,7 @@ def _():
         TRANSPORT_READY,
         TRANSPORT_TYPE,
         Path,
+        brand_logo_html,
         match_transport_assignment,
         moodle_grading_url,
         moodle_upload_url,
@@ -1657,6 +1659,7 @@ def _(
     action_log_content,
     active_editors_content,
     assignments_content,
+    brand_logo_html,
     get_user_display,
     grading_content,
     mo,
@@ -1692,7 +1695,9 @@ def _(
             _style,
             mo.hstack(
                 [
-                    mo.md("# mograder"),
+                    mo.Html(
+                        f'<div style="display:flex;align-items:center;gap:0.3em">{brand_logo_html()} <span style="font-size:2em;font-weight:bold">mograder</span></div>'
+                    ),
                     refresh_btn,
                     mo.md(f"`{get_user_display()}:{COURSE_DIR}`"),
                 ],

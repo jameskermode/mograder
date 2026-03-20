@@ -1,7 +1,9 @@
 import marimo
 
 __generated_with = "0.20.0"
-app = marimo.App(width="medium")
+app = marimo.App(
+    width="medium", app_title="mograder student", html_head_file="head.html"
+)
 
 
 @app.cell
@@ -15,6 +17,7 @@ def _():
 
     import marimo as mo
 
+    from mograder._brand import logo_html as brand_logo_html
     from mograder.check_cache import (
         format_check_summary,
         get_submission_status,
@@ -49,6 +52,7 @@ def _():
         MoodleAPIClient,
         MoodleAPIError,
         Path,
+        brand_logo_html,
         build_transport,
         clear_cached_https_token,
         create_shared_sandbox,
@@ -118,6 +122,7 @@ def _(
     IS_HTTPS,
     MoodleAPIClient,
     MoodleAPIError,
+    brand_logo_html,
     build_transport,
     clear_cached_https_token,
     get_token,
@@ -129,6 +134,10 @@ def _(
 ):
     moodle_url = CONFIG.moodle_url
     token_input = mo.ui.text(label="", value="")
+    _app_title = CONFIG.title or "mograder student"
+    _heading = mo.Html(
+        f'<div style="display:flex;align-items:center;gap:0.3em">{brand_logo_html()} <span style="font-size:2em;font-weight:bold">{_app_title}</span></div>'
+    )
 
     # Auto-sync assignments from Moodle when a token is available
     _assignments_cfg = CONFIG.assignments or CONFIG.moodle_assignments
@@ -203,7 +212,7 @@ def _(
         if get_token():
             mo.output.replace(
                 mo.hstack(
-                    [mo.md("# mograder student"), mo.md(f"`{COURSE_DIR}`")],
+                    [_heading, mo.md(f"`{COURSE_DIR}`")],
                     justify="space-between",
                     align="center",
                 )
@@ -265,7 +274,7 @@ def _(
             mo.output.replace(
                 mo.vstack(
                     [
-                        mo.md("# mograder student"),
+                        _heading,
                         mo.md(
                             "Enter your username and the enrollment code "
                             "provided by your instructor."
@@ -293,7 +302,7 @@ def _(
     elif get_token():
         mo.output.replace(
             mo.hstack(
-                [mo.md("# mograder student"), mo.md(f"`{COURSE_DIR}`")],
+                [_heading, mo.md(f"`{COURSE_DIR}`")],
                 justify="space-between",
                 align="center",
             )
@@ -326,7 +335,7 @@ def _(
         mo.output.replace(
             mo.vstack(
                 [
-                    mo.md("# mograder student"),
+                    _heading,
                     mo.md(
                         f"Paste your token from "
                         f"[Moodle Security Keys]({_token_page}) "

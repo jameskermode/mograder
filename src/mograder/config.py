@@ -10,6 +10,7 @@ class MograderConfig:
     """Configuration loaded from ``mograder.toml``."""
 
     # top-level
+    title: str | None = None
     transport: str = "moodle"
     config_url: str | None = None
     # [[assignments]] — transport-agnostic assignment list
@@ -76,6 +77,7 @@ def load_config(course_dir: Path) -> MograderConfig:
     assignments = top_assignments if top_assignments else moodle_assignments
 
     return MograderConfig(
+        title=data.get("title"),
         transport=data.get("transport", "moodle"),
         config_url=data.get("config_url"),
         assignments=assignments,

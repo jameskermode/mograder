@@ -109,7 +109,9 @@ from mograder.edit_sessions import (  # noqa: E402
     build_edit_proxy_app,
 )
 
-_builder = marimo.create_asgi_app(quiet=True)
+from mograder._brand import FAVICON_LINK  # noqa: E402
+
+_builder = marimo.create_asgi_app(quiet=True, html_head=FAVICON_LINK)
 _builder = _builder.with_app(
     path=_base_url,
     root=_app_path,
