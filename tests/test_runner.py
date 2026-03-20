@@ -517,11 +517,29 @@ def test_maybe_bwrap_cmd_prepended():
 
     assert wrapped[0] == "bwrap"
     assert "--ro-bind" in wrapped
+    assert "--dev" in wrapped
     assert "--unshare-net" in wrapped
     assert "--bind" in wrapped
     idx = wrapped.index("--bind")
     assert wrapped[idx + 1] == "/work"
     assert wrapped[-len(cmd) :] == cmd
+
+
+def test_maybe_bwrap_cmd_ro_bind_extra():
+    """Extra paths are added as --ro-bind pairs."""
+    from mograder.runner import _maybe_bwrap_cmd
+
+    cmd = ["python", "nb.py"]
+    extras = [Path("/opt/venv"), Path("/home/user/.local/bin")]
+    with patch("mograder.runner.shutil.which", return_value="/usr/bin/bwrap"):
+        wrapped = _maybe_bwrap_cmd(cmd, Path("/work"), True, ro_bind_extra=extras)
+
+    # Count --ro-bind occurrences: 1 for /, plus 2 extras = 3
+    ro_binds = [i for i, x in enumerate(wrapped) if x == "--ro-bind"]
+    assert len(ro_binds) == 3
+    # The extra paths should appear
+    assert "/opt/venv" in wrapped
+    assert "/home/user/.local/bin" in wrapped
 
 
 def test_maybe_bwrap_cmd_fallback_when_missing():

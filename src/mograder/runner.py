@@ -221,8 +221,17 @@ def _poll_sidecar(
                 pass
 
 
-def _maybe_bwrap_cmd(cmd: list[str], cwd: Path, use_bwrap: bool) -> list[str]:
-    """Optionally wrap *cmd* in bubblewrap for filesystem isolation."""
+def _maybe_bwrap_cmd(
+    cmd: list[str],
+    cwd: Path,
+    use_bwrap: bool,
+    ro_bind_extra: list[Path] | None = None,
+) -> list[str]:
+    """Optionally wrap *cmd* in bubblewrap for filesystem isolation.
+
+    *ro_bind_extra* paths are mounted read-only inside the sandbox
+    (e.g. the shared sandbox venv, ``~/.local/bin`` for uv).
+    """
     if not use_bwrap:
         return cmd
     if shutil.which("bwrap") is None:
@@ -232,11 +241,13 @@ def _maybe_bwrap_cmd(cmd: list[str], cwd: Path, use_bwrap: bool) -> list[str]:
             "use_bubblewrap=true but bwrap not found on PATH; running without sandbox"
         )
         return cmd
-    return [
+    args = [
         "bwrap",
         "--ro-bind",
         "/",
         "/",
+        "--dev",
+        "/dev",
         "--tmpfs",
         "/tmp",
         "--tmpfs",
@@ -244,11 +255,13 @@ def _maybe_bwrap_cmd(cmd: list[str], cwd: Path, use_bwrap: bool) -> list[str]:
         "--bind",
         str(cwd),
         str(cwd),
-        "--unshare-net",
-        "--die-with-parent",
-        "--",
-        *cmd,
     ]
+    for extra in ro_bind_extra or []:
+        p = str(extra.resolve())
+        args.extend(["--ro-bind", p, p])
+    args.extend(["--unshare-net", "--die-with-parent", "--"])
+    args.extend(cmd)
+    return args
 
 
 def _kill_tree(pid: int) -> None:
@@ -394,13 +407,26 @@ def run_notebook(
         if local_bin not in env.get("PATH", "").split(os.pathsep):
             env["PATH"] = local_bin + os.pathsep + env.get("PATH", "")
 
+        # When bubblewrap is active, skip RLIMIT_NPROC — it counts all user
+        # processes and can block bwrap's clone() call.  Bwrap provides its own
+        # process isolation via PID namespaces.
+        _effective_nproc = 0 if use_bubblewrap else rlimit_nproc
         _preexec = (
-            _make_apply_rlimits(rlimit_cpu, rlimit_nproc, rlimit_nofile, rlimit_as)
+            _make_apply_rlimits(rlimit_cpu, _effective_nproc, rlimit_nofile, rlimit_as)
             if os.name != "nt"
             else None
         )
 
-        cmd = _maybe_bwrap_cmd(cmd, notebook_cwd, use_bubblewrap)
+        # Build list of extra paths the bwrap sandbox needs read-only
+        # access to: the sandbox venv, ~/.local (for uv binary + uv-managed
+        # Python installations which venv symlinks point to).
+        _bwrap_ro: list[Path] = []
+        if sandbox_dir is not None:
+            _bwrap_ro.append(sandbox_dir.resolve())
+        _dot_local = Path.home() / ".local"
+        if _dot_local.is_dir():
+            _bwrap_ro.append(_dot_local)
+        cmd = _maybe_bwrap_cmd(cmd, notebook_cwd, use_bubblewrap, _bwrap_ro)
 
         if on_check is not None:
             # Stream mode: poll sidecar for live check results

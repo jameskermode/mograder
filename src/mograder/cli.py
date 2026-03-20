@@ -1025,6 +1025,7 @@ def autograde(
         rlimit_nofile=config.rlimit_nofile,
         rlimit_as=_rlimit_as,
         isolate_cwd=True,
+        use_bubblewrap=config.use_bubblewrap,
     )
 
     # Map results back to original paths + record tampering
