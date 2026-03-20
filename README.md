@@ -50,7 +50,7 @@ Thanks to Marimo's WASM support, notebooks with dependencies which are [Pyodide 
   - [Student dashboard](#student-dashboard)
   - [WASM deployment](#wasm-deployment)
 - [Configuration](#configuration)
-- [Comparison with nbgrader and otter-grader](#comparison)
+- [Comparison with nbgrader and otter-grader](#comparison-with-nbgrader-and-otter-grader)
 - [Development](#development)
 - [License](#license)
 
