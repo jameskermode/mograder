@@ -1,7 +1,7 @@
 """SQLite gradebook for persistent grade storage."""
 
-import fcntl
 import json
+import os
 import sqlite3
 from contextlib import contextmanager
 from datetime import datetime
@@ -86,10 +86,15 @@ class Gradebook:
     def write_lock(self, timeout: float = 10.0):
         """Acquire an exclusive file lock on ``{db_path}.lock``.
 
-        Uses ``fcntl.flock`` so that concurrent writers (e.g. autograde and
-        formgrader) are serialised.  The lock is released when the context
-        manager exits.
+        Uses ``fcntl.flock`` (Unix) so that concurrent writers (e.g. autograde
+        and formgrader) are serialised.  On Windows the lock is a no-op (SQLite
+        WAL + busy_timeout provide basic protection).
         """
+        if os.name == "nt":
+            yield
+            return
+
+        import fcntl
         import time
 
         lock_path = Path(str(self.db_path) + ".lock")
