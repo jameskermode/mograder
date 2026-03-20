@@ -7,7 +7,7 @@
 # ]
 # mograder-assignment = "demo-assignment"
 # mograder-hidden-tests = true
-# mograder-cell-hashes = "375c0a19,6f11581d,83f06244,442241f7,b5824e6b,06984910,eef64e3f,31db746f,92e2cea5,7294011f,f26057ad,b5f5459d"
+# mograder-cell-hashes = "375c0a19,6f11581d,adc446de,442241f7,b5824e6b,06984910,eef64e3f,31db746f,92e2cea5,46efc5a1,f26057ad,b5f5459d"
 # ///
 
 import marimo
@@ -48,7 +48,7 @@ def _(mo):
       - Amber = waiting for your code
       - Green = all checks passed
     - All questions carry marks — your score updates automatically
-    - The **Written Analysis** section is graded by a GTA
+    - The **Written Analysis** section is graded by a marker
     """)
     return
 
@@ -184,7 +184,7 @@ def _(mo):
 
     ## Written Analysis
 
-    This section is graded by a GTA. Your response should address:
+    This section is graded by a marker. Your response should address:
 
     - How does the accuracy of the finite difference method depend on the grid spacing?
     - Why are central differences more accurate than forward/backward differences?

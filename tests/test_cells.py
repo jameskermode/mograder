@@ -5,9 +5,9 @@ from mograder.cells import (
     has_grading_cells,
     inject_grading_cells,
     parse_auto_marks,
-    parse_gta_feedback,
+    parse_marker_feedback,
     parse_marks_metadata,
-    write_gta_feedback,
+    write_marker_feedback,
 )
 from mograder.models import CheckResult
 
@@ -98,34 +98,34 @@ def test_has_grading_cells():
     assert has_grading_cells(injected) is True
 
 
-def test_parse_gta_feedback_ungraded():
+def test_parse_marker_feedback_ungraded():
     lines = _make_notebook_lines()
     checks = _make_checks()
     injected = inject_grading_cells(lines, checks)
-    mark, feedback = parse_gta_feedback(injected)
+    mark, feedback = parse_marker_feedback(injected)
     assert mark is None
     assert feedback == ""
 
 
-def test_parse_gta_feedback_graded():
+def test_parse_marker_feedback_graded():
     lines = _make_notebook_lines()
     checks = _make_checks()
     injected = inject_grading_cells(lines, checks)
-    # Simulate GTA editing: replace _mark = None with _mark = 65
+    # Simulate marker editing: replace _mark = None with _mark = 65
     text = "".join(injected)
     text = text.replace("_mark = None", "_mark = 65")
     text = text.replace(
         '_feedback = ""', '_feedback = "Good analysis of the DP approach"'
     )
     modified = text.splitlines(keepends=True)
-    mark, feedback = parse_gta_feedback(modified)
+    mark, feedback = parse_marker_feedback(modified)
     assert mark == 65
     assert feedback == "Good analysis of the DP approach"
 
 
-def test_parse_gta_feedback_no_marker():
+def test_parse_marker_feedback_no_marker():
     lines = _make_notebook_lines()
-    mark, feedback = parse_gta_feedback(lines)
+    mark, feedback = parse_marker_feedback(lines)
     assert mark is None
     assert feedback == ""
 
@@ -279,7 +279,7 @@ def test_inject_with_marks_auto_mark_computation():
     assert "out of 65" in text
 
 
-# --- parse_gta_feedback still works with marks-aware feedback ---
+# --- parse_marker_feedback still works with marks-aware feedback ---
 
 
 def test_verification_cell_fractional_marks():
@@ -322,16 +322,16 @@ def test_parse_auto_marks_backward_compat():
     assert result == 10.0  # Only Q1 passed
 
 
-def test_parse_gta_feedback_with_marks():
+def test_parse_marker_feedback_with_marks():
     marks = {"Q1": 10, "Analysis": 90}
     checks = [CheckResult("Q1: Computation", "success")]
     injected = inject_grading_cells(_make_notebook_lines(), checks, marks=marks)
     text = "".join(injected)
-    # Simulate GTA grading
+    # Simulate marker grading
     text = text.replace("_mark = None", "_mark = 70")
     text = text.replace('_feedback = ""', '_feedback = "Solid analysis"')
     modified = text.splitlines(keepends=True)
-    mark, feedback = parse_gta_feedback(modified)
+    mark, feedback = parse_marker_feedback(modified)
     assert mark == 70
     assert feedback == "Solid analysis"
 
@@ -339,7 +339,7 @@ def test_parse_gta_feedback_with_marks():
 # --- triple-quoted feedback parsing ---
 
 
-def test_parse_gta_feedback_triple_quoted():
+def test_parse_marker_feedback_triple_quoted():
     """Triple-quoted multiline feedback parses correctly."""
     lines = _make_notebook_lines()
     checks = _make_checks()
@@ -351,14 +351,14 @@ def test_parse_gta_feedback_triple_quoted():
         '_feedback = """Line one.\nLine two.\nLine three."""',
     )
     modified = text.splitlines(keepends=True)
-    mark, feedback = parse_gta_feedback(modified)
+    mark, feedback = parse_marker_feedback(modified)
     assert mark == 80
     assert "Line one." in feedback
     assert "Line two." in feedback
     assert "Line three." in feedback
 
 
-def test_parse_gta_feedback_single_line_still_works():
+def test_parse_marker_feedback_single_line_still_works():
     """Backward compat: single-line strings still parse correctly."""
     lines = _make_notebook_lines()
     checks = _make_checks()
@@ -367,32 +367,32 @@ def test_parse_gta_feedback_single_line_still_works():
     text = text.replace("_mark = None", "_mark = 50")
     text = text.replace('_feedback = ""', '_feedback = "Simple feedback"')
     modified = text.splitlines(keepends=True)
-    mark, feedback = parse_gta_feedback(modified)
+    mark, feedback = parse_marker_feedback(modified)
     assert mark == 50
     assert feedback == "Simple feedback"
 
 
-# --- write_gta_feedback ---
+# --- write_marker_feedback ---
 
 
-def test_write_gta_feedback(tmp_path):
-    """write_gta_feedback writes mark + multiline feedback correctly."""
+def test_write_marker_feedback(tmp_path):
+    """write_marker_feedback writes mark + multiline feedback correctly."""
     lines = _make_notebook_lines()
     checks = _make_checks()
     injected = inject_grading_cells(lines, checks)
     nb_path = tmp_path / "test.py"
     nb_path.write_text("".join(injected))
 
-    write_gta_feedback(nb_path, 75, "Good work.\nNeeds improvement on Q2.")
+    write_marker_feedback(nb_path, 75, "Good work.\nNeeds improvement on Q2.")
 
     modified = nb_path.read_text().splitlines(keepends=True)
-    mark, feedback = parse_gta_feedback(modified)
+    mark, feedback = parse_marker_feedback(modified)
     assert mark == 75
     assert "Good work." in feedback
     assert "Needs improvement on Q2." in feedback
 
 
-def test_write_gta_feedback_roundtrip(tmp_path):
+def test_write_marker_feedback_roundtrip(tmp_path):
     """Write, read, overwrite, read again — single-line upgrades to triple-quote."""
     lines = _make_notebook_lines()
     checks = _make_checks()
@@ -401,20 +401,24 @@ def test_write_gta_feedback_roundtrip(tmp_path):
     nb_path.write_text("".join(injected))
 
     # First write
-    write_gta_feedback(nb_path, 60, "Initial feedback")
-    mark, feedback = parse_gta_feedback(nb_path.read_text().splitlines(keepends=True))
+    write_marker_feedback(nb_path, 60, "Initial feedback")
+    mark, feedback = parse_marker_feedback(
+        nb_path.read_text().splitlines(keepends=True)
+    )
     assert mark == 60
     assert feedback == "Initial feedback"
 
     # Overwrite with multiline
-    write_gta_feedback(nb_path, 85, "Updated.\nMultiline now.")
-    mark, feedback = parse_gta_feedback(nb_path.read_text().splitlines(keepends=True))
+    write_marker_feedback(nb_path, 85, "Updated.\nMultiline now.")
+    mark, feedback = parse_marker_feedback(
+        nb_path.read_text().splitlines(keepends=True)
+    )
     assert mark == 85
     assert "Updated." in feedback
     assert "Multiline now." in feedback
 
 
-def test_write_gta_feedback_no_marker(tmp_path):
+def test_write_marker_feedback_no_marker(tmp_path):
     """Raises ValueError on a file without the feedback marker."""
     import pytest
 
@@ -422,10 +426,10 @@ def test_write_gta_feedback_no_marker(tmp_path):
     nb_path.write_text("x = 1\n")
 
     with pytest.raises(ValueError, match="MOGRADER"):
-        write_gta_feedback(nb_path, 50, "feedback")
+        write_marker_feedback(nb_path, 50, "feedback")
 
 
-def test_write_gta_feedback_none_mark(tmp_path):
+def test_write_marker_feedback_none_mark(tmp_path):
     """Writing None mark resets to ungraded state."""
     lines = _make_notebook_lines()
     checks = _make_checks()
@@ -434,10 +438,12 @@ def test_write_gta_feedback_none_mark(tmp_path):
     nb_path.write_text("".join(injected))
 
     # First set a mark
-    write_gta_feedback(nb_path, 70, "Some feedback")
+    write_marker_feedback(nb_path, 70, "Some feedback")
     # Then reset
-    write_gta_feedback(nb_path, None, "")
-    mark, feedback = parse_gta_feedback(nb_path.read_text().splitlines(keepends=True))
+    write_marker_feedback(nb_path, None, "")
+    mark, feedback = parse_marker_feedback(
+        nb_path.read_text().splitlines(keepends=True)
+    )
     assert mark is None
 
 

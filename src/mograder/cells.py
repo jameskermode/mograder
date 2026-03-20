@@ -7,7 +7,7 @@ from pathlib import Path
 from mograder.models import CheckResult
 
 VERIFICATION_MARKER = "# === MOGRADER: VERIFICATION SUMMARY ==="
-FEEDBACK_MARKER = "# === MOGRADER: GTA FEEDBACK ==="
+FEEDBACK_MARKER = "# === MOGRADER: MARKER FEEDBACK ==="
 MARKS_MARKER = "# === MOGRADER: MARKS ==="
 SCORES_MARKER = "# MOGRADER_SCORES_CELL"
 
@@ -229,7 +229,7 @@ def _build_feedback_cell(
     manual_available: int | float | None = None,
     total_available: int | float | None = None,
 ) -> str:
-    """Build the GTA feedback cell source."""
+    """Build the marker feedback cell source."""
     if auto_mark is None:
         return f"""\
 @app.cell
@@ -243,7 +243,7 @@ def _(mo):
     if _mark is not None:
         mo.callout(mo.md(f"**Mark: {{_mark}}/100**\\n\\n{{_feedback}}"), kind="success")
     else:
-        mo.callout(mo.md("**Awaiting GTA feedback** — edit `_mark` and `_feedback` above"), kind="warn")
+        mo.callout(mo.md("**Awaiting marker feedback** — edit `_mark` and `_feedback` above"), kind="warn")
     return
 
 """
@@ -269,7 +269,7 @@ def _(mo):
         _total = {_auto} + _mark
         mo.callout(mo.md(f"**Mark: {{_total}}/{total_available}** (auto: {_auto}, manual: {{_mark}})\\n\\n{{_feedback}}"), kind="success")
     else:
-        mo.callout(mo.md("**Awaiting GTA feedback** — edit `_mark` (out of {manual_available}) and `_feedback` above\\n\\n"
+        mo.callout(mo.md("**Awaiting marker feedback** — edit `_mark` (out of {manual_available}) and `_feedback` above\\n\\n"
             f"Auto marks so far: {_auto}/{_auto_total}"), kind="warn")
     return
 
@@ -289,7 +289,7 @@ def inject_grading_cells(
     marks: dict[str, int | float] | None = None,
     source_check_keys: set[str] | None = None,
 ) -> list[str]:
-    """Insert verification summary + GTA feedback cells before ``if __name__``.
+    """Insert verification summary + marker feedback cells before ``if __name__``.
 
     Returns modified source lines. Idempotent: if grading cells already exist,
     returns the input unchanged.
@@ -349,10 +349,10 @@ def inject_grading_cells(
     return new_lines
 
 
-def parse_gta_feedback(source_lines: list[str]) -> tuple[int | None, str]:
+def parse_marker_feedback(source_lines: list[str]) -> tuple[int | None, str]:
     """Extract ``_mark`` and ``_feedback`` from a graded notebook.
 
-    Looks for the MOGRADER: GTA FEEDBACK marker and parses the variable
+    Looks for the MOGRADER: MARKER FEEDBACK marker and parses the variable
     assignments that follow it.
 
     Returns (mark, feedback) where mark is None if not yet graded.
@@ -386,10 +386,10 @@ def parse_gta_feedback(source_lines: list[str]) -> tuple[int | None, str]:
     return (mark, feedback)
 
 
-def write_gta_feedback(file_path: Path, mark: int | None, feedback: str) -> None:
+def write_marker_feedback(file_path: Path, mark: int | None, feedback: str) -> None:
     """Write ``_mark`` and ``_feedback`` values into a graded notebook.
 
-    The file must contain a MOGRADER: GTA FEEDBACK marker cell.
+    The file must contain a MOGRADER: MARKER FEEDBACK marker cell.
     Always writes ``_feedback`` as a triple-quoted string.
 
     Raises ValueError if the feedback marker is not found.

@@ -134,7 +134,7 @@ Hidden tests are stripped from the release notebook and reinjected from the sour
 
 ### Choosing a grading mode
 
-**Holistic mode** (single 0-100 mark assigned by a GTA):
+**Holistic mode** (single 0-100 mark assigned by a marker):
 
 ```python
 from mograder.runtime import check
@@ -162,7 +162,7 @@ check("Q2: Finite differences", [
 # If only the first two pass: earned = round(15 * 2/5, 1) = 6.0/15
 ```
 
-The question key is the text before the first colon in the label, so `check("Q1: Array creation", [...])` maps to `"Q1"`. Questions without a matching check (e.g. `"Analysis"`) are scored manually by the GTA.
+The question key is the text before the first colon in the label, so `check("Q1: Array creation", [...])` maps to `"Q1"`. Questions without a matching check (e.g. `"Analysis"`) are scored manually by the marker.
 
 Call `grader.scores()` in a cell to display a reactive score table (including fractional marks for partial credit).
 
@@ -222,7 +222,7 @@ This:
 2. Checks submission integrity against the source (detects tampered cells)
 3. Executes each notebook via `marimo export html`
 4. Parses check results from the output
-5. Injects grading cells (verification summary + GTA feedback placeholders)
+5. Injects grading cells (verification summary + marker feedback placeholders)
 6. Writes results to `gradebook.db`
 7. Saves grading copies to `autograded/hw1/`
 
@@ -259,7 +259,7 @@ mograder formgrader-asgi my-course/ --host 0.0.0.0 --port 2718
 mograder feedback hw1
 ```
 
-This exports graded notebooks to HTML in `feedback/hw1/`, injecting the GTA's mark and feedback as a callout. If you've configured late penalties in `mograder.toml`, they are applied automatically during feedback export:
+This exports graded notebooks to HTML in `feedback/hw1/`, injecting the marker's mark and feedback as a callout. If you've configured late penalties in `mograder.toml`, they are applied automatically during feedback export:
 
 ```toml
 [penalties]

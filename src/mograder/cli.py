@@ -760,7 +760,7 @@ def autograde(
     safety_check,
     max_memory,
 ):
-    """Run notebooks and inject grading cells for GTA review.
+    """Run notebooks and inject grading cells for marker review.
 
     ASSIGNMENTS can be assignment names (e.g. "A1") which are auto-expanded
     to submitted/A1/*.py, or explicit file paths.

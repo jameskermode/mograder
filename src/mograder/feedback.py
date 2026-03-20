@@ -13,7 +13,7 @@ from pathlib import Path
 from mograder.cells import (
     SCORES_MARKER,
     parse_auto_marks,
-    parse_gta_feedback,
+    parse_marker_feedback,
     parse_marks_metadata,
 )
 
@@ -258,7 +258,7 @@ def export_feedback_html(
     """Export a graded notebook to standalone HTML feedback.
 
     If an autograde HTML file exists alongside the notebook, injects the
-    GTA feedback directly into it (fast, no subprocess). Otherwise falls
+    marker feedback directly into it (fast, no subprocess). Otherwise falls
     back to running ``marimo export html``.
 
     When *mark* is provided, uses those values directly instead of parsing
@@ -280,7 +280,7 @@ def export_feedback_html(
             _total_avail = total_available
         else:
             lines = notebook_path.read_text().splitlines(keepends=True)
-            manual_mark, _feedback = parse_gta_feedback(lines)
+            manual_mark, _feedback = parse_marker_feedback(lines)
             _auto_mark = parse_auto_marks(lines)
             marks_meta = parse_marks_metadata(lines)
 
@@ -329,13 +329,13 @@ def collect_grades(graded_notebooks: list[Path]) -> list[dict]:
     grades = []
     for nb in graded_notebooks:
         lines = nb.read_text().splitlines(keepends=True)
-        manual_mark, feedback = parse_gta_feedback(lines)
+        manual_mark, feedback = parse_marker_feedback(lines)
         auto_mark = parse_auto_marks(lines)
 
         if auto_mark is not None and manual_mark is not None:
             total_mark = auto_mark + manual_mark
         elif auto_mark is not None:
-            # Auto marks present but GTA hasn't graded yet
+            # Auto marks present but marker hasn't graded yet
             total_mark = None
         else:
             # No per-question marks — backward compatible

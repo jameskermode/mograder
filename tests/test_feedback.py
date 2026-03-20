@@ -191,7 +191,7 @@ def test_collect_grades_fractional_auto(tmp_path):
     checks = [CheckResult("Q1: Foo", "partial", earned_weight=3.0, total_weight=5.0)]
     injected = inject_grading_cells(lines, checks, marks=marks)
     text = "".join(injected)
-    # Simulate GTA grading
+    # Simulate marker grading
     text = text.replace("_mark = None", "_mark = 70")
     text = text.replace('_feedback = ""', '_feedback = "Good"')
     nb = tmp_path / "alice.py"

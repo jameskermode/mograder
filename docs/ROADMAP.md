@@ -28,7 +28,7 @@
 3. **Moodle-first**: Deep Moodle API integration (fetch, submit, grade, upload feedback)
 4. **Lightweight**: No Docker/Kubernetes required; single `pip install`
 5. **Flexible marks**: Per-question marks with partial credit and weighted checks
-6. **Formgrader dashboard**: Web UI for GTA grading with headless edit sessions
+6. **Formgrader dashboard**: Web UI for marker grading with headless edit sessions
 
 ### Identified Gaps (now addressed)
 

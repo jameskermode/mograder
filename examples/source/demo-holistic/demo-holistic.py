@@ -29,7 +29,7 @@ def _(mo):
 
     - Code cells labelled **YOUR CODE HERE** are for you to complete
     - Coloured feedback boxes appear automatically beneath each task
-    - A GTA will assign a single holistic mark (0-100) after reviewing your work
+    - A marker will assign a single holistic mark (0-100) after reviewing your work
     """)
     return
 

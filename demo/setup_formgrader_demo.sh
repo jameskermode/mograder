@@ -25,7 +25,7 @@ echo "=== Autograding demo-assignment ==="
 $MOGRADER autograde examples/submitted/demo-assignment/*.py \
   --source examples/source/demo-assignment/demo-assignment.py --jobs 1
 
-echo "=== Simulating GTA grading ==="
+echo "=== Simulating marker grading ==="
 $PYTHON examples/generate_spoof.py --postprocess
 
 echo "=== Exporting feedback ==="

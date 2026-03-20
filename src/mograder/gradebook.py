@@ -7,7 +7,7 @@ from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
 
-from mograder.cells import parse_auto_marks, parse_gta_feedback
+from mograder.cells import parse_auto_marks, parse_marker_feedback
 
 
 class Gradebook:
@@ -227,7 +227,7 @@ class Gradebook:
         total_mark: float | None = None,
         expected_updated_at: str | None = None,
     ) -> bool:
-        """Save GTA manual grade and feedback.
+        """Save manual grade and feedback.
 
         If *total_mark* is provided it is used directly (e.g. after scaling
         a 0-100 slider to the manual portion). Otherwise total is computed
@@ -432,7 +432,7 @@ class Gradebook:
                     continue
                 student = f.stem
                 lines = f.read_text().splitlines(keepends=True)
-                manual_mark, feedback_text = parse_gta_feedback(lines)
+                manual_mark, feedback_text = parse_marker_feedback(lines)
                 auto_mark = parse_auto_marks(lines)
 
                 if manual_mark is not None and auto_mark is not None:

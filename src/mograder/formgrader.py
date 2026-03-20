@@ -13,7 +13,7 @@ if TYPE_CHECKING:
 from mograder.cells import (
     has_grading_cells,
     parse_auto_marks,
-    parse_gta_feedback,
+    parse_marker_feedback,
     parse_marks_metadata,
 )
 
@@ -133,7 +133,7 @@ def scan_course(
                         graded_count = 0
                         for f in py_files:
                             lines = f.read_text().splitlines(keepends=True)
-                            mark, _ = parse_gta_feedback(lines)
+                            mark, _ = parse_marker_feedback(lines)
                             if mark is not None:
                                 graded_count += 1
                         info.num_graded = graded_count
@@ -211,7 +211,7 @@ def scan_submissions(
                     # Fall back to .py parsing
                     lines = f.read_text().splitlines(keepends=True)
                     info.has_grading_cells = has_grading_cells(lines)
-                    mark, feedback_text = parse_gta_feedback(lines)
+                    mark, feedback_text = parse_marker_feedback(lines)
                     auto_mark = parse_auto_marks(lines)
                     info.auto_mark = auto_mark
                     info.feedback_text = feedback_text
@@ -260,7 +260,7 @@ def collect_student_marks(
             if student not in result:
                 result[student] = {}
             lines = f.read_text().splitlines(keepends=True)
-            mark, _ = parse_gta_feedback(lines)
+            mark, _ = parse_marker_feedback(lines)
             auto_mark = parse_auto_marks(lines)
             if auto_mark is not None and mark is not None:
                 result[student][a.name] = auto_mark + mark

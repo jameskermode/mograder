@@ -1148,7 +1148,7 @@ def _(
     import re as _re
     from mograder.cells import extract_marking_scale as _extract_scale
     from mograder.cells import parse_auto_marks as _parse_auto
-    from mograder.cells import parse_gta_feedback as _parse_fb
+    from mograder.cells import parse_marker_feedback as _parse_fb
 
     def _count_sentences(text: str) -> int:
         """Count sentences (sequences ending with .!? followed by space or end)."""
@@ -1361,7 +1361,7 @@ def _(
     set_grading_index,
 ):
     import re as _re
-    from mograder.cells import write_gta_feedback as _write_fb
+    from mograder.cells import write_marker_feedback as _write_fb
 
     def _count_sentences(text: str) -> int:
         if not text.strip():

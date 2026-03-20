@@ -2,7 +2,7 @@
 """Generate spoof submissions for testing the formgrader UI.
 
 Creates submitted/ notebooks with various solution quality, then runs
-mograder autograde to produce autograded/ versions, simulates GTA grading
+mograder autograde to produce autograded/ versions, simulates marker grading
 on some, and exports feedback HTML for a few.
 
 Usage:
@@ -81,7 +81,7 @@ HOLISTIC_SOLUTIONS = {
         return result''',
     },
     "eve": {
-        # Both correct (will be left ungraded by GTA)
+        # Both correct (will be left ungraded by marker)
         "is_palindrome": '''\
     def is_palindrome(s):
         cleaned = s.replace(" ", "").lower()
@@ -329,12 +329,12 @@ def main():
     )
     print(
         "\nThen run: uv run python examples/generate_spoof.py --postprocess"
-        " to simulate GTA grading."
+        " to simulate marker grading."
     )
 
 
 def postprocess():
-    """Simulate GTA grading on some autograded notebooks."""
+    """Simulate marker grading on some autograded notebooks."""
     # Holistic: alice=85, bob=55, carol=20, dave=78, frank=45
     # eve left ungraded
     holistic_grades = {
@@ -375,7 +375,7 @@ def postprocess():
                 path.write_text(text)
                 print(f"  Graded: demo-assignment/{student}.py → manual={mark}")
 
-    print("\nGTA grading simulated.")
+    print("\nMarker grading simulated.")
     print("Now export feedback for graded notebooks:\n")
     print("  uv run mograder feedback examples/autograded/demo-holistic/*.py")
     print("  uv run mograder feedback examples/autograded/demo-assignment/*.py")

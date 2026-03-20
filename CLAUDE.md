@@ -23,7 +23,7 @@ uv run mograder generate examples/source/demo-assignment/demo-assignment.py exam
 mograder is a pipeline for semi-automated grading of Marimo notebooks. The flow follows [nbgrader terminology](https://nbgrader.readthedocs.io/en/latest/user_guide/philosophy.html):
 
 ```
-generate → autograde → (GTA grades in marimo) → feedback → (optional) moodle
+generate → autograde → (marker grades in marimo) → feedback → (optional) moodle
 source   → release   → submitted → autograded → feedback
 ```
 
@@ -61,7 +61,7 @@ An argument is treated as an assignment name if it contains no `/` and doesn't e
 - **Written analysis cells**: Use `response_text` (not `_response`) as the variable name for the student's written response, and `return (response_text,)` so the word count cell can reactively consume it.
 - **`parser.py`** — Regex-based HTML parsing of marimo's `<marimo-callout-output>` elements to extract check results and cell error counts.
 - **`runner.py`** — Notebook execution via `subprocess` (`python -m marimo export html`), parallel batch processing with `ProcessPoolExecutor`, summary table printing, and CSV/ZIP output.
-- **`cells.py`** — Generates and injects two grading cells (verification summary + GTA feedback) before `if __name__`. Parses `_mark`/`_feedback`/`_marks` back out of graded notebooks. `parse_marks_metadata()` reads `_marks` dict only. Idempotent.
+- **`cells.py`** — Generates and injects two grading cells (verification summary + marker feedback) before `if __name__`. Parses `_mark`/`_feedback`/`_marks` back out of graded notebooks. `parse_marks_metadata()` reads `_marks` dict only. Idempotent.
 - **`integrity.py`** — Integrity checking: compares check/marks cells between source and submitted notebooks via marimo's `MarimoConvert` parser. Detects tampering and reinjects source cells. Returns `IntegrityResult` with tampered info and fixed source.
 - **`feedback.py`** — Exports graded notebooks to HTML, collects grades (auto + manual marks), writes grades CSV.
 - **`moodle.py`** — Merges grades into Moodle offline grading worksheets (UTF-8-SIG CSV), builds feedback ZIP with Moodle path conventions.
@@ -77,7 +77,7 @@ An argument is treated as an assignment name if it contains no `/` and doesn't e
 - **`config.py`** — TOML configuration file support (`mograder.toml`) with dataclass-based `MograderConfig` for course metadata, transport selection, and assignment definitions.
 - **`edit_links.py`** — Build and inject edit-link HTML snippets into Moodle assignment descriptions with markers for in-place replacement.
 - **`edit_sessions.py`** — Shared headless edit session utilities and ASGI reverse proxy: spawn `marimo edit` processes, manage session lifecycle, and proxy HTTP/WebSocket traffic.
-- **`formgrader.py`** — Directory scanning for formgrader dashboard with assignment discovery, automatic marks parsing, and GTA feedback extraction.
+- **`formgrader.py`** — Directory scanning for formgrader dashboard with assignment discovery, automatic marks parsing, and marker feedback extraction.
 - **`formgrader_asgi.py`** — ASGI formgrader app with trusted-proxy authentication middleware (localhost=instructor, trusted proxies read `X-Remote-User` header).
 - **`gradebook.py`** — SQLite-backed gradebook for persistent grade storage using WAL mode for safe concurrent access.
 - **`models.py`** — Data models: `CheckResult` (single check callout), `NotebookResult` (aggregated results for a submitted notebook).
@@ -91,7 +91,7 @@ An argument is treated as an assignment name if it contains no `/` and doesn't e
 
 ### Key data flow
 
-`runner.run_notebook()` spawns marimo, `parser.py` extracts `CheckResult` list from HTML, `cells.inject_grading_cells()` embeds results + feedback placeholders into the `.py` source, then GTAs edit `_mark`/`_feedback` in marimo, and `cells.parse_gta_feedback()` reads them back.
+`runner.run_notebook()` spawns marimo, `parser.py` extracts `CheckResult` list from HTML, `cells.inject_grading_cells()` embeds results + feedback placeholders into the `.py` source, then markers edit `_mark`/`_feedback` in marimo, and `cells.parse_marker_feedback()` reads them back.
 
 When `--source` is provided to autograde, `integrity.check_integrity()` compares check/marks cells between source and submitted notebooks before execution. Tampered cells are reinjected from the source.
 
@@ -101,7 +101,7 @@ When a notebook has a `# === MOGRADER: MARKS ===` cell with `_marks = {"Q1": 10,
 - The `Grader` class handles reactive score tracking at runtime — no generate-time code transforms
 - Questions matching a `check()` call are auto-scored with **partial credit**: marks are proportional to the weight of passing checks (`earned = round(avail × earned_weight / total_weight, 1)`)
 - Check tuples support optional weights: `(bool, str)` (weight=1) or `(bool, str, weight)` (custom weight)
-- Questions without a matching check are manual (scored by GTA via `_mark`)
+- Questions without a matching check are manual (scored by marker via `_mark`)
 - Total = auto earned + manual `_mark`
 - Without a marks cell, notebooks use standalone `check()` with holistic `_mark` 0–100
 
@@ -110,7 +110,7 @@ When a notebook has a `# === MOGRADER: MARKS ===` cell with `_marks = {"Q1": 10,
 ```
 ### BEGIN SOLUTION / ### END SOLUTION     — solution blocks in source notebooks
 # === MOGRADER: VERIFICATION SUMMARY === — injected verification cell
-# === MOGRADER: GTA FEEDBACK ===         — injected feedback cell
+# === MOGRADER: MARKER FEEDBACK ===      — injected feedback cell
 # === MOGRADER: MARKS ===                — optional per-question marks cell
 ```
 

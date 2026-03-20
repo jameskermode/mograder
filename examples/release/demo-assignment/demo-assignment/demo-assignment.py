@@ -45,7 +45,7 @@ def _(mo):
       - Amber = waiting for your code
       - Green = all checks passed
     - All questions carry marks — your score updates automatically
-    - The **Written Analysis** section is graded by a GTA
+    - The **Written Analysis** section is graded by a marker
     """)
     return
 
@@ -177,7 +177,7 @@ def _(mo):
 
     ## Written Analysis
 
-    This section is graded by a GTA. Your response should address:
+    This section is graded by a marker. Your response should address:
 
     - How does the accuracy of the finite difference method depend on the grid spacing?
     - Why are central differences more accurate than forward/backward differences?
