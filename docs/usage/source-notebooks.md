@@ -1,0 +1,115 @@
+# Writing Source Notebooks
+
+Source notebooks are standard [Marimo](https://marimo.io) notebooks (`.py` files) with a few conventions for marking solutions and autograding checks. Create them with `marimo edit` and place them in `source/<assignment>/<assignment>.py`.
+
+## Solution markers
+
+Wrap model solutions in `### BEGIN SOLUTION` / `### END SOLUTION` markers. When you run `mograder generate`, these blocks are replaced with `# YOUR CODE HERE` and `pass` in the release version:
+
+```python
+@app.cell
+def _(np):
+    def finite_diff(x, y):
+        ### BEGIN SOLUTION
+        dydx = np.zeros_like(y)
+        dydx[0] = (y[1] - y[0]) / (x[1] - x[0])
+        dydx[-1] = (y[-1] - y[-2]) / (x[-1] - x[-2])
+        dydx[1:-1] = (y[2:] - y[:-2]) / (x[2:] - x[:-2])
+        ### END SOLUTION
+        return dydx
+
+    return (finite_diff,)
+```
+
+For written-response cells, assign the model answer to `_response` inside a solution block. The generated release version is automatically converted to an editable `mo.md()` block for the student:
+
+```python
+@app.cell
+def _(mo):
+    _response = "*Write your analysis here...*"
+    ### BEGIN SOLUTION
+    _response = r"""
+    The finite difference method approximates derivatives using nearby
+    function values. Central differences achieve second-order accuracy...
+    """
+    ### END SOLUTION
+    mo.md(_response)
+    return
+```
+
+## Autograding checks
+
+Import `check` from `mograder.runtime` and call it with a label and a list of `(condition, failure_message)` tuples. The result is a coloured callout (green/red/amber) that gives students instant feedback:
+
+```python
+from mograder.runtime import check
+
+check(
+    "Q1: Palindrome checker",
+    [
+        (is_palindrome("racecar") is True, 'is_palindrome("racecar") should be True'),
+        (is_palindrome("hello") is False, 'is_palindrome("hello") should be False'),
+    ],
+)
+```
+
+Use `mo.stop()` with an empty-checks call to show an amber "waiting" state before the student has written any code:
+
+```python
+@app.cell(hide_code=True)
+def _(check, mo, x):
+    mo.stop(x is None, check("Q1: Array creation", []))
+    check("Q1: Array creation", [
+        (x.shape == (50,), f"x should have shape (50,), got {x.shape}"),
+    ])
+    return
+```
+
+## Holistic vs per-question marks
+
+**Holistic mode** (single mark 0-100, assigned by a marker): import the standalone `check` function. This is suited to notebooks where coding questions provide formative feedback only and a marker assigns one overall mark:
+
+```python
+from mograder.runtime import check
+```
+
+**Per-question marks** (automatic + manual): use the `Grader` class with a marks dictionary. Questions matching a `check()` label are auto-scored with **partial credit**: marks are proportional to the weight of passing checks. Questions without a matching check (e.g. written analysis) are scored manually by the marker:
+
+```python
+from mograder.runtime import Grader
+
+# === MOGRADER: MARKS ===
+_marks = {"Q1": 10, "Q2": 15, "Analysis": 60}
+grader = Grader(mo, _marks)
+check = grader.check
+```
+
+Each check tuple can optionally include a weight as a third element (default weight is 1). Earned marks are `round(available * earned_weight / total_weight, 1)`:
+
+```python
+check("Q2: Finite differences", [
+    (isinstance(dydx, np.ndarray), "result should be ndarray"),       # weight 1
+    (dydx.shape == x.shape, "shape should match"),                    # weight 1
+    (np.max(np.abs(dydx - np.cos(x))) < 0.05, "max error < 0.05", 3),  # weight 3
+])
+# If only the first two pass: earned = round(15 * 2/5, 1) = 6.0/15
+```
+
+The question key is the text before the first colon in the check label, so `check("Q1: Array creation", [...])` maps to the `"Q1"` entry. Call `grader.scores()` in a cell to display a reactive score table showing earned/available marks (including fractional values for partial credit).
+
+## PEP 723 script dependencies
+
+Include a [PEP 723](https://peps.python.org/pep-0723/) metadata block at the top of the notebook so that `marimo edit --sandbox` and `mograder validate` can automatically install dependencies:
+
+```python
+# /// script
+# requires-python = ">=3.11"
+# dependencies = [
+#     "marimo",
+#     "numpy",
+#     "mograder",
+# ]
+# ///
+```
+
+`mograder generate` automatically adds `mograder-assignment` and `mograder-cell-hashes` lines to this block in the release notebook, enabling integrity checking during `mograder validate`.

@@ -1,0 +1,36 @@
+# lychee link checker configuration
+# https://lychee.cli.rs/usage/config/
+
+# Exclude URLs that are expected to fail in CI
+exclude = [
+    # Shields.io badges — rate-limited, return 403 in CI
+    "https://img.shields.io/.*",
+    # GitHub Actions workflow badges — require auth
+    "https://github.com/.*/actions/workflows/.*",
+    # PyPI — rate-limited
+    "https://pypi.org/.*",
+    # Ruff badge endpoint
+    "https://raw.githubusercontent.com/astral-sh/ruff/.*",
+    # Demo server — may be down during CI
+    "https://mograder-demo.jrkermode.uk.*",
+    # GitHub Pages — may not be deployed yet on PRs
+    "https://jameskermode.github.io/mograder/dashboard.*",
+    # Codespaces creation link — requires auth
+    "https://codespaces.new/.*",
+    # Molab — external service
+    "https://molab.marimo.io.*",
+    # Template placeholder
+    "CODESPACES_URL",
+]
+
+# Accept 429 (rate limit) as valid
+accept = [200, 429]
+
+# Timeout per request
+timeout = 30
+
+# Don't check mail addresses
+exclude_mail = true
+
+# Don't require HTTPS (some links are intentionally HTTP for localhost examples)
+require_https = false

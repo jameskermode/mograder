@@ -66,6 +66,34 @@ jobs:
           uv run mograder generate examples/source/demo-assignment/demo-assignment.py examples/source/demo-holistic/demo-holistic.py -o examples/release
           git diff --exit-code examples/release/
 
+  linkcheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: uv sync --extra docs
+
+      - name: Build docs
+        run: uv run mkdocs build --strict
+
+      - name: Check links in built site
+        uses: lycheeverse/lychee-action@v2
+        with:
+          args: "site/ --base site --no-progress"
+          fail: true
+
+      - name: Check links in README
+        uses: lycheeverse/lychee-action@v2
+        with:
+          args: "README.md --no-progress"
+          fail: true
+
   deploy-demo:
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     needs: [test, lint]

@@ -1,0 +1,93 @@
+site_name: mograder
+site_url: https://jameskermode.github.io/mograder/
+repo_url: https://github.com/jameskermode/mograder
+repo_name: jameskermode/mograder
+
+theme:
+  name: material
+  logo: assets/mograder.svg
+  favicon: assets/icon-32.png
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: blue
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: blue
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  features:
+    - navigation.sections
+    - navigation.expand
+    - navigation.indexes
+    - search.suggest
+    - search.highlight
+    - content.code.copy
+    - toc.follow
+
+plugins:
+  - search
+  - mkdocstrings:
+      handlers:
+        python:
+          options:
+            docstring_style: google
+            show_source: true
+            show_root_heading: true
+            members_order: source
+
+markdown_extensions:
+  - mkdocs-click
+  - admonition
+  - pymdownx.details
+  - pymdownx.superfences
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - toc:
+      permalink: true
+  - def_list
+  - attr_list
+
+nav:
+  - Overview: index.md
+  - Installation: installation.md
+  - Student Guide: student-guide.md
+  - Instructor Guide: instructor-guide.md
+  - Usage:
+    - usage/index.md
+    - Formgrader: usage/formgrader.md
+    - Source Notebooks: usage/source-notebooks.md
+    - Generate: usage/generate.md
+    - Hints: usage/hints.md
+    - Workshops: usage/workshops.md
+    - Validate: usage/validate.md
+    - Autograde: usage/autograde.md
+    - Feedback: usage/feedback.md
+    - Import Students: usage/import-students.md
+    - Sync Remote: usage/sync-remote.md
+    - Moodle: usage/moodle.md
+    - HTTPS Transport: usage/https-transport.md
+    - Student Dashboard: usage/student-dashboard.md
+    - WASM Deployment: usage/wasm-deployment.md
+  - Reference:
+    - reference/index.md
+    - Runtime API: reference/runtime.md
+    - CLI: reference/cli.md
+    - Configuration API: reference/config.md
+    - Models: reference/models.md
+    - Transport: reference/transport.md
+    - Gradebook: reference/gradebook.md
+    - Markers: reference/markers.md
+    - Moodle API: reference/moodle-api.md
+  - Configuration: configuration.md
+  - Security: security.md
+  - Comparison: comparison.md
+  - Development: development.md
+  - Course Repo Template: course-repo-template.md

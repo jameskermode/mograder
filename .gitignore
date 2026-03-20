@@ -11,3 +11,4 @@ build/
 htmlcov/
 .mograder/
 __marimo__/
+site/

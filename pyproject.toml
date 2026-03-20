@@ -47,6 +47,11 @@ asgi = [
     "uvicorn>=0.24",
     "python-multipart>=0.0.6",
 ]
+docs = [
+    "mkdocs-material",
+    "mkdocstrings[python]",
+    "mkdocs-click",
+]
 
 [project.scripts]
 mograder = "mograder.cli:cli"
@@ -54,7 +59,7 @@ mograder = "mograder.cli:cli"
 [project.urls]
 Homepage = "https://github.com/jameskermode/mograder"
 Repository = "https://github.com/jameskermode/mograder"
-Documentation = "https://github.com/jameskermode/mograder#readme"
+Documentation = "https://jameskermode.github.io/mograder/"
 "Bug Tracker" = "https://github.com/jameskermode/mograder/issues"
 
 [tool.hatch.build.targets.wheel]

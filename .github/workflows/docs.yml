@@ -1,0 +1,73 @@
+name: Deploy Documentation
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - docs/**
+      - src/mograder/**
+      - mkdocs.yml
+      - pyproject.toml
+      - .github/workflows/docs.yml
+      - demo/course/**
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v4
+
+      - name: Install dependencies
+        run: uv sync --extra docs --extra dev
+
+      # 1. Build MkDocs
+      - name: Build documentation
+        run: uv run mkdocs build --strict
+
+      # 2. Build WASM dashboard into site/dashboard/
+      - name: Inject edit links into WASM app
+        run: |
+          uv run mograder wasm-edit-links \
+            src/mograder/student_wasm_app.py \
+            demo/course/demo-assignment/files/demo-assignment.py \
+            demo/course/demo-holistic/files/demo-holistic.py \
+            demo/course/demo-workshop/files/demo-workshop.py \
+            -o /tmp/student_wasm_app.py
+
+      - name: Export WASM dashboard
+        run: uv run marimo export html-wasm /tmp/student_wasm_app.py -o site/dashboard/index.html --mode run
+
+      - name: Export demo notebooks
+        run: |
+          uv run marimo export html-wasm demo/course/demo-assignment/files/demo-assignment.py -o site/dashboard/notebooks/demo-assignment.html --mode edit
+          uv run marimo export html-wasm demo/course/demo-holistic/files/demo-holistic.py -o site/dashboard/notebooks/demo-holistic.html --mode edit
+
+      - name: Generate and export workshop
+        run: |
+          uv run mograder workshop encrypt demo/course/demo-workshop/files/demo-workshop.py -o demo/course/demo-workshop/files/ --salt mograder --keys-url https://mograder-demo.jrkermode.uk/keys.json
+          uv run marimo export html-wasm demo/course/demo-workshop/files/demo-workshop.py -o site/dashboard/notebooks/demo-workshop.html --mode edit
+          echo '{}' > site/dashboard/notebooks/keys.json
+
+      # 3. Deploy combined site
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

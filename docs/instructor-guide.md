@@ -34,7 +34,7 @@ jobs = 4
 timeout = 300
 ```
 
-See [Configuration](../README.md#configuration) for all options.
+See [Configuration](configuration.md) for all options.
 
 ## 3. Write a source notebook
 
@@ -161,28 +161,37 @@ This creates `release/hw1/hw1.py` with solutions removed and cell hashes embedde
 
 ## 5. Distribute to students
 
-**Moodle:**
-```bash
-mograder moodle upload "HW1"
-```
+=== "Moodle"
 
-**HTTPS server:**
-```bash
-mograder serve release/ --enrollment-code "my-secret-phrase"
-```
+    ```bash
+    mograder moodle upload "HW1"
+    ```
 
-**Manual:** share the `release/hw1/` directory.
+=== "HTTPS server"
+
+    ```bash
+    mograder serve release/ --enrollment-code "my-secret-phrase"
+    ```
+
+=== "Manual"
+
+    Share the `release/hw1/` directory.
 
 ## 6. Collect submissions
 
-**From Moodle:**
-```bash
-mograder moodle fetch-submissions "HW1" -o submitted/hw1/
-```
+=== "From Moodle"
 
-**From HTTPS server:** submissions are stored automatically in `submitted/`.
+    ```bash
+    mograder moodle fetch-submissions "HW1" -o submitted/hw1/
+    ```
 
-**Manual:** place student `.py` files in `submitted/hw1/` named by username (e.g. `alice.py`).
+=== "From HTTPS server"
+
+    Submissions are stored automatically in `submitted/`.
+
+=== "Manual"
+
+    Place student `.py` files in `submitted/hw1/` named by username (e.g. `alice.py`).
 
 ## 7. Autograde
 
@@ -191,6 +200,7 @@ mograder autograde hw1
 ```
 
 This:
+
 1. Auto-discovers the source notebook in `source/hw1/`
 2. Checks submission integrity against the source (detects tampered cells)
 3. Executes each notebook via `marimo export html`
@@ -200,6 +210,7 @@ This:
 7. Saves grading copies to `autograded/hw1/`
 
 Options:
+
 - `-j 8` — parallel workers (default: 4)
 - `--timeout 600` — per-notebook timeout (default: 300s)
 - `--safety-check` — scan for dangerous code before execution
@@ -220,6 +231,7 @@ This opens a marimo web app with four tabs:
 - **Students** — cross-assignment marks table
 
 For a persistent server deployment:
+
 ```bash
 mograder formgrader-asgi my-course/ --host 0.0.0.0 --port 2718
 ```
@@ -234,13 +246,16 @@ This exports graded notebooks to HTML in `feedback/hw1/`, injecting the GTA's ma
 
 ## 10. Upload grades
 
-**Moodle:**
-```bash
-mograder moodle export "HW1" -o export/
-mograder moodle upload-feedback "HW1"
-```
+=== "Moodle"
 
-**HTTPS server:** grades are stored in the server automatically.
+    ```bash
+    mograder moodle export "HW1" -o export/
+    mograder moodle upload-feedback "HW1"
+    ```
+
+=== "HTTPS server"
+
+    Grades are stored in the server automatically.
 
 ## Worked example
 
@@ -260,7 +275,7 @@ mograder feedback demo-assignment
 
 ## Next steps
 
-- [Grader API Reference](grader-api.md) — detailed documentation of `check()`, `Grader`, and `hint()`
+- [Grader API Reference](reference/runtime.md) — detailed documentation of `check()`, `Grader`, and `hint()`
 - [Security](security.md) — threat model and hardening options for autograde
-- [Student Setup Guide](student-setup.md) — share this with your students
-- [Configuration](../README.md#configuration) — full `mograder.toml` reference
+- [Student Setup Guide](student-guide.md) — share this with your students
+- [Configuration](configuration.md) — full `mograder.toml` reference

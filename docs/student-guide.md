@@ -37,7 +37,8 @@ powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | ie
 uvx mograder student <CONFIG_URL>
 ```
 
-> **Tip:** If you have trouble with the Windows install, try [GitHub Codespaces](#option-2-github-codespaces) instead — it works entirely in your browser with no local setup.
+!!! tip
+    If you have trouble with the Windows install, try [GitHub Codespaces](#option-2-github-codespaces) instead — it works entirely in your browser with no local setup.
 
 ### Returning sessions (all platforms)
 
@@ -78,7 +79,7 @@ In Codespaces, notebooks open in **headless mode**: marimo runs in the backgroun
 
 GitHub gives free accounts **120 core-hours/month** of Codespaces time. To avoid wasting hours:
 
-- **Stop your Codespace** when you're done: click your profile picture (top-right on github.com) → **Your codespaces** → **⋯** → **Stop codespace**
+- **Stop your Codespace** when you're done: click your profile picture (top-right on github.com) → **Your codespaces** → **...** → **Stop codespace**
 - **Reopen later**: go to [github.com/codespaces](https://github.com/codespaces) and click on your existing Codespace — it resumes where you left off
 - **Check usage**: go to **Settings** → **Billing and plans** → **Codespaces** to see remaining hours
 
@@ -95,7 +96,8 @@ If you're using [Molab](https://molab.marimo.io), no local installation is requi
 5. Download the completed `.py` file from Molab
 6. Submit via the Moodle web interface or `mograder https submit`
 
-> **Note:** Molab does not support the mograder **Validate** button, but you can still check your work before submitting. Each assignment notebook contains a self-assessment cell near the end — run it to see which checks pass or fail (e.g. "3/5 PASS"). This is the same information the Validate button shows; the button is just a convenience wrapper. Make sure the self-assessment cell output looks correct before downloading and submitting your notebook.
+!!! note
+    Molab does not support the mograder **Validate** button, but you can still check your work before submitting. Each assignment notebook contains a self-assessment cell near the end — run it to see which checks pass or fail (e.g. "3/5 PASS"). This is the same information the Validate button shows; the button is just a convenience wrapper.
 
 ### Molab with HTTPS transport
 
