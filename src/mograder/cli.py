@@ -738,6 +738,12 @@ def validate(ctx, assignments, timeout, fix, release_path):
     is_flag=True,
     help="Scan submitted code for dangerous patterns before execution",
 )
+@click.option(
+    "--max-memory",
+    type=int,
+    default=None,
+    help="Max virtual memory per notebook in MB (overrides config rlimits.as)",
+)
 @click.pass_context
 def autograde(
     ctx,
@@ -752,6 +758,7 @@ def autograde(
     progress,
     force,
     safety_check,
+    max_memory,
 ):
     """Run notebooks and inject grading cells for GTA review.
 
@@ -1004,6 +1011,7 @@ def autograde(
             )
 
     output_dir.mkdir(parents=True, exist_ok=True)
+    _rlimit_as = (max_memory * 1024 * 1024) if max_memory else config.rlimit_as
     results = runner.run_batch(
         run_paths,
         jobs=jobs,
@@ -1015,6 +1023,8 @@ def autograde(
         rlimit_cpu=config.rlimit_cpu,
         rlimit_nproc=config.rlimit_nproc,
         rlimit_nofile=config.rlimit_nofile,
+        rlimit_as=_rlimit_as,
+        isolate_cwd=True,
     )
 
     # Map results back to original paths + record tampering
@@ -1727,8 +1737,14 @@ def moodle_feedback(ctx, assignment, course_id, url, token):
     default=None,
     help="Only include assignments matching this regex (e.g. '^A[1-8]').",
 )
+@click.option(
+    "--edit-links",
+    is_flag=True,
+    default=False,
+    help="Push edit links (molab, codespaces) into Moodle assignment descriptions.",
+)
 @click.pass_context
-def moodle_sync(ctx, course_id, url, token, include_pattern):
+def moodle_sync(ctx, course_id, url, token, include_pattern, edit_links):
     """Sync assignment metadata from Moodle into mograder.toml.
 
     Fetches assignment names, IDs, due dates, and file info from the Moodle API
@@ -1802,6 +1818,91 @@ def moodle_sync(ctx, course_id, url, token, include_pattern):
     for a in toml_assignments:
         n_files = len(a["files"])
         click.echo(f"  {a['name']} ({n_files} file(s))")
+
+    # --edit-links: push edit links into Moodle assignment descriptions
+    if edit_links and config.edit_links:
+        from mograder.edit_links import build_edit_link_html, inject_edit_links
+        from mograder.moodle_api import MoodleAPIError
+
+        # Build a map from cmid → existing intro from the API response
+        intro_map = {a["cmid"]: a.get("intro", "") for a in assignments}
+
+        pushed = 0
+        manual_entries: list[tuple[str, str, str]] = []  # (name, edit_url, html)
+        for entry in toml_assignments:
+            dir_key = entry.get("dir", "")
+            cmid = entry.get("cmid")
+            if not dir_key or not cmid:
+                continue
+            release_path = release_dir / dir_key
+            links_html = build_edit_link_html(release_path, dir_key, config.edit_links)
+            if not links_html:
+                continue
+            existing_intro = intro_map.get(cmid, "")
+            new_intro = inject_edit_links(existing_intro, links_html)
+            try:
+                client.update_intro(cmid, new_intro)
+                pushed += 1
+                click.echo(f"  Updated edit links for {entry['name']}")
+            except MoodleAPIError:
+                edit_url = f"{url}/course/modedit.php?update={cmid}"
+                manual_entries.append((entry["name"], edit_url, links_html))
+
+        if pushed:
+            click.echo(f"Pushed edit links for {pushed} assignment(s)")
+        if manual_entries:
+            html_path = Path.cwd() / "edit-links.html"
+            _write_edit_links_html(html_path, manual_entries, url)
+            click.echo(
+                f"\nWrote {len(manual_entries)} edit link(s) to {_rel(html_path)}"
+                " (core_course_edit_module not in web service).\n"
+                "Open the file, copy each HTML snippet, and paste into "
+                "the Moodle assignment description."
+            )
+
+
+def _write_edit_links_html(
+    path: Path,
+    entries: list[tuple[str, str, str]],
+    moodle_url: str,
+) -> None:
+    """Write an HTML file with edit links and copy-paste instructions."""
+    parts = [
+        "<!DOCTYPE html>",
+        "<html><head><meta charset='utf-8'>",
+        "<title>Mograder Edit Links</title>",
+        "<style>",
+        "body { font-family: system-ui, sans-serif; max-width: 900px; "
+        "margin: 2em auto; padding: 0 1em; }",
+        "h2 { margin-top: 2em; }",
+        ".edit-link { margin-bottom: 0.5em; }",
+        ".snippet { background: #f5f5f5; border: 1px solid #ddd; "
+        "padding: 1em; border-radius: 4px; overflow-x: auto; "
+        "font-family: monospace; font-size: 0.85em; white-space: pre-wrap; "
+        "word-break: break-all; }",
+        "a { color: #1a73e8; }",
+        "</style></head><body>",
+        "<h1>Edit Links for Moodle</h1>",
+        "<p>For each assignment below:</p><ol>",
+        "<li>Click the <b>Edit assignment</b> link to open Moodle</li>",
+        "<li>In the Description field, switch to HTML source (&lt;/&gt; button)</li>",
+        "<li>Paste the HTML snippet at the end</li>",
+        "<li>Save</li></ol>",
+    ]
+    for name, edit_url, links_html in entries:
+        parts.append(f"<h2>{name}</h2>")
+        parts.append(
+            f'<p class="edit-link"><a href="{edit_url}" '
+            f'target="_blank">Edit assignment in Moodle</a></p>'
+        )
+        parts.append("<p><b>HTML to paste into Description:</b></p>")
+        import html as html_mod
+
+        parts.append(f'<div class="snippet">{html_mod.escape(links_html)}</div>')
+        parts.append("<p><b>Preview:</b></p>")
+        parts.append(f"<div>{links_html}</div>")
+    parts.append("</body></html>")
+    path.write_text("\n".join(parts))
 
 
 @moodle_group.command("login")

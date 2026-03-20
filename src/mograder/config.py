@@ -35,6 +35,9 @@ class MograderConfig:
     rlimit_cpu: int = 600  # seconds
     rlimit_nproc: int = 512  # total user processes
     rlimit_nofile: int = 256  # open file descriptors
+    rlimit_as: int = 1 << 30  # virtual memory bytes (Linux only)
+    # [security]
+    use_bubblewrap: bool = False
     # [dirs]
     source_dir: str = "source"
     release_dir: str = "release"
@@ -97,6 +100,8 @@ def load_config(course_dir: Path) -> MograderConfig:
         rlimit_cpu=rlimits.get("cpu", 600),
         rlimit_nproc=rlimits.get("nproc", 512),
         rlimit_nofile=rlimits.get("nofile", 256),
+        rlimit_as=rlimits.get("as", 1 << 30),
+        use_bubblewrap=data.get("security", {}).get("use_bubblewrap", False),
         source_dir=dirs.get("source", "source"),
         release_dir=dirs.get("release", "release"),
         submitted_dir=dirs.get("submitted", "submitted"),

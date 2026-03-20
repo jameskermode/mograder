@@ -447,3 +447,89 @@ def test_serialize_results_without_marks():
     assert "auto_mark" not in rows[0]
     assert "total_mark" not in rows[0]
     assert rows[0]["checks"] == {"Q1": "PASS"}
+
+
+def test_run_notebook_isolate_cwd(tmp_path):
+    """When isolate_cwd=True, the subprocess runs in a temp dir, not the notebook's parent."""
+    nb = tmp_path / "student.py"
+    nb.write_text("# notebook")
+
+    captured_cwd = []
+
+    def mock_run(cmd, **kwargs):
+        captured_cwd.append(kwargs.get("cwd"))
+        out_path = Path(cmd[cmd.index("-o") + 1])
+        out_path.write_text(SAMPLE_HTML)
+        result = MagicMock()
+        result.returncode = 0
+        result.stderr = ""
+        return result
+
+    with patch("mograder.runner.subprocess.run", side_effect=mock_run):
+        result = run_notebook(nb, timeout=60, isolate_cwd=True)
+
+    assert result.export_ok is True
+    assert len(captured_cwd) == 1
+    # The cwd should NOT be the original notebook's parent
+    assert captured_cwd[0] != tmp_path
+    # The temp dir should have been cleaned up
+    assert not captured_cwd[0].exists()
+
+
+def test_run_notebook_isolate_cwd_cleanup_on_failure(tmp_path):
+    """Temp dir is cleaned up even when the subprocess fails."""
+    nb = tmp_path / "student.py"
+    nb.write_text("# notebook")
+
+    captured_cwd = []
+
+    def mock_run(cmd, **kwargs):
+        captured_cwd.append(kwargs.get("cwd"))
+        result = MagicMock()
+        result.returncode = 1
+        result.stderr = "error"
+        Path(cmd[cmd.index("-o") + 1]).unlink(missing_ok=True)
+        return result
+
+    with patch("mograder.runner.subprocess.run", side_effect=mock_run):
+        result = run_notebook(nb, timeout=60, isolate_cwd=True)
+
+    assert result.export_ok is False
+    assert len(captured_cwd) == 1
+    assert not captured_cwd[0].exists()
+
+
+def test_maybe_bwrap_cmd_disabled():
+    """With use_bwrap=False, command is returned unchanged."""
+    from mograder.runner import _maybe_bwrap_cmd
+
+    cmd = ["python", "-m", "marimo", "export", "html", "nb.py"]
+    assert _maybe_bwrap_cmd(cmd, Path("/tmp"), False) is cmd
+
+
+def test_maybe_bwrap_cmd_prepended():
+    """With use_bwrap=True and bwrap available, command is wrapped."""
+    from mograder.runner import _maybe_bwrap_cmd
+
+    cmd = ["python", "-m", "marimo", "export", "html", "nb.py"]
+    with patch("mograder.runner.shutil.which", return_value="/usr/bin/bwrap"):
+        wrapped = _maybe_bwrap_cmd(cmd, Path("/work"), True)
+
+    assert wrapped[0] == "bwrap"
+    assert "--ro-bind" in wrapped
+    assert "--unshare-net" in wrapped
+    assert "--bind" in wrapped
+    idx = wrapped.index("--bind")
+    assert wrapped[idx + 1] == "/work"
+    assert wrapped[-len(cmd) :] == cmd
+
+
+def test_maybe_bwrap_cmd_fallback_when_missing():
+    """With use_bwrap=True but bwrap not found, returns original command."""
+    from mograder.runner import _maybe_bwrap_cmd
+
+    cmd = ["python", "-m", "marimo"]
+    with patch("mograder.runner.shutil.which", return_value=None):
+        result = _maybe_bwrap_cmd(cmd, Path("/tmp"), True)
+
+    assert result == cmd

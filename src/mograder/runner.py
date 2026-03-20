@@ -174,7 +174,7 @@ def _poll_sidecar(
 
     while proc.poll() is None:
         if time.monotonic() > deadline:
-            proc.kill()
+            _kill_tree(proc.pid)
             proc.wait()
             raise subprocess.TimeoutExpired(proc.args, timeout)
 
@@ -221,6 +221,89 @@ def _poll_sidecar(
                 pass
 
 
+def _maybe_bwrap_cmd(cmd: list[str], cwd: Path, use_bwrap: bool) -> list[str]:
+    """Optionally wrap *cmd* in bubblewrap for filesystem isolation."""
+    if not use_bwrap:
+        return cmd
+    if shutil.which("bwrap") is None:
+        import logging
+
+        logging.getLogger("mograder").warning(
+            "use_bubblewrap=true but bwrap not found on PATH; running without sandbox"
+        )
+        return cmd
+    return [
+        "bwrap",
+        "--ro-bind",
+        "/",
+        "/",
+        "--tmpfs",
+        "/tmp",
+        "--tmpfs",
+        "/home",
+        "--bind",
+        str(cwd),
+        str(cwd),
+        "--unshare-net",
+        "--die-with-parent",
+        "--",
+        *cmd,
+    ]
+
+
+def _kill_tree(pid: int) -> None:
+    """Kill a process and all its descendants via /proc walk.
+
+    Sends SIGTERM to leaves first, then SIGKILL stragglers.
+    Silently ignores processes that have already exited.
+    """
+    import signal
+    import time as _time
+
+    def _children(parent_pid: int) -> list[int]:
+        kids: list[int] = []
+        try:
+            for entry in os.listdir("/proc"):
+                if not entry.isdigit():
+                    continue
+                try:
+                    with open(f"/proc/{entry}/stat") as f:
+                        stat = f.read()
+                    rparen = stat.rfind(")")
+                    fields = stat[rparen + 2 :].split()
+                    ppid = int(fields[1])
+                    if ppid == parent_pid:
+                        kids.append(int(entry))
+                except (OSError, ValueError, IndexError):
+                    continue
+        except OSError:
+            pass
+        return kids
+
+    def _descendants(root: int) -> list[int]:
+        result: list[int] = []
+        stack = [root]
+        while stack:
+            p = stack.pop()
+            result.append(p)
+            stack.extend(_children(p))
+        result.reverse()
+        return result
+
+    pids = _descendants(pid)
+    for p in pids:
+        try:
+            os.kill(p, signal.SIGTERM)
+        except ProcessLookupError:
+            pass
+    _time.sleep(0.3)
+    for p in pids:
+        try:
+            os.kill(p, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+
+
 def run_notebook(
     notebook_path: Path,
     timeout: int = 300,
@@ -232,6 +315,8 @@ def run_notebook(
     rlimit_nproc: int = 512,
     rlimit_nofile: int = 256,
     rlimit_as: int = 1 << 30,
+    isolate_cwd: bool = False,
+    use_bubblewrap: bool = False,
 ) -> NotebookResult:
     """Execute a notebook and return its check results.
 
@@ -265,10 +350,19 @@ def run_notebook(
     os.close(sidecar_fd)
     sidecar_path = Path(sidecar_name)
 
+    isolate_dir: Path | None = None
     try:
         # Resolve to absolute paths so they remain valid when cwd changes.
         notebook_abs = notebook_path.resolve()
         notebook_cwd = notebook_abs.parent
+
+        # Temp dir isolation: copy notebook into a fresh directory so student
+        # code cannot write files next to other submissions.
+        if isolate_cwd:
+            isolate_dir = Path(tempfile.mkdtemp(prefix="mograder_iso_"))
+            shutil.copy2(notebook_abs, isolate_dir / notebook_abs.name)
+            notebook_abs = (isolate_dir / notebook_abs.name).resolve()
+            notebook_cwd = isolate_dir
 
         if sandbox_dir is not None:
             python_exe = str(_venv_python(sandbox_dir.resolve()))
@@ -305,6 +399,8 @@ def run_notebook(
             if os.name != "nt"
             else None
         )
+
+        cmd = _maybe_bwrap_cmd(cmd, notebook_cwd, use_bubblewrap)
 
         if on_check is not None:
             # Stream mode: poll sidecar for live check results
@@ -367,6 +463,8 @@ def run_notebook(
     finally:
         tmp_path.unlink(missing_ok=True)
         sidecar_path.unlink(missing_ok=True)
+        if isolate_dir is not None:
+            shutil.rmtree(isolate_dir, ignore_errors=True)
 
     return result
 
@@ -383,6 +481,8 @@ def run_batch(
     rlimit_nproc: int = 512,
     rlimit_nofile: int = 256,
     rlimit_as: int = 1 << 30,
+    isolate_cwd: bool = False,
+    use_bubblewrap: bool = False,
 ) -> list[NotebookResult]:
     """Run notebooks in parallel and return results sorted by filename."""
     results: list[NotebookResult] = []
@@ -403,6 +503,8 @@ def run_batch(
                 rlimit_nproc,
                 rlimit_nofile,
                 rlimit_as,
+                isolate_cwd,
+                use_bubblewrap,
             ): nb
             for nb in notebooks
         }

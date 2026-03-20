@@ -230,3 +230,31 @@ def test_load_config_edit_links_default(tmp_path):
     (tmp_path / "mograder.toml").write_text("")
     config = load_config(tmp_path)
     assert config.edit_links == ()
+
+
+def test_load_config_rlimit_as_default(tmp_path):
+    """Missing rlimits.as uses default (1 GiB)."""
+    (tmp_path / "mograder.toml").write_text("")
+    config = load_config(tmp_path)
+    assert config.rlimit_as == 1 << 30
+
+
+def test_load_config_rlimit_as_custom(tmp_path):
+    """[rlimits] as overrides default."""
+    (tmp_path / "mograder.toml").write_text("[rlimits]\nas = 2147483648\n")
+    config = load_config(tmp_path)
+    assert config.rlimit_as == 2147483648
+
+
+def test_load_config_use_bubblewrap_default(tmp_path):
+    """Missing [security] section defaults use_bubblewrap to False."""
+    (tmp_path / "mograder.toml").write_text("")
+    config = load_config(tmp_path)
+    assert config.use_bubblewrap is False
+
+
+def test_load_config_use_bubblewrap_enabled(tmp_path):
+    """[security] use_bubblewrap = true is read."""
+    (tmp_path / "mograder.toml").write_text("[security]\nuse_bubblewrap = true\n")
+    config = load_config(tmp_path)
+    assert config.use_bubblewrap is True

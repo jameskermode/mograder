@@ -140,6 +140,34 @@ def test_autograde_runs_and_injects(mock_batch, mock_inject, tmp_path):
     mock_inject.assert_called_once()
 
 
+@patch("mograder.cells.inject_grading_cells")
+@patch("mograder.runner.run_batch")
+def test_autograde_max_memory_flag(mock_batch, mock_inject, tmp_path):
+    """--max-memory converts MB to bytes and passes to run_batch as rlimit_as."""
+    nb = tmp_path / "student.py"
+    nb.write_text(
+        "import marimo\napp = marimo.App()\n\nif __name__ == '__main__':\n    app.run()\n"
+    )
+    mock_batch.return_value = [
+        NotebookResult(
+            path=nb,
+            checks=[CheckResult("Q1: Foo", "success")],
+            cell_errors=0,
+        )
+    ]
+    mock_inject.return_value = nb.read_text().splitlines(keepends=True)
+
+    out_dir = tmp_path / "grading"
+    runner = CliRunner()
+    result = runner.invoke(
+        cli, ["autograde", str(nb), "-o", str(out_dir), "--max-memory", "2048"]
+    )
+    assert result.exit_code == 0
+    _, kwargs = mock_batch.call_args
+    assert kwargs["rlimit_as"] == 2048 * 1024 * 1024
+    assert kwargs["isolate_cwd"] is True
+
+
 @patch("mograder.feedback.export_feedback_html")
 @patch("mograder.feedback.collect_grades")
 def test_feedback_collects_and_exports(mock_grades, mock_export, tmp_path):
