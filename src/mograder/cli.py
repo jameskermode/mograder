@@ -1790,6 +1790,23 @@ def moodle_sync(ctx, course_id, url, token, include_pattern, edit_links):
     else:
         toml_data = {}
 
+    # Preserve 'dir' (and other manual fields) from existing assignments
+    _old_assignments = toml_data.get("assignments", [])
+    if isinstance(_old_assignments, (list, tuple)):
+        _old_extra: dict[int, dict] = {}
+        for _a in _old_assignments:
+            if isinstance(_a, dict) and _a.get("cmid"):
+                _old_extra[_a["cmid"]] = {
+                    k: v
+                    for k, v in _a.items()
+                    if k not in ("name", "id", "cmid", "duedate", "files")
+                }
+        for entry in toml_assignments:
+            extra = _old_extra.get(entry.get("cmid"))
+            if extra:
+                for k, v in extra.items():
+                    entry.setdefault(k, v)
+
     moodle_section = toml_data.get("moodle", {})
     moodle_section["assignments"] = toml_assignments
 

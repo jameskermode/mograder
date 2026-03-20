@@ -62,7 +62,7 @@ class MoodleAPIClient:
         """Get assignments for a course.
 
         Returns a flat list of assignment dicts with keys:
-        id, cmid, name, duedate, introattachments.
+        id, cmid, name, duedate, intro, introattachments.
         """
         result = self._call("mod_assign_get_assignments", **{"courseids[0]": course_id})
         assignments = []
@@ -74,6 +74,7 @@ class MoodleAPIClient:
                         "cmid": assign.get("cmid"),
                         "name": assign["name"],
                         "duedate": assign.get("duedate", 0),
+                        "intro": assign.get("intro", ""),
                         "introattachments": assign.get("introattachments", []),
                     }
                 )
@@ -152,6 +153,19 @@ class MoodleAPIClient:
             action="update",
             id=cmid,
             **{"introattachments": draft_itemid},
+        )
+
+    def update_intro(self, cmid: int, intro_html: str) -> None:
+        """Update the assignment description (intro) field.
+
+        Uses ``core_course_edit_module`` to replace the intro HTML.
+        """
+        self._call(
+            "core_course_edit_module",
+            action="update",
+            id=cmid,
+            intro=intro_html,
+            introformat=1,
         )
 
     def save_submission(self, assignment_id: int, item_id: int) -> None:

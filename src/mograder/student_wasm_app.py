@@ -106,6 +106,8 @@ def _(
         _wasm_base = _base.rsplit("/api", 1)[0] + "/wasm"
 
     _rows = []
+    # Collect global (non-per-assignment) links like Codespaces
+    _global_links = {}
     for _a in assignments:
         _name = _a["name"]
         _files = _a.get("files", [])
@@ -117,7 +119,7 @@ def _(
             _dt = datetime.fromtimestamp(_a["duedate"])
             _due = _dt.strftime("%d %b %Y")
 
-        # Edit column: WASM link + edit_links (molab, codespaces, etc.)
+        # Edit column: WASM link + per-assignment edit_links (molab, etc.)
         _edit_parts = []
         _has_wasm = bool(
             _wasm_base and (_a.get("wasm_url") or params.get("wasm_base", ""))
@@ -125,8 +127,12 @@ def _(
         if _has_wasm:
             _wasm_href = _wasm_base.rstrip("/") + "/" + _dir + ".html"
             _edit_parts.append(f"**[Edit in Browser]({_wasm_href})**")
-        _link_labels = {"molab": "Edit in Molab", "codespaces": "Edit in Codespaces"}
+        _link_labels = {"molab": "Edit in Molab"}
         for _link in _a.get("edit_links", []):
+            # Codespaces link is global (same for all assignments) — show once below table
+            if _link["name"] == "codespaces":
+                _global_links["codespaces"] = _link["url"]
+                continue
             _label = _link_labels.get(_link["name"], _link["name"].title())
             _href = _link["url"]
             if _has_wasm:
@@ -171,8 +177,17 @@ def _(
             }
         )
 
+    _footer_parts = []
+    if _global_links.get("codespaces"):
+        _footer_parts.append(
+            mo.md(f"[Edit in Codespaces]({_global_links['codespaces']})")
+        )
+
     mo.output.replace(
-        mo.vstack([mo.md("## Assignments"), mo.ui.table(_rows, selection=None)])
+        mo.vstack(
+            [mo.md("## Assignments"), mo.ui.table(_rows, selection=None)]
+            + _footer_parts
+        )
     )
     return
 

@@ -73,6 +73,7 @@ class TestGetAssignments:
                             "id": 10,
                             "name": "Assignment 1",
                             "duedate": 1700000000,
+                            "intro": "<p>Do this assignment.</p>",
                             "introattachments": [
                                 {
                                     "filename": "notebook.py",
@@ -96,8 +97,10 @@ class TestGetAssignments:
         assert len(result) == 2
         assert result[0]["id"] == 10
         assert result[0]["name"] == "Assignment 1"
+        assert result[0]["intro"] == "<p>Do this assignment.</p>"
         assert len(result[0]["introattachments"]) == 1
         assert result[1]["introattachments"] == []
+        assert result[1]["intro"] == ""
 
 
 class TestUploadFile:
@@ -1136,6 +1139,28 @@ class TestUpdateIntroattachments:
                 client.update_introattachments(42, 999)
 
 
+class TestUpdateIntro:
+    def test_calls_edit_module_with_html(self):
+        client = MoodleAPIClient("https://moodle.example.com", "tok")
+        with patch.object(client, "_call", return_value={}) as mock_call:
+            client.update_intro(42, "<p>Hello world</p>")
+        mock_call.assert_called_once_with(
+            "core_course_edit_module",
+            action="update",
+            id=42,
+            intro="<p>Hello world</p>",
+            introformat=1,
+        )
+
+    def test_raises_on_api_error(self):
+        client = MoodleAPIClient("https://moodle.example.com", "tok")
+        with patch.object(
+            client, "_call", side_effect=MoodleAPIError("Access denied", "nopermission")
+        ):
+            with pytest.raises(MoodleAPIError, match="Access denied"):
+                client.update_intro(42, "<p>test</p>")
+
+
 # ---------------------------------------------------------------------------
 # moodle upload CLI tests
 # ---------------------------------------------------------------------------
@@ -1303,3 +1328,191 @@ class TestMoodleUploadCLI:
         assert result.exit_code == 0, result.output
         assert "open the assignment edit page manually" in result.output
         (tmp_path / "Demo.zip").unlink()
+
+
+# ---------------------------------------------------------------------------
+# moodle sync --edit-links tests
+# ---------------------------------------------------------------------------
+
+
+class TestMoodleSyncEditLinks:
+    def test_edit_links_pushes_intro(self, monkeypatch, tmp_path):
+        """--edit-links builds HTML and calls update_intro for assignments with a dir."""
+        _mock_config(monkeypatch)
+        monkeypatch.chdir(tmp_path)
+
+        # Create release dir with a .py file
+        release = tmp_path / "release" / "A1-Demo"
+        release.mkdir(parents=True)
+        (release / "A1-Demo.py").write_text("print('hello')")
+
+        # Create mograder.toml with edit_links config AND existing assignment with dir
+        toml_path = tmp_path / "mograder.toml"
+        toml_path.write_text(
+            '[edit_links]\nmolab = "https://molab.marimo.io/new/#code/{content_lz}"\n\n'
+            "[[assignments]]\n"
+            'name = "A1. Demo Assignment"\n'
+            "cmid = 42\n"
+            'dir = "A1-Demo"\n'
+        )
+
+        assignments = [
+            {
+                "id": 10,
+                "cmid": 42,
+                "name": "A1. Demo Assignment",
+                "duedate": 1700000000,
+                "intro": "<p>Old description</p>",
+                "introattachments": [],
+            },
+        ]
+        # course contents for visibility check
+        course_contents = [
+            {
+                "modules": [
+                    {"id": 42, "modname": "assign", "visible": 1},
+                ]
+            }
+        ]
+
+        with (
+            patch.object(
+                MoodleAPIClient,
+                "get_assignments",
+                return_value=assignments,
+            ),
+            patch.object(
+                MoodleAPIClient,
+                "_call",
+                return_value=course_contents,
+            ),
+            patch.object(
+                MoodleAPIClient,
+                "update_intro",
+            ) as mock_update,
+        ):
+            runner = CliRunner()
+            result = runner.invoke(
+                cli,
+                ["moodle", "sync", "-c", "1", "--edit-links"],
+            )
+
+        assert result.exit_code == 0, result.output
+        assert mock_update.called
+        # Verify the HTML passed contains molab link and markers
+        call_args = mock_update.call_args
+        assert call_args[0][0] == 42  # cmid
+        intro_html = call_args[0][1]
+        assert "molab.marimo.io" in intro_html
+        assert "<!-- mograder:edit-links -->" in intro_html
+        assert "<p>Old description</p>" in intro_html
+
+    def test_edit_links_skips_no_dir(self, monkeypatch, tmp_path):
+        """Assignments without a dir are skipped for edit-links."""
+        _mock_config(monkeypatch)
+        monkeypatch.chdir(tmp_path)
+
+        toml_path = tmp_path / "mograder.toml"
+        toml_path.write_text(
+            '[edit_links]\nmolab = "https://molab.marimo.io/new/#code/{content_lz}"\n'
+        )
+
+        assignments = [
+            {
+                "id": 10,
+                "cmid": 42,
+                "name": "A1. Demo",
+                "duedate": 0,
+                "intro": "",
+                "introattachments": [],
+            },
+        ]
+        course_contents = [{"modules": [{"id": 42, "modname": "assign", "visible": 1}]}]
+
+        with (
+            patch.object(
+                MoodleAPIClient,
+                "get_assignments",
+                return_value=assignments,
+            ),
+            patch.object(
+                MoodleAPIClient,
+                "_call",
+                return_value=course_contents,
+            ),
+            patch.object(
+                MoodleAPIClient,
+                "update_intro",
+            ) as mock_update,
+        ):
+            runner = CliRunner()
+            result = runner.invoke(
+                cli,
+                ["moodle", "sync", "-c", "1", "--edit-links"],
+            )
+
+        assert result.exit_code == 0, result.output
+        mock_update.assert_not_called()
+
+    def test_edit_links_fallback_on_access_error(self, monkeypatch, tmp_path):
+        """When update_intro fails, an HTML file is written for manual paste."""
+        _mock_config(monkeypatch)
+        monkeypatch.chdir(tmp_path)
+
+        release = tmp_path / "release" / "A1-Demo"
+        release.mkdir(parents=True)
+        (release / "A1-Demo.py").write_text("print('hello')")
+
+        toml_path = tmp_path / "mograder.toml"
+        toml_path.write_text(
+            '[edit_links]\nmolab = "https://molab.marimo.io/new/#code/{content_lz}"\n\n'
+            "[[assignments]]\n"
+            'name = "A1. Demo Assignment"\n'
+            "cmid = 42\n"
+            'dir = "A1-Demo"\n'
+        )
+
+        assignments = [
+            {
+                "id": 10,
+                "cmid": 42,
+                "name": "A1. Demo Assignment",
+                "duedate": 0,
+                "intro": "",
+                "introattachments": [],
+            },
+        ]
+        course_contents = [{"modules": [{"id": 42, "modname": "assign", "visible": 1}]}]
+
+        with (
+            patch.object(
+                MoodleAPIClient,
+                "get_assignments",
+                return_value=assignments,
+            ),
+            patch.object(
+                MoodleAPIClient,
+                "_call",
+                return_value=course_contents,
+            ),
+            patch.object(
+                MoodleAPIClient,
+                "update_intro",
+                side_effect=MoodleAPIError("Access control exception"),
+            ),
+        ):
+            runner = CliRunner()
+            result = runner.invoke(
+                cli,
+                ["moodle", "sync", "-c", "1", "--edit-links"],
+            )
+
+        assert result.exit_code == 0, result.output
+        assert "edit-links.html" in result.output
+
+        html_file = tmp_path / "edit-links.html"
+        assert html_file.exists()
+        content = html_file.read_text()
+        assert "modedit.php?update=42" in content
+        assert "molab.marimo.io" in content
+        assert "A1. Demo Assignment" in content
