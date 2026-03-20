@@ -1,7 +1,9 @@
 """SQLite gradebook for persistent grade storage."""
 
+import fcntl
 import json
 import sqlite3
+from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
 
@@ -24,7 +26,9 @@ class Gradebook:
         self._conn.row_factory = sqlite3.Row
         self._conn.execute("PRAGMA journal_mode=WAL")
         self._conn.execute("PRAGMA foreign_keys=ON")
+        self._conn.execute("PRAGMA busy_timeout=5000")
         self._create_tables()
+        self._migrate()
 
     @property
     def is_new(self) -> bool:
@@ -55,10 +59,19 @@ class Gradebook:
                 check_results   TEXT NOT NULL DEFAULT '[]',
                 graded_at       TEXT,
                 autograded_at   TEXT NOT NULL DEFAULT (datetime('now')),
+                updated_at      TEXT,
                 PRIMARY KEY (assignment, student)
             );
             """
         )
+
+    def _migrate(self) -> None:
+        """Add columns that may be missing in existing databases."""
+        try:
+            self._conn.execute("ALTER TABLE submissions ADD COLUMN updated_at TEXT")
+            self._conn.commit()
+        except sqlite3.OperationalError:
+            pass  # column already exists
 
     def close(self) -> None:
         self._conn.close()
@@ -69,6 +82,36 @@ class Gradebook:
     def __exit__(self, *exc) -> None:
         self.close()
 
+    @contextmanager
+    def write_lock(self, timeout: float = 10.0):
+        """Acquire an exclusive file lock on ``{db_path}.lock``.
+
+        Uses ``fcntl.flock`` so that concurrent writers (e.g. autograde and
+        formgrader) are serialised.  The lock is released when the context
+        manager exits.
+        """
+        import time
+
+        lock_path = Path(str(self.db_path) + ".lock")
+        fd = lock_path.open("w")
+        deadline = time.monotonic() + timeout
+        while True:
+            try:
+                fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                break
+            except OSError:
+                if time.monotonic() > deadline:
+                    fd.close()
+                    raise TimeoutError(
+                        f"Could not acquire write lock on {lock_path} within {timeout}s"
+                    )
+                time.sleep(0.1)
+        try:
+            yield
+        finally:
+            fcntl.flock(fd, fcntl.LOCK_UN)
+            fd.close()
+
     # --- Assignments ---
 
     def upsert_assignment(
@@ -78,17 +121,17 @@ class Gradebook:
         marks_metadata: dict | None = None,
     ) -> None:
         meta_json = json.dumps(marks_metadata) if marks_metadata else None
-        self._conn.execute(
-            """
-            INSERT INTO assignments (name, max_mark, marks_metadata)
-            VALUES (?, ?, ?)
-            ON CONFLICT(name) DO UPDATE SET
-                max_mark = excluded.max_mark,
-                marks_metadata = excluded.marks_metadata
-            """,
-            (name, max_mark, meta_json),
-        )
-        self._conn.commit()
+        with self._conn:
+            self._conn.execute(
+                """
+                INSERT INTO assignments (name, max_mark, marks_metadata)
+                VALUES (?, ?, ?)
+                ON CONFLICT(name) DO UPDATE SET
+                    max_mark = excluded.max_mark,
+                    marks_metadata = excluded.marks_metadata
+                """,
+                (name, max_mark, meta_json),
+            )
 
     def get_assignment(self, name: str) -> dict | None:
         row = self._conn.execute(
@@ -119,38 +162,40 @@ class Gradebook:
         tampered_json = json.dumps(tampered or [])
         now = datetime.now().isoformat()
 
-        self._conn.execute(
-            """
-            INSERT INTO submissions
-                (assignment, student, auto_mark, cell_errors, tampered,
-                 check_results, autograded_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-            ON CONFLICT(assignment, student) DO UPDATE SET
-                auto_mark = excluded.auto_mark,
-                cell_errors = excluded.cell_errors,
-                tampered = excluded.tampered,
-                check_results = excluded.check_results,
-                autograded_at = excluded.autograded_at,
-                total_mark = CASE
-                    WHEN submissions.manual_mark IS NOT NULL
-                         AND excluded.auto_mark IS NOT NULL
-                    THEN excluded.auto_mark + submissions.manual_mark
-                    WHEN submissions.manual_mark IS NOT NULL
-                    THEN submissions.manual_mark
-                    ELSE NULL
-                END
-            """,
-            (
-                assignment,
-                student,
-                auto_mark,
-                cell_errors,
-                tampered_json,
-                checks_json,
-                now,
-            ),
-        )
-        self._conn.commit()
+        with self._conn:
+            self._conn.execute(
+                """
+                INSERT INTO submissions
+                    (assignment, student, auto_mark, cell_errors, tampered,
+                     check_results, autograded_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(assignment, student) DO UPDATE SET
+                    auto_mark = excluded.auto_mark,
+                    cell_errors = excluded.cell_errors,
+                    tampered = excluded.tampered,
+                    check_results = excluded.check_results,
+                    autograded_at = excluded.autograded_at,
+                    updated_at = excluded.updated_at,
+                    total_mark = CASE
+                        WHEN submissions.manual_mark IS NOT NULL
+                             AND excluded.auto_mark IS NOT NULL
+                        THEN excluded.auto_mark + submissions.manual_mark
+                        WHEN submissions.manual_mark IS NOT NULL
+                        THEN submissions.manual_mark
+                        ELSE NULL
+                    END
+                """,
+                (
+                    assignment,
+                    student,
+                    auto_mark,
+                    cell_errors,
+                    tampered_json,
+                    checks_json,
+                    now,
+                    now,
+                ),
+            )
 
     def save_manual_grade(
         self,
@@ -159,22 +204,34 @@ class Gradebook:
         manual_mark: float | None,
         feedback: str = "",
         total_mark: float | None = None,
-    ) -> None:
+        expected_updated_at: str | None = None,
+    ) -> bool:
         """Save GTA manual grade and feedback.
 
         If *total_mark* is provided it is used directly (e.g. after scaling
         a 0-100 slider to the manual portion). Otherwise total is computed
         as ``auto_mark + manual_mark``.
+
+        If *expected_updated_at* is given and the current ``updated_at`` in the
+        database differs, the write is skipped and ``False`` is returned
+        (optimistic locking — the caller should warn about a conflict).
+        Returns ``True`` on successful save.
         """
         now = datetime.now().isoformat()
 
-        # Get current auto_mark
+        # Get current auto_mark (and check for stale data)
         row = self._conn.execute(
-            "SELECT auto_mark FROM submissions WHERE assignment = ? AND student = ?",
+            "SELECT auto_mark, updated_at FROM submissions WHERE assignment = ? AND student = ?",
             (assignment, student),
         ).fetchone()
 
         if row is not None:
+            if (
+                expected_updated_at is not None
+                and row["updated_at"] != expected_updated_at
+            ):
+                return False  # stale — conflict detected
+
             if total_mark is not None:
                 total = total_mark
             else:
@@ -186,25 +243,29 @@ class Gradebook:
                 else:
                     total = None
 
-            self._conn.execute(
-                """
-                UPDATE submissions
-                SET manual_mark = ?, feedback = ?, total_mark = ?, graded_at = ?
-                WHERE assignment = ? AND student = ?
-                """,
-                (manual_mark, feedback, total, now, assignment, student),
-            )
+            with self._conn:
+                self._conn.execute(
+                    """
+                    UPDATE submissions
+                    SET manual_mark = ?, feedback = ?, total_mark = ?,
+                        graded_at = ?, updated_at = ?
+                    WHERE assignment = ? AND student = ?
+                    """,
+                    (manual_mark, feedback, total, now, now, assignment, student),
+                )
         else:
             total = total_mark if total_mark is not None else manual_mark
-            self._conn.execute(
-                """
-                INSERT INTO submissions
-                    (assignment, student, manual_mark, feedback, total_mark, graded_at)
-                VALUES (?, ?, ?, ?, ?, ?)
-                """,
-                (assignment, student, manual_mark, feedback, total, now),
-            )
-        self._conn.commit()
+            with self._conn:
+                self._conn.execute(
+                    """
+                    INSERT INTO submissions
+                        (assignment, student, manual_mark, feedback,
+                         total_mark, graded_at, updated_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (assignment, student, manual_mark, feedback, total, now, now),
+                )
+        return True
 
     def get_submission(self, assignment: str, student: str) -> dict | None:
         row = self._conn.execute(
@@ -285,11 +346,11 @@ class Gradebook:
 
     def upsert_students(self, mapping: dict[str, str]) -> None:
         """Bulk insert or replace student name mappings."""
-        self._conn.executemany(
-            "INSERT OR REPLACE INTO students (username, full_name) VALUES (?, ?)",
-            mapping.items(),
-        )
-        self._conn.commit()
+        with self._conn:
+            self._conn.executemany(
+                "INSERT OR REPLACE INTO students (username, full_name) VALUES (?, ?)",
+                mapping.items(),
+            )
 
     def get_name_lookup(self) -> dict[str, str]:
         """Return {username: full_name} for all students."""
@@ -312,39 +373,50 @@ class Gradebook:
         if not autograded_dir.is_dir():
             return 0
 
+        now = datetime.now().isoformat()
         count = 0
-        for f in sorted(autograded_dir.iterdir()):
-            if f.suffix != ".py":
-                continue
-            student = f.stem
-            lines = f.read_text().splitlines(keepends=True)
-            manual_mark, feedback_text = parse_gta_feedback(lines)
-            auto_mark = parse_auto_marks(lines)
+        with self._conn:
+            for f in sorted(autograded_dir.iterdir()):
+                if f.suffix != ".py":
+                    continue
+                student = f.stem
+                lines = f.read_text().splitlines(keepends=True)
+                manual_mark, feedback_text = parse_gta_feedback(lines)
+                auto_mark = parse_auto_marks(lines)
 
-            if manual_mark is not None and auto_mark is not None:
-                total = auto_mark + manual_mark
-            elif manual_mark is not None:
-                total = manual_mark
-            else:
-                total = None
+                if manual_mark is not None and auto_mark is not None:
+                    total = auto_mark + manual_mark
+                elif manual_mark is not None:
+                    total = manual_mark
+                else:
+                    total = None
 
-            self._conn.execute(
-                """
-                INSERT INTO submissions
-                    (assignment, student, auto_mark, manual_mark, total_mark, feedback)
-                VALUES (?, ?, ?, ?, ?, ?)
-                ON CONFLICT(assignment, student) DO UPDATE SET
-                    auto_mark = COALESCE(submissions.auto_mark, excluded.auto_mark),
-                    manual_mark = COALESCE(submissions.manual_mark, excluded.manual_mark),
-                    total_mark = COALESCE(submissions.total_mark, excluded.total_mark),
-                    feedback = CASE
-                        WHEN submissions.feedback != '' THEN submissions.feedback
-                        ELSE excluded.feedback
-                    END
-                """,
-                (assignment, student, auto_mark, manual_mark, total, feedback_text),
-            )
-            count += 1
+                self._conn.execute(
+                    """
+                    INSERT INTO submissions
+                        (assignment, student, auto_mark, manual_mark,
+                         total_mark, feedback, updated_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                    ON CONFLICT(assignment, student) DO UPDATE SET
+                        auto_mark = COALESCE(submissions.auto_mark, excluded.auto_mark),
+                        manual_mark = COALESCE(submissions.manual_mark, excluded.manual_mark),
+                        total_mark = COALESCE(submissions.total_mark, excluded.total_mark),
+                        feedback = CASE
+                            WHEN submissions.feedback != '' THEN submissions.feedback
+                            ELSE excluded.feedback
+                        END,
+                        updated_at = excluded.updated_at
+                    """,
+                    (
+                        assignment,
+                        student,
+                        auto_mark,
+                        manual_mark,
+                        total,
+                        feedback_text,
+                        now,
+                    ),
+                )
+                count += 1
 
-        self._conn.commit()
         return count

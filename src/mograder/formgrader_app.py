@@ -1187,6 +1187,7 @@ def _(
         _mark = None
         _feedback_text = ""
         _auto_mark = None
+        _db_sub = None
 
         # Try DB first
         if GRADEBOOK is not None and grading_assignment_name:
@@ -1276,12 +1277,14 @@ def _(
         else:
             grading_auto_info = f"**Manual:** {_current_mark}/100"
 
-        # Store scaling info for _save_current
+        # Store scaling info for _save_current (includes updated_at for
+        # optimistic locking — detects concurrent edits by another grader)
         grading_scale_info = {
             "auto_mark": _auto_mark,
             "auto_max": _auto_max,
             "manual_available": _manual_available,
             "max_mark": _max_mark,
+            "updated_at": _db_sub.get("updated_at") if _db_sub is not None else None,
         }
     else:
         grading_mark_input = mo.ui.slider(
@@ -1294,6 +1297,7 @@ def _(
             "auto_max": 0,
             "manual_available": 100,
             "max_mark": 100,
+            "updated_at": None,
         }
     set_grading_inputs({"mark": grading_mark_input, "feedback": grading_feedback_input})
 
@@ -1398,15 +1402,27 @@ def _(
                 _total = _slider_val
 
             # Write to DB if available (store raw slider as manual_mark,
-            # pass computed total)
+            # pass computed total).  Use optimistic locking: if another
+            # grader saved since we loaded, warn instead of overwriting.
+            _expected_ts = grading_scale_info.get("updated_at")
             if GRADEBOOK is not None and grading_assignment_name:
-                GRADEBOOK.save_manual_grade(
+                _saved = GRADEBOOK.save_manual_grade(
                     grading_assignment_name,
                     grading_current_sub.student,
                     _slider_val,
                     _feedback,
                     total_mark=_total,
+                    expected_updated_at=_expected_ts,
                 )
+                if not _saved:
+                    set_action_log(
+                        "**Conflict:** this submission was updated by another "
+                        "grader since you opened it. Navigate away and back "
+                        "to reload, or click Save again to overwrite."
+                    )
+                    # Clear the stale timestamp so a second save succeeds
+                    grading_scale_info["updated_at"] = None
+                    return
             elif grading_assignment_name:
                 _gb_path = COURSE_DIR / MOGRADER_CONFIG.gradebook
                 if _gb_path.is_file():

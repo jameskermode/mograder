@@ -345,3 +345,157 @@ def test_import_preserves_existing(tmp_path):
         # Existing manual grade should be preserved
         assert alice["manual_mark"] == 90
         assert alice["feedback"] == "Excellent"
+
+
+# --- Concurrent write safety ---
+
+
+def test_busy_timeout_is_set(tmp_path):
+    """Gradebook sets PRAGMA busy_timeout."""
+    with Gradebook(tmp_path / "test.db") as gb:
+        row = gb._conn.execute("PRAGMA busy_timeout").fetchone()
+        assert row[0] == 5000
+
+
+def test_updated_at_column_exists(tmp_path):
+    """submissions table has an updated_at column."""
+    with Gradebook(tmp_path / "test.db") as gb:
+        gb.upsert_assignment("hw1")
+        checks = [CheckResult("Q1", "success")]
+        gb.save_autograde_result("hw1", "alice", checks, auto_mark=10)
+        sub = gb.get_submission("hw1", "alice")
+        assert "updated_at" in sub
+        assert sub["updated_at"] is not None
+
+
+def test_updated_at_set_on_manual_grade(tmp_path):
+    """save_manual_grade sets updated_at."""
+    with Gradebook(tmp_path / "test.db") as gb:
+        gb.upsert_assignment("hw1")
+        checks = [CheckResult("Q1", "success")]
+        gb.save_autograde_result("hw1", "alice", checks, auto_mark=10)
+        gb.save_manual_grade("hw1", "alice", 70, "Good")
+        sub = gb.get_submission("hw1", "alice")
+        assert sub["updated_at"] is not None
+
+
+def test_optimistic_lock_conflict(tmp_path):
+    """save_manual_grade returns False when updated_at is stale."""
+    with Gradebook(tmp_path / "test.db") as gb:
+        gb.upsert_assignment("hw1")
+        checks = [CheckResult("Q1", "success")]
+        gb.save_autograde_result("hw1", "alice", checks, auto_mark=10)
+
+        # Save once
+        gb.save_manual_grade("hw1", "alice", 70, "Good")
+        sub = gb.get_submission("hw1", "alice")
+        ts1 = sub["updated_at"]
+
+        # Save again to get a new updated_at
+        gb.save_manual_grade("hw1", "alice", 80, "Better")
+
+        # Now try to save with the OLD timestamp — should fail
+        result = gb.save_manual_grade(
+            "hw1", "alice", 90, "Best", expected_updated_at=ts1
+        )
+        assert result is False
+
+        # Data should not have changed
+        sub = gb.get_submission("hw1", "alice")
+        assert sub["manual_mark"] == 80
+        assert sub["feedback"] == "Better"
+
+
+def test_optimistic_lock_success(tmp_path):
+    """save_manual_grade returns True with matching updated_at."""
+    with Gradebook(tmp_path / "test.db") as gb:
+        gb.upsert_assignment("hw1")
+        checks = [CheckResult("Q1", "success")]
+        gb.save_autograde_result("hw1", "alice", checks, auto_mark=10)
+        gb.save_manual_grade("hw1", "alice", 70, "Good")
+
+        sub = gb.get_submission("hw1", "alice")
+        ts = sub["updated_at"]
+
+        # Save with matching timestamp — should succeed
+        result = gb.save_manual_grade(
+            "hw1", "alice", 85, "Great", expected_updated_at=ts
+        )
+        assert result is True
+
+        sub = gb.get_submission("hw1", "alice")
+        assert sub["manual_mark"] == 85
+
+
+def test_optimistic_lock_none_skips_check(tmp_path):
+    """expected_updated_at=None always allows the save."""
+    with Gradebook(tmp_path / "test.db") as gb:
+        gb.upsert_assignment("hw1")
+        checks = [CheckResult("Q1", "success")]
+        gb.save_autograde_result("hw1", "alice", checks, auto_mark=10)
+        gb.save_manual_grade("hw1", "alice", 70, "Good")
+
+        # None means no locking check
+        result = gb.save_manual_grade(
+            "hw1", "alice", 99, "Override", expected_updated_at=None
+        )
+        assert result is True
+        sub = gb.get_submission("hw1", "alice")
+        assert sub["manual_mark"] == 99
+
+
+def test_write_lock(tmp_path):
+    """write_lock context manager acquires and releases a file lock."""
+    with Gradebook(tmp_path / "test.db") as gb:
+        with gb.write_lock():
+            # Should be able to write while holding the lock
+            gb.upsert_assignment("hw1")
+        # After exiting, assignment should persist
+        assert gb.get_assignment("hw1") is not None
+
+
+def test_migration_adds_updated_at(tmp_path):
+    """Opening a DB that already has submissions adds updated_at column."""
+    import sqlite3
+
+    db_path = tmp_path / "test.db"
+    # Create a DB WITHOUT updated_at (old schema)
+    conn = sqlite3.connect(str(db_path))
+    conn.executescript(
+        """
+        CREATE TABLE assignments (
+            name TEXT PRIMARY KEY,
+            max_mark REAL NOT NULL DEFAULT 100,
+            marks_metadata TEXT
+        );
+        CREATE TABLE students (
+            username TEXT PRIMARY KEY,
+            full_name TEXT NOT NULL
+        );
+        CREATE TABLE submissions (
+            assignment TEXT NOT NULL REFERENCES assignments(name),
+            student TEXT NOT NULL,
+            auto_mark REAL,
+            manual_mark REAL,
+            total_mark REAL,
+            feedback TEXT NOT NULL DEFAULT '',
+            cell_errors INTEGER NOT NULL DEFAULT 0,
+            tampered TEXT NOT NULL DEFAULT '[]',
+            check_results TEXT NOT NULL DEFAULT '[]',
+            graded_at TEXT,
+            autograded_at TEXT NOT NULL DEFAULT (datetime('now')),
+            PRIMARY KEY (assignment, student)
+        );
+        INSERT INTO assignments (name) VALUES ('hw1');
+        INSERT INTO submissions (assignment, student, auto_mark)
+            VALUES ('hw1', 'alice', 10);
+        """
+    )
+    conn.commit()
+    conn.close()
+
+    # Open with Gradebook — migration should add updated_at
+    with Gradebook(db_path) as gb:
+        sub = gb.get_submission("hw1", "alice")
+        assert "updated_at" in sub
+        assert sub["auto_mark"] == 10
