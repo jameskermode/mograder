@@ -88,7 +88,8 @@ def merge_grades(
         key = row[match_column]
         if key in grades:
             matched_keys.add(key)
-            mark = grades[key]["mark"]
+            # Prefer penalised_mark if available
+            mark = grades[key].get("penalised_mark") or grades[key]["mark"]
             if mark is not None:
                 row["Grade"] = str(mark)
                 row["Maximum grade"] = "100"
@@ -250,6 +251,12 @@ def grades_from_gradebook(db_path: "Path") -> dict[str, dict]:
                         grades[student]["mark"] = g["mark"]
                     else:
                         grades[student]["mark"] += g["mark"]
+                # Carry through penalised_mark if present
+                if g.get("penalised_mark") is not None:
+                    if grades[student].get("penalised_mark") is None:
+                        grades[student]["penalised_mark"] = g["penalised_mark"]
+                    else:
+                        grades[student]["penalised_mark"] += g["penalised_mark"]
                 if g["feedback"]:
                     if grades[student]["feedback"]:
                         grades[student]["feedback"] += "\n" + g["feedback"]

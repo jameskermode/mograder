@@ -115,6 +115,23 @@ def _(check, mo, x):
     return
 ```
 
+### Hidden tests
+
+You can add checks that students cannot see but which run during autograde. Wrap them in `### BEGIN HIDDEN TESTS` / `### END HIDDEN TESTS`:
+
+```python
+    check("Q1: Array creation", [
+        (x.shape == (50,), f"Expected shape (50,), got {x.shape}"),
+    ])
+    ### BEGIN HIDDEN TESTS
+    check("Q1: Edge cases", [
+        (abs(x[0]) < 1e-10, "x should start at 0"),
+    ])
+    ### END HIDDEN TESTS
+```
+
+Hidden tests are stripped from the release notebook and reinjected from the source during `mograder autograde`. See [Source Notebooks: Hidden tests](usage/source-notebooks.md#hidden-tests) for details.
+
 ### Choosing a grading mode
 
 **Holistic mode** (single 0-100 mark assigned by a GTA):
@@ -242,7 +259,17 @@ mograder formgrader-asgi my-course/ --host 0.0.0.0 --port 2718
 mograder feedback hw1
 ```
 
-This exports graded notebooks to HTML in `feedback/hw1/`, injecting the GTA's mark and feedback as a callout.
+This exports graded notebooks to HTML in `feedback/hw1/`, injecting the GTA's mark and feedback as a callout. If you've configured late penalties in `mograder.toml`, they are applied automatically during feedback export:
+
+```toml
+[penalties]
+enabled = true
+grace_minutes = 5
+per_day = 5
+max = 100
+```
+
+Use `--no-penalties` to skip penalty computation, or `--due-date` to override the deadline.
 
 ## 10. Upload grades
 

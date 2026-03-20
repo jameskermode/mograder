@@ -87,6 +87,15 @@ def _(check, mo, np, x, y):
             (abs(y[0]) < 1e-10, "y[0] should be sin(0) = 0"),
         ],
     )
+    ### BEGIN HIDDEN TESTS
+    check(
+        "Q1: Edge cases",
+        [
+            (abs(y[-1]) < 1e-10, "y[-1] should be sin(2*pi) = 0"),
+            (abs(y[12] - np.sin(x[12])) < 1e-10, "y should equal sin(x) at all points"),
+        ],
+    )
+    ### END HIDDEN TESTS
     return
 
 

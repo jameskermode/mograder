@@ -56,6 +56,9 @@ def _build_feedback_content(
     feedback_text: str,
     auto_mark: int | float | None = None,
     total_available: int | float | None = None,
+    penalty_pct: float | None = None,
+    penalised_mark: int | float | None = None,
+    penalty_reason: str | None = None,
 ) -> str:
     """Build the inner HTML content for a feedback callout.
 
@@ -72,6 +75,16 @@ def _build_feedback_content(
         )
     else:
         parts.append(f"<strong>Mark: {_fmt_mark(mark)}/100</strong>")
+
+    # Late penalty line
+    if penalty_pct is not None and penalty_pct > 0 and penalised_mark is not None:
+        reason = html.escape(penalty_reason or "")
+        parts.append(
+            f'<span style="color: #d32f2f"><strong>Late penalty: '
+            f"-{_fmt_mark(penalty_pct)}%</strong>"
+            f" ({reason})"
+            f" &rArr; <strong>{_fmt_mark(penalised_mark)}/{_total_str}</strong></span>"
+        )
 
     if feedback_text:
         paragraphs = feedback_text.split("\n\n")
@@ -91,6 +104,9 @@ def inject_feedback_html(
     feedback_text: str,
     auto_mark: int | float | None = None,
     total_available: int | float | None = None,
+    penalty_pct: float | None = None,
+    penalised_mark: int | float | None = None,
+    penalty_reason: str | None = None,
 ) -> None:
     """Inject a feedback callout cell into an existing marimo HTML export.
 
@@ -136,7 +152,15 @@ def inject_feedback_html(
     config = json.loads(clean_json)
 
     # Build feedback content
-    content = _build_feedback_content(mark, feedback_text, auto_mark, total_available)
+    content = _build_feedback_content(
+        mark,
+        feedback_text,
+        auto_mark,
+        total_available,
+        penalty_pct=penalty_pct,
+        penalised_mark=penalised_mark,
+        penalty_reason=penalty_reason,
+    )
     callout = _build_callout_html(content, "info")
 
     # Remove grader.scores() cell to avoid duplicate score display
@@ -227,6 +251,9 @@ def export_feedback_html(
     feedback_text: str | None = None,
     auto_mark: int | float | None = None,
     total_available: int | float | None = None,
+    penalty_pct: float | None = None,
+    penalised_mark: int | float | None = None,
+    penalty_reason: str | None = None,
 ) -> Path:
     """Export a graded notebook to standalone HTML feedback.
 
@@ -275,6 +302,9 @@ def export_feedback_html(
                 feedback_text=_feedback or "",
                 auto_mark=_auto_mark,
                 total_available=_total_avail,
+                penalty_pct=penalty_pct,
+                penalised_mark=penalised_mark,
+                penalty_reason=penalty_reason,
             )
         else:
             # Not yet graded — just copy the HTML as-is
@@ -326,9 +356,12 @@ def write_grades_csv(grades: list[dict], path: Path):
     """Write aggregated grades to CSV."""
     path.parent.mkdir(parents=True, exist_ok=True)
     has_auto = any(g.get("auto_mark") is not None for g in grades)
+    has_penalty = any(g.get("penalty_pct") is not None for g in grades)
     fieldnames = ["student", "mark", "feedback"]
     if has_auto:
         fieldnames = ["student", "mark", "auto_mark", "feedback"]
+    if has_penalty:
+        fieldnames.extend(["penalty_pct", "penalised_mark"])
     with open(path, "w", newline="") as f:
         writer = csv.DictWriter(f, fieldnames=fieldnames, extrasaction="ignore")
         writer.writeheader()

@@ -960,10 +960,11 @@ def autograde(
                 f"Cell integrity check using release: {_rel(release_candidates[0])}"
             )
 
-    # Integrity check + reinject tampered cells
+    # Integrity check + reinject tampered cells + hidden tests
     run_paths: list[Path] = list(notebooks)
     tamper_info: dict[str, integrity.IntegrityResult] = {}
     cell_tamper_info: dict[str, integrity.CellIntegrityResult] = {}
+    hidden_labels: set[str] | None = None
     fixed_dir: Path | None = None
     if source_text:
         fixed_dir = Path(tempfile.mkdtemp())
@@ -983,9 +984,21 @@ def autograde(
                     )
 
             ir = integrity.check_integrity(source_text, nb_text)
+
+            # Reinject hidden tests from source if present
+            nb_text_for_run = ir.fixed_source
+            if integrity.has_hidden_tests(nb_text_for_run):
+                nb_text_for_run, _hidden_labels = integrity.inject_hidden_tests(
+                    source_text, nb_text_for_run
+                )
+                if _hidden_labels:
+                    if hidden_labels is None:
+                        hidden_labels = set()
+                    hidden_labels |= _hidden_labels
+
             if ir.tampered_checks or ir.tampered_marks or nb.stem in cell_tamper_info:
                 fixed = fixed_dir / nb.name
-                fixed.write_text(ir.fixed_source)
+                fixed.write_text(nb_text_for_run)
                 run_paths.append(fixed)
                 tamper_info[nb.stem] = ir
                 warns = [f"check({k})" for k in ir.tampered_checks]
@@ -996,6 +1009,11 @@ def autograde(
                         f"  WARNING: {nb.stem} — tampered cells reinjected: "
                         f"{', '.join(warns)}"
                     )
+            elif nb_text_for_run != nb.read_text():
+                # Hidden tests were injected but no tampering detected
+                fixed = fixed_dir / nb.name
+                fixed.write_text(nb_text_for_run)
+                run_paths.append(fixed)
             else:
                 run_paths.append(nb)
 
@@ -1035,6 +1053,14 @@ def autograde(
         isolate_cwd=True,
         use_bubblewrap=config.use_bubblewrap,
     )
+
+    # Mark hidden check results
+    if hidden_labels:
+        for r in results:
+            for c in r.checks:
+                key = c.label.split(":")[0].strip()
+                if key in hidden_labels:
+                    c.hidden = True
 
     # Map results back to original paths + record tampering
     for r in results:
@@ -1160,13 +1186,32 @@ def autograde(
     "--timeout", type=int, default=300, help="Timeout per notebook in seconds"
 )
 @click.option("-j", "--jobs", type=int, default=4, help="Number of parallel workers")
+@click.option(
+    "--no-penalties",
+    is_flag=True,
+    help="Skip late penalty computation even if configured",
+)
+@click.option(
+    "--due-date",
+    type=str,
+    default=None,
+    help="Override due date (ISO format or Unix timestamp)",
+)
 @click.pass_context
-def feedback_cmd(ctx, assignments, output_dir, grades_csv, timeout, jobs):
+def feedback_cmd(
+    ctx, assignments, output_dir, grades_csv, timeout, jobs, no_penalties, due_date
+):
     """Export graded notebooks to HTML and aggregate grades.
 
     ASSIGNMENTS can be assignment names (e.g. "hw1") which are auto-expanded
     to autograded/hw1/*.py, or explicit file paths.
     """
+    from mograder.penalties import (
+        compute_penalty,
+        load_fetch_metadata,
+        resolve_submission_time,
+    )
+
     config = ctx.obj["config"]
     files = _resolve_assignments(assignments, config.autograded_dir)
     notebooks = [f for f in files if f.suffix == ".py"]
@@ -1198,6 +1243,90 @@ def feedback_cmd(ctx, assignments, output_dir, grades_csv, timeout, jobs):
         n_graded = sum(1 for g in grades if g["mark"] is not None)
     click.echo(f"{n_graded}/{len(notebooks)} notebooks have been graded")
 
+    # Compute late penalties if configured
+    apply_penalties = config.penalty_enabled and not no_penalties
+    if apply_penalties:
+        # Resolve due date
+        _due_date = 0
+        if due_date is not None:
+            # Try Unix timestamp first, then ISO format
+            try:
+                _due_date = int(due_date)
+            except ValueError:
+                from datetime import datetime, timezone
+
+                _due_date = int(
+                    datetime.fromisoformat(due_date)
+                    .replace(tzinfo=timezone.utc)
+                    .timestamp()
+                )
+        else:
+            # Look up from config assignments
+            for a in config.assignments:
+                if a.get("name") == assignment_name:
+                    _due_date = a.get("duedate", 0)
+                    break
+
+        if _due_date == 0:
+            click.echo("WARNING: no due date found — skipping penalties")
+            apply_penalties = False
+        else:
+            # Resolve submitted directory for timestamp lookup
+            submitted_dir = (
+                notebooks[0].parent.parent.parent
+                / config.submitted_dir
+                / assignment_name
+            )
+            fetch_metadata = load_fetch_metadata(submitted_dir)
+            n_penalised = 0
+
+            for g in grades:
+                student = g["student"]
+                mark = g.get("mark")
+                if mark is None:
+                    continue
+                sub_time = resolve_submission_time(
+                    student, assignment_name, submitted_dir, fetch_metadata
+                )
+                if sub_time is None:
+                    continue
+                pr = compute_penalty(
+                    raw_mark=mark,
+                    submission_time=sub_time,
+                    due_date=_due_date,
+                    grace_minutes=config.penalty_grace_minutes,
+                    per_day=config.penalty_per_day,
+                    max_penalty=config.penalty_max,
+                )
+                if pr.penalty_pct > 0:
+                    n_penalised += 1
+                g["penalty_pct"] = pr.penalty_pct
+                g["penalised_mark"] = pr.penalised_mark
+                g["penalty_reason"] = pr.reason
+                grades_by_student[student] = g
+
+            if n_penalised:
+                click.echo(f"Late penalties applied to {n_penalised} submission(s)")
+
+            # Save penalties to gradebook
+            if db_path:
+                with Gradebook(db_path) as gb:
+                    for g in grades:
+                        if "penalty_pct" in g:
+                            sub_time = resolve_submission_time(
+                                g["student"],
+                                assignment_name,
+                                submitted_dir,
+                                fetch_metadata,
+                            )
+                            gb.save_penalty(
+                                assignment_name,
+                                g["student"],
+                                g["penalty_pct"],
+                                g.get("penalised_mark", g.get("mark", 0)),
+                                submitted_at=(str(sub_time) if sub_time else None),
+                            )
+
     # Export each to HTML
     output_dir_path = (
         Path(output_dir) if not isinstance(output_dir, Path) else output_dir
@@ -1213,6 +1342,9 @@ def feedback_cmd(ctx, assignments, output_dir, grades_csv, timeout, jobs):
                 mark=grade_data.get("mark") if grade_data else None,
                 feedback_text=grade_data.get("feedback") if grade_data else None,
                 auto_mark=grade_data.get("auto_mark") if grade_data else None,
+                penalty_pct=grade_data.get("penalty_pct") if grade_data else None,
+                penalised_mark=grade_data.get("penalised_mark") if grade_data else None,
+                penalty_reason=grade_data.get("penalty_reason") if grade_data else None,
             )
             click.echo(f"  Exported: {_rel(html_path)}")
         except Exception as e:
@@ -1592,10 +1724,19 @@ def moodle_upload_feedback(
         if uid is None:
             click.echo(f"  WARNING: no Moodle user for '{username}', skipping")
             continue
-        mark = gdata.get("mark")
+        # Prefer penalised_mark if available, fall back to raw mark
+        mark = gdata.get("penalised_mark") or gdata.get("mark")
         if mark is None:
             continue
         fb_text = moodle.markdown_to_plaintext(gdata.get("feedback", ""))
+
+        # Prepend penalty note if applicable
+        raw_mark = gdata.get("mark")
+        penalty_pct = gdata.get("penalty_pct")
+        if penalty_pct and penalty_pct > 0 and raw_mark is not None:
+            penalty_note = f"Late penalty: -{penalty_pct}%. Raw mark: {raw_mark}.\n\n"
+            fb_text = penalty_note + fb_text
+
         fb_file = None
 
         # Attach HTML feedback file if available

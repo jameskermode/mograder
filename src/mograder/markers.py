@@ -18,6 +18,8 @@ def _rel(p: Path) -> str:
 
 SOLUTION_BEGIN = "### BEGIN SOLUTION"
 SOLUTION_END = "### END SOLUTION"
+HIDDEN_TESTS_BEGIN = "### BEGIN HIDDEN TESTS"
+HIDDEN_TESTS_END = "### END HIDDEN TESTS"
 SUBMIT_MARKER = "# === MOGRADER: SUBMIT ==="
 
 _SIMPLE_NAME_RE = re.compile(r"^[a-zA-Z_]\w*$")
@@ -123,13 +125,15 @@ def _find_sentinel_vars(lines: list[str]) -> dict[int, list[str]]:
 
 
 def validate_markers(lines: list[str], filepath: str) -> list[str]:
-    """Check that all solution markers are properly paired.
+    """Check that all solution and hidden-test markers are properly paired.
 
     Returns a list of error messages (empty if valid).
     """
     errors = []
     in_solution = False
+    in_hidden = False
     sol_start_line = 0
+    hidden_start_line = 0
 
     for i, line in enumerate(lines, 1):
         stripped = line.strip()
@@ -139,6 +143,11 @@ def validate_markers(lines: list[str], filepath: str) -> list[str]:
                 errors.append(
                     f"{filepath}:{i}: nested {SOLUTION_BEGIN} "
                     f"(previous opened at line {sol_start_line})"
+                )
+            if in_hidden:
+                errors.append(
+                    f"{filepath}:{i}: {SOLUTION_BEGIN} inside hidden tests block "
+                    f"(opened at line {hidden_start_line})"
                 )
             in_solution = True
             sol_start_line = i
@@ -150,8 +159,32 @@ def validate_markers(lines: list[str], filepath: str) -> list[str]:
                 )
             in_solution = False
 
+        elif stripped == HIDDEN_TESTS_BEGIN:
+            if in_hidden:
+                errors.append(
+                    f"{filepath}:{i}: nested {HIDDEN_TESTS_BEGIN} "
+                    f"(previous opened at line {hidden_start_line})"
+                )
+            if in_solution:
+                errors.append(
+                    f"{filepath}:{i}: {HIDDEN_TESTS_BEGIN} inside solution block "
+                    f"(opened at line {sol_start_line})"
+                )
+            in_hidden = True
+            hidden_start_line = i
+
+        elif stripped == HIDDEN_TESTS_END:
+            if not in_hidden:
+                errors.append(
+                    f"{filepath}:{i}: {HIDDEN_TESTS_END} without matching "
+                    f"{HIDDEN_TESTS_BEGIN}"
+                )
+            in_hidden = False
+
     if in_solution:
         errors.append(f"{filepath}:{sol_start_line}: unclosed {SOLUTION_BEGIN}")
+    if in_hidden:
+        errors.append(f"{filepath}:{hidden_start_line}: unclosed {HIDDEN_TESTS_BEGIN}")
 
     return errors
 
@@ -202,6 +235,72 @@ def strip_solutions(lines: list[str]) -> list[str]:
 def count_markers(lines: list[str]) -> int:
     """Count solution blocks."""
     return sum(1 for line in lines if line.strip() == SOLUTION_BEGIN)
+
+
+def count_hidden_markers(lines: list[str]) -> int:
+    """Count hidden test blocks."""
+    return sum(1 for line in lines if line.strip() == HIDDEN_TESTS_BEGIN)
+
+
+def strip_hidden_tests(lines: list[str]) -> list[str]:
+    """Remove hidden test blocks from source lines.
+
+    Lines between BEGIN HIDDEN TESTS / END HIDDEN TESTS are replaced with
+    a single ``# HIDDEN TESTS`` placeholder comment at the correct indentation.
+    """
+    output = []
+    in_hidden = False
+    hidden_indent = ""
+
+    for line in lines:
+        stripped = line.strip()
+
+        if stripped == HIDDEN_TESTS_BEGIN:
+            in_hidden = True
+            hidden_indent = line[: len(line) - len(line.lstrip())]
+            continue
+
+        if stripped == HIDDEN_TESTS_END:
+            in_hidden = False
+            output.append(f"{hidden_indent}# HIDDEN TESTS\n")
+            continue
+
+        if not in_hidden:
+            output.append(line)
+
+    return output
+
+
+def extract_hidden_tests(lines: list[str]) -> list[tuple[str, list[str]]]:
+    """Extract hidden test blocks as ``(indent, lines)`` tuples.
+
+    Each tuple contains the indentation prefix and the list of lines
+    (with their original indentation) from one hidden-test block.
+    Used during autograde to reinject hidden tests into submitted notebooks.
+    """
+    blocks: list[tuple[str, list[str]]] = []
+    current_lines: list[str] = []
+    in_hidden = False
+    indent = ""
+
+    for line in lines:
+        stripped = line.strip()
+
+        if stripped == HIDDEN_TESTS_BEGIN:
+            in_hidden = True
+            indent = line[: len(line) - len(line.lstrip())]
+            current_lines = []
+            continue
+
+        if stripped == HIDDEN_TESTS_END:
+            in_hidden = False
+            blocks.append((indent, current_lines))
+            continue
+
+        if in_hidden:
+            current_lines.append(line)
+
+    return blocks
 
 
 def convert_markdown_cells(lines: list[str]) -> list[str]:
@@ -289,6 +388,28 @@ def _inject_before_main(lines: list[str], cell_text: str) -> list[str]:
     if insert_idx is None:
         insert_idx = len(lines)
     return lines[:insert_idx] + cell_text.splitlines(keepends=True) + lines[insert_idx:]
+
+
+def _inject_hidden_tests_metadata(lines: list[str]) -> list[str]:
+    """Insert ``mograder-hidden-tests = true`` into a PEP 723 script block.
+
+    If no PEP 723 block is found, the lines are returned unchanged.
+    """
+    close_idx = None
+    in_block = False
+    for i, line in enumerate(lines):
+        stripped = line.strip()
+        if stripped == "# /// script":
+            in_block = True
+        elif in_block and stripped == "# ///":
+            close_idx = i
+            break
+
+    if close_idx is None:
+        return lines
+
+    new_line = "# mograder-hidden-tests = true\n"
+    return lines[:close_idx] + [new_line] + lines[close_idx:]
 
 
 def _inject_assignment_metadata(lines: list[str], assignment_name: str) -> list[str]:
@@ -380,7 +501,9 @@ def process_file(
         print(f"VALID: {source} ({n_solutions} solution blocks)")
         return True
 
+    n_hidden = count_hidden_markers(lines)
     student_lines = strip_solutions(lines)
+    student_lines = strip_hidden_tests(student_lines)
     student_lines = convert_markdown_cells(student_lines)
 
     if submit_url:
@@ -390,11 +513,11 @@ def process_file(
 
     if dry_run:
         n_removed = len(lines) - len(student_lines)
-        print(
-            f"DRY-RUN: {_rel(source)} → "
-            f"{n_solutions} solution blocks stripped, "
-            f"{n_removed} lines removed"
-        )
+        msg = f"DRY-RUN: {_rel(source)} → {n_solutions} solution blocks stripped"
+        if n_hidden:
+            msg += f", {n_hidden} hidden test blocks stripped"
+        msg += f", {n_removed} lines removed"
+        print(msg)
         return True
 
     if output_dir is None:
@@ -406,6 +529,10 @@ def process_file(
     assignment_name = source.parent.name
     student_lines = _inject_assignment_metadata(student_lines, assignment_name)
 
+    # Inject hidden-tests flag if any hidden test blocks were stripped
+    if n_hidden > 0:
+        student_lines = _inject_hidden_tests_metadata(student_lines)
+
     dest.write_text("".join(student_lines))
 
     # Inject cell hashes (needs parsed marimo IR, so operates on written text)
@@ -413,7 +540,11 @@ def process_file(
     text = _inject_cell_hashes(text)
     dest.write_text(text)
 
-    print(f"OK: {_rel(source)} → {_rel(dest)} ({n_solutions} solution blocks stripped)")
+    msg = f"OK: {_rel(source)} → {_rel(dest)} ({n_solutions} solution blocks stripped"
+    if n_hidden:
+        msg += f", {n_hidden} hidden test blocks stripped"
+    msg += ")"
+    print(msg)
     return True
 
 

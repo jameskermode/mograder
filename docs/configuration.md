@@ -55,6 +55,12 @@ remote = "sciml"                                    # SSH host alias
 remote_course_dir = "/home/svc_user/courses/es98e"  # course dir on remote
 remote_venv_dir = "~/marimo-server"                 # uv venv dir on remote (optional)
 
+[penalties]                        # late submission penalties
+enabled = true                     # enable late penalty computation (default: false)
+grace_minutes = 5                  # grace period in minutes (default: 5)
+per_day = 5                        # percentage points per calendar day late (default: 5)
+max = 100                          # maximum penalty percentage (default: 100)
+
 [edit_links]                       # custom "Edit in ..." links for the student dashboard
 molab = "https://molab.marimo.io/new/#code/{content_lz}"
 ```
@@ -92,6 +98,19 @@ Path to the SQLite gradebook file (default: `gradebook.db` in the course directo
 ### `[sync]`
 
 Settings for `mograder sync` — SSH remote host, course directory on the remote, and optional uv venv directory.
+
+### `[penalties]`
+
+Late submission penalty configuration. Penalties are applied during `mograder feedback` (not during autograde), so raw marks are always preserved.
+
+| Key | Default | Description |
+|-----|---------|-------------|
+| `enabled` | `false` | Enable late penalty computation |
+| `grace_minutes` | `5` | Grace period in minutes (accounts for clock skew) |
+| `per_day` | `5` | Percentage points deducted per calendar day late |
+| `max` | `100` | Maximum penalty percentage (100 = can lose all marks) |
+
+Partial days are rounded up to the next whole day (e.g. 1.1 days late = 2-day penalty). The due date is read from the `duedate` field in `[[assignments]]`. Both raw and penalised marks are stored in the gradebook. Use `--no-penalties` on the `feedback` command to skip, or `--due-date` to override the deadline.
 
 ### `[edit_links]`
 

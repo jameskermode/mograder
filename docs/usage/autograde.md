@@ -22,3 +22,7 @@ mograder autograde --moodle-csv grades.csv --moodle-zip submissions.zip --source
 ```
 
 This extracts submissions from the ZIP (mapping participant IDs to usernames via the CSV), then runs the normal autograde flow. The output directory and assignment name are inferred from the source notebook path.
+
+## Hidden tests
+
+When the source notebook contains `### BEGIN HIDDEN TESTS` / `### END HIDDEN TESTS` blocks, the release version has these replaced with a `# HIDDEN TESTS` placeholder. During autograde (with `--source` provided), hidden test blocks are reinjected from the source into each submission before execution. This means hidden checks run and contribute to the mark, but students never see the test code.

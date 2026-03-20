@@ -97,6 +97,30 @@ check("Q2: Finite differences", [
 
 The question key is the text before the first colon in the check label, so `check("Q1: Array creation", [...])` maps to the `"Q1"` entry. Call `grader.scores()` in a cell to display a reactive score table showing earned/available marks (including fractional values for partial credit).
 
+## Hidden tests
+
+You can include checks that are visible to instructors but hidden from students. Wrap them in `### BEGIN HIDDEN TESTS` / `### END HIDDEN TESTS` markers. During `mograder generate`, these blocks are replaced with a `# HIDDEN TESTS` placeholder comment. During `mograder autograde`, the hidden tests are reinjected from the source notebook and executed:
+
+```python
+@app.cell(hide_code=True)
+def _(check, mo, np, x, y):
+    mo.stop(x is None, check("Q1: Array creation", []))
+    # Visible checks — students see these
+    check("Q1: Array creation", [
+        (isinstance(x, np.ndarray), "x should be a numpy array"),
+        (x.shape == (50,), f"Expected shape (50,), got {x.shape}"),
+    ])
+    ### BEGIN HIDDEN TESTS
+    check("Q1: Edge cases", [
+        (abs(x[0]) < 1e-10, "x should start at 0"),
+        (abs(x[-1] - 2 * np.pi) < 1e-10, "x should end at 2*pi"),
+    ])
+    ### END HIDDEN TESTS
+    return
+```
+
+Hidden checks contribute to the mark total like visible checks. In the release notebook, `grader.scores()` shows a placeholder message instead of the score table when hidden tests exist, so students don't see misleading partial marks.
+
 ## PEP 723 script dependencies
 
 Include a [PEP 723](https://peps.python.org/pep-0723/) metadata block at the top of the notebook so that `marimo edit --sandbox` and `mograder validate` can automatically install dependencies:

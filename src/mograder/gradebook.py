@@ -71,6 +71,9 @@ class Gradebook:
         for stmt in [
             "ALTER TABLE submissions ADD COLUMN updated_at TEXT",
             "ALTER TABLE assignments ADD COLUMN auto_check_keys TEXT",
+            "ALTER TABLE submissions ADD COLUMN penalty_pct REAL",
+            "ALTER TABLE submissions ADD COLUMN penalised_mark REAL",
+            "ALTER TABLE submissions ADD COLUMN submitted_at TEXT",
         ]:
             try:
                 self._conn.execute(stmt)
@@ -172,7 +175,10 @@ class Gradebook:
     ) -> None:
         """Upsert autograde results, preserving existing manual_mark/feedback."""
         checks_json = json.dumps(
-            [{"label": c.label, "status": c.status} for c in check_results]
+            [
+                {"label": c.label, "status": c.status, "hidden": c.hidden}
+                for c in check_results
+            ]
         )
         tampered_json = json.dumps(tampered or [])
         now = datetime.now().isoformat()
@@ -282,6 +288,27 @@ class Gradebook:
                 )
         return True
 
+    def save_penalty(
+        self,
+        assignment: str,
+        student: str,
+        penalty_pct: float,
+        penalised_mark: float,
+        submitted_at: str | None = None,
+    ) -> None:
+        """Save late penalty data for a submission."""
+        now = datetime.now().isoformat()
+        with self._conn:
+            self._conn.execute(
+                """
+                UPDATE submissions
+                SET penalty_pct = ?, penalised_mark = ?, submitted_at = ?,
+                    updated_at = ?
+                WHERE assignment = ? AND student = ?
+                """,
+                (penalty_pct, penalised_mark, submitted_at, now, assignment, student),
+            )
+
     def get_submission(self, assignment: str, student: str) -> dict | None:
         row = self._conn.execute(
             "SELECT * FROM submissions WHERE assignment = ? AND student = ?",
@@ -310,17 +337,19 @@ class Gradebook:
     # --- Grade collection ---
 
     def collect_grades(self, assignment: str) -> list[dict]:
-        """Returns [{student, mark, auto_mark, feedback}, ...] for feedback/CSV."""
+        """Returns [{student, mark, auto_mark, feedback, ...}, ...] for feedback/CSV."""
         rows = self._conn.execute(
             """
-            SELECT student, total_mark, auto_mark, feedback
+            SELECT student, total_mark, auto_mark, feedback,
+                   penalty_pct, penalised_mark, submitted_at
             FROM submissions WHERE assignment = ?
             ORDER BY student
             """,
             (assignment,),
         ).fetchall()
-        return [
-            {
+        result = []
+        for r in rows:
+            d = {
                 "student": r["student"],
                 "mark": int(r["total_mark"]) if r["total_mark"] is not None else None,
                 "auto_mark": int(r["auto_mark"])
@@ -328,8 +357,15 @@ class Gradebook:
                 else None,
                 "feedback": r["feedback"] or "",
             }
-            for r in rows
-        ]
+            if r["penalty_pct"] is not None:
+                d["penalty_pct"] = r["penalty_pct"]
+                d["penalised_mark"] = (
+                    int(r["penalised_mark"])
+                    if r["penalised_mark"] is not None
+                    else None
+                )
+            result.append(d)
+        return result
 
     def collect_student_marks(
         self, assignment_names: list[str]

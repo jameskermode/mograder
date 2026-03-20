@@ -149,7 +149,10 @@ def _build_verification_cell(
             s = "FAIL"
         else:
             s = "WAIT" if c.status == "warn" else "FAIL"
-        status_map.append(f'("{c.label}", "{s}", {c.earned_weight}, {c.total_weight})')
+        label_display = f"{c.label} (hidden)" if c.hidden else c.label
+        status_map.append(
+            f'("{label_display}", "{s}", {c.earned_weight}, {c.total_weight})'
+        )
     checks_list = ",\n        ".join(status_map)
     checks_block = f"\n        {checks_list},\n    " if checks_list else ""
 

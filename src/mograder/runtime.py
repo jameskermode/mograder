@@ -16,8 +16,11 @@ Per-question marks usage::
 
 import json
 import os
+import re
 
 import marimo as mo
+
+_HIDDEN_TESTS_RE = re.compile(r"#\s*mograder-hidden-tests\s*=\s*true")
 
 __all__ = ["check", "Grader", "hint", "fetch", "submit", "status"]
 
@@ -120,6 +123,17 @@ class Grader:
         self.mo = mo
         self.marks = marks
         self._state, self._set = mo.state({})
+        # Detect hidden tests flag from PEP 723 metadata in __file__
+        self._has_hidden = False
+        try:
+            import __main__
+
+            if hasattr(__main__, "__file__") and __main__.__file__:
+                with open(__main__.__file__) as f:
+                    head = f.read(4096)
+                self._has_hidden = bool(_HIDDEN_TESTS_RE.search(head))
+        except Exception:
+            pass
 
     def check(
         self,
@@ -140,7 +154,7 @@ class Grader:
 
         if not checks:
             # Don't write to sidecar for empty-check guards.
-            if avail is not None:
+            if avail is not None and not self._has_hidden:
                 badge = (
                     f'<span style="float:right"><code>[0/{avail} marks]</code></span>'
                 )
@@ -158,8 +172,8 @@ class Grader:
         # Update reactive state with (earned_weight, total_weight) tuple
         self._set(lambda prev, k=key, ew=earned_w, tw=total_w: {**prev, k: (ew, tw)})
 
-        # Build marks badge
-        if avail is not None:
+        # Build marks badge (suppressed when hidden tests exist)
+        if avail is not None and not self._has_hidden:
             earned = round(avail * earned_w / total_w, 1) if total_w > 0 else 0
             # Display as int if whole number
             earned_str = str(int(earned)) if earned == int(earned) else str(earned)
@@ -189,6 +203,11 @@ class Grader:
         # MOGRADER_SCORES_CELL — removed during feedback export
         """Display a reactive score table callout."""
         _mo = self.mo
+        if self._has_hidden:
+            return _mo.callout(
+                _mo.md("Scores will be available in your feedback after grading."),
+                kind="neutral",
+            )
         results = self._state()
         total = sum(self.marks.values())
         auto = 0.0

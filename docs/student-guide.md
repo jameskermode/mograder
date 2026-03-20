@@ -167,6 +167,12 @@ The dashboard shows your course assignments with status tracking and action butt
 
 Assignment status updates automatically: **Downloaded** → **Submitted** (after submit) → **Modified** (if you edit after submitting). View grades and feedback directly on Moodle.
 
+### Hidden tests and late submissions
+
+Some assignments may include hidden tests that run during grading but are not visible in your notebook. Your feedback will show whether hidden tests passed or failed.
+
+Assignments submitted after the deadline may receive a mark deduction. Your feedback will show the penalty applied and the reason.
+
 ### Opening notebooks directly
 
 You can also work on notebooks without the dashboard:

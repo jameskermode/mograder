@@ -8,7 +8,11 @@ from marimo._convert.converters import MarimoConvert
 from marimo._schemas.serialization import NotebookSerializationV1
 
 from mograder.cells import MARKS_MARKER
-from mograder.markers import _hash_cell
+from mograder.markers import (
+    HIDDEN_TESTS_BEGIN,
+    HIDDEN_TESTS_END,
+    _hash_cell,
+)
 
 # Pattern to extract question key from check() calls, e.g. check("Q1: ...")
 _CHECK_CALL_RE = re.compile(r"""check\(\s*["']([^"':]+)""")
@@ -293,3 +297,85 @@ def check_integrity(source_text: str, submitted_text: str) -> IntegrityResult:
         tampered_marks=tampered_marks,
         fixed_source=fixed_source,
     )
+
+
+_HIDDEN_TESTS_RE = re.compile(r"#\s*mograder-hidden-tests\s*=\s*true")
+
+
+def has_hidden_tests(text: str) -> bool:
+    """Check if a notebook has hidden-tests metadata in PEP 723 block."""
+    return bool(_HIDDEN_TESTS_RE.search(text))
+
+
+def inject_hidden_tests(source_text: str, submitted_text: str) -> tuple[str, set[str]]:
+    """Reinject hidden test blocks from source into submitted notebook.
+
+    Finds cells in the submitted notebook containing the ``# HIDDEN TESTS``
+    placeholder comment and replaces them with the corresponding source cell
+    code (which includes the full hidden test block between the markers).
+
+    Returns ``(modified_text, hidden_labels)`` where *hidden_labels* is the
+    set of check label keys that appear only inside hidden test blocks.
+    """
+    source_ir = MarimoConvert.from_py(source_text).to_ir()
+    submitted_ir = MarimoConvert.from_py(submitted_text).to_ir()
+
+    # Build mapping: for each source cell with hidden tests, extract the
+    # "visible" portion (code without hidden blocks) as a fingerprint.
+    # The matching submitted cell will have the placeholder instead.
+    source_cells_with_hidden: list[tuple[str, str, set[str]]] = []
+    for cell in source_ir.cells:
+        if HIDDEN_TESTS_BEGIN not in cell.code:
+            continue
+        # Compute the "visible fingerprint": strip hidden blocks, same as
+        # what strip_hidden_tests would produce
+        visible_lines = []
+        in_hidden = False
+        hidden_labels: set[str] = set()
+        for line in cell.code.splitlines(keepends=True):
+            stripped = line.strip()
+            if stripped == HIDDEN_TESTS_BEGIN:
+                in_hidden = True
+                indent = line[: len(line) - len(line.lstrip())]
+                visible_lines.append(f"{indent}# HIDDEN TESTS\n")
+                continue
+            if stripped == HIDDEN_TESTS_END:
+                in_hidden = False
+                continue
+            if in_hidden:
+                # Extract check labels from hidden block
+                m = _CHECK_CALL_RE.search(line)
+                if m:
+                    hidden_labels.add(m.group(1).strip())
+            else:
+                visible_lines.append(line)
+        visible_code = "".join(visible_lines).strip()
+        source_cells_with_hidden.append((visible_code, cell.code, hidden_labels))
+
+    if not source_cells_with_hidden:
+        return submitted_text, set()
+
+    # Walk submitted cells and match by visible fingerprint
+    all_hidden_labels: set[str] = set()
+    new_cells = list(submitted_ir.cells)
+    for i, sub_cell in enumerate(new_cells):
+        if "# HIDDEN TESTS" not in sub_cell.code:
+            continue
+        sub_stripped = sub_cell.code.strip()
+        for visible_code, full_code, h_labels in source_cells_with_hidden:
+            if sub_stripped == visible_code:
+                new_cells[i] = dataclasses.replace(sub_cell, code=full_code)
+                all_hidden_labels |= h_labels
+                break
+
+    new_ir = NotebookSerializationV1(
+        app=submitted_ir.app,
+        header=submitted_ir.header,
+        version=submitted_ir.version,
+        cells=new_cells,
+        violations=submitted_ir.violations,
+        valid=submitted_ir.valid,
+        filename=submitted_ir.filename,
+    )
+    modified_text = generate_filecontents_from_ir(new_ir)
+    return modified_text, all_hidden_labels

@@ -153,6 +153,7 @@ def _read_sidecar(path: Path) -> list[CheckResult]:
                     details=record.get("details", []),
                     earned_weight=record.get("earned_weight", 0),
                     total_weight=record.get("total_weight", 0),
+                    hidden=record.get("hidden", False),
                 )
             )
         except (json.JSONDecodeError, KeyError):
@@ -197,6 +198,7 @@ def _poll_sidecar(
                             details=record.get("details", []),
                             earned_weight=record.get("earned_weight", 0),
                             total_weight=record.get("total_weight", 0),
+                            hidden=record.get("hidden", False),
                         )
                     )
                 except (json.JSONDecodeError, KeyError):
@@ -221,6 +223,7 @@ def _poll_sidecar(
                         details=record.get("details", []),
                         earned_weight=record.get("earned_weight", 0),
                         total_weight=record.get("total_weight", 0),
+                        hidden=record.get("hidden", False),
                     )
                 )
             except (json.JSONDecodeError, KeyError):

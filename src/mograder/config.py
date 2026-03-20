@@ -51,6 +51,11 @@ class MograderConfig:
     sync_remote: str | None = None
     sync_remote_course_dir: str | None = None
     sync_remote_venv_dir: str | None = None
+    # [penalties]
+    penalty_enabled: bool = False
+    penalty_grace_minutes: int = 5
+    penalty_per_day: float = 5.0
+    penalty_max: float = 100.0
     # [edit_links]
     edit_links: tuple[tuple[str, str], ...] = ()
 
@@ -73,6 +78,7 @@ def load_config(course_dir: Path) -> MograderConfig:
     rlimits = data.get("rlimits", {})
     sync = data.get("sync", {})
     edit_links_data = data.get("edit_links", {})
+    penalties = data.get("penalties", {})
 
     # [[assignments]] with fallback to [[moodle.assignments]]
     top_assignments = tuple(data.get("assignments", []))
@@ -112,6 +118,10 @@ def load_config(course_dir: Path) -> MograderConfig:
         sync_remote=sync.get("remote"),
         sync_remote_course_dir=sync.get("remote_course_dir"),
         sync_remote_venv_dir=sync.get("remote_venv_dir"),
+        penalty_enabled=penalties.get("enabled", False),
+        penalty_grace_minutes=penalties.get("grace_minutes", 5),
+        penalty_per_day=penalties.get("per_day", 5.0),
+        penalty_max=penalties.get("max", 100.0),
         edit_links=tuple((k, v) for k, v in edit_links_data.items()),
     )
 

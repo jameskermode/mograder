@@ -13,6 +13,7 @@ class CheckResult:
     details: list[str] = field(default_factory=list)
     earned_weight: float = 0
     total_weight: float = 0
+    hidden: bool = False
 
 
 @dataclass
