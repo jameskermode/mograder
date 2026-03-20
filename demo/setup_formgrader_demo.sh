@@ -64,14 +64,7 @@ fi
 for d in "$COURSE/release"/*/; do
     name=$(basename "$d")
     if [ ! -f "$d/$name.zip" ]; then
-        $PYTHON -c "
-import zipfile, pathlib, sys
-d = pathlib.Path(sys.argv[1])
-zp = d / (d.name + '.zip')
-with zipfile.ZipFile(zp, 'w', zipfile.ZIP_DEFLATED) as zf:
-    for f in sorted(d.glob('*.py')):
-        zf.write(f, f.name)
-" "$d"
+        (cd "$d" && zip -q "$name.zip" *.py)
         echo "ZIP: $d$name.zip"
     fi
 done
