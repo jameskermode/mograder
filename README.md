@@ -8,6 +8,21 @@ Semi-automated grading for [Marimo](https://marimo.io) notebooks.
 
 mograder aspires to become a Marimo equivalent of [nbgrader](https://nbgrader.readthedocs.io/). It doesn't yet have full feature parity but should already be useable. mograder has been developed based on my experiences teaching computational modelling and machine learning with Jupyter and nbgrader in [HetSys CDT](https://warwick.ac.uk/fac/sci/hetsys/) and the [Predictive Modelling and Scientific Computing MSc course](https://warwick.ac.uk/study/postgraduate/courses/pga-pgcert-pgdip-msc-predictive-modelling-scientific-computing/), both at the University of Warwick, so it is a personal and opinionated take on the nbgrader workflow which may or may not suit other users!
 
+### Comparison with nbgrader and otter-grader
+
+| Feature | mograder | nbgrader | otter-grader |
+|---|---|---|---|
+| Notebook format | Marimo `.py` | Jupyter `.ipynb` | Jupyter `.ipynb` |
+| Version control friendly | Yes | No | No |
+| Student UX | Student dashboard | Requires JupyterHub | Minimal |
+| Moodle integration | Native API | None | None |
+| Parallel autograding | Yes | Manual | Docker |
+| Sandboxed execution | Partial (uv + rlimits) | Partial (JupyterHub) | Docker |
+| Partial credit | No | Limited | Yes |
+| Gradescope/Canvas support | No | Partial | Yes |
+| Community/maturity | Solo/new | Mature | Active |
+| Documentation | Minimal | Good | Good |
+
 Three modes of operation are supported:
 - **Workshop mode** which is fully formative (i.e. no marks are assigned). Model solutions can be unlocked automatically by students when they pass automated tests. Solutions can also be released one by one by an instructor from a web dashboard, allowing 'un-sticking' of students during a live workshop.
 - **Manual grading** of a single holistic mark. Instant formative feedback is available to students on coding questions, while reflective interpretation is manually graded.
