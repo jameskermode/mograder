@@ -151,6 +151,8 @@ def _read_sidecar(path: Path) -> list[CheckResult]:
                     label=record["label"],
                     status=record["status"],
                     details=record.get("details", []),
+                    earned_weight=record.get("earned_weight", 0),
+                    total_weight=record.get("total_weight", 0),
                 )
             )
         except (json.JSONDecodeError, KeyError):
@@ -193,6 +195,8 @@ def _poll_sidecar(
                             label=record["label"],
                             status=record["status"],
                             details=record.get("details", []),
+                            earned_weight=record.get("earned_weight", 0),
+                            total_weight=record.get("total_weight", 0),
                         )
                     )
                 except (json.JSONDecodeError, KeyError):
@@ -215,6 +219,8 @@ def _poll_sidecar(
                         label=record["label"],
                         status=record["status"],
                         details=record.get("details", []),
+                        earned_weight=record.get("earned_weight", 0),
+                        total_weight=record.get("total_weight", 0),
                     )
                 )
             except (json.JSONDecodeError, KeyError):
@@ -561,10 +567,37 @@ def discover_labels(results: list[NotebookResult]) -> list[str]:
     return list(label_set.values())
 
 
+def _compute_auto_mark(
+    checks: list[CheckResult], marks: dict[str, int | float]
+) -> float:
+    """Compute fractional auto_mark from check results and marks dict.
+
+    When a check has ``total_weight > 0``, earned marks are proportional
+    to the weight of passing checks.  Otherwise falls back to binary
+    (success = full marks, anything else = 0).
+    """
+    check_map: dict[str, CheckResult] = {}
+    for c in checks:
+        key = c.label.split(":")[0].strip()
+        check_map[key] = c
+
+    total = 0.0
+    for k, pts in marks.items():
+        cr = check_map.get(k)
+        if cr is None:
+            continue
+        if cr.total_weight > 0:
+            total += round(pts * cr.earned_weight / cr.total_weight, 1)
+        elif cr.status == "success":
+            total += pts
+    return total
+
+
 def format_status(status: str) -> str:
     """Format status for terminal output with ANSI colors."""
     symbols = {
         "success": "\033[32mPASS\033[0m",
+        "partial": "\033[34mPART\033[0m",
         "danger": "\033[31mFAIL\033[0m",
         "warn": "\033[33mWAIT\033[0m",
         "error": "\033[31mERR \033[0m",
@@ -577,6 +610,7 @@ def format_status_plain(status: str) -> str:
     """Format status without ANSI codes."""
     return {
         "success": "PASS",
+        "partial": "PARTIAL",
         "danger": "FAIL",
         "warn": "WAIT",
         "error": "ERR",
@@ -618,11 +652,12 @@ def print_summary(
             status = check_map.get(q_key, "missing")
             line += f"{format_status(status):>17}  "
         if marks is not None:
-            auto_mark = sum(
-                marks[k] for k in marks if k in check_map and check_map[k] == "success"
-            )
+            auto_mark = _compute_auto_mark(result.checks, marks)
             total = sum(marks.values())
-            line += f"  {auto_mark}/{total}"
+            am_str = (
+                str(int(auto_mark)) if auto_mark == int(auto_mark) else str(auto_mark)
+            )
+            line += f"  {am_str}/{total}"
         line += f"  {result.cell_errors}"
         if has_tampering:
             line += f"  {', '.join(result.tampered)}" if result.tampered else ""
@@ -665,12 +700,13 @@ def write_csv(
                 row += [check_map.get(q, "---") for q in q_headers]
                 row += [result.cell_errors, result.export_error]
                 if marks is not None:
-                    auto_mark = sum(
-                        marks[k]
-                        for k in marks
-                        if k in check_map and check_map[k] == "PASS"
+                    auto_mark = _compute_auto_mark(result.checks, marks)
+                    am_str = (
+                        str(int(auto_mark))
+                        if auto_mark == int(auto_mark)
+                        else str(auto_mark)
                     )
-                    row.append(auto_mark)
+                    row.append(am_str)
                 if has_tampering:
                     row.append("; ".join(result.tampered))
             writer.writerow(row)
@@ -711,9 +747,7 @@ def serialize_results(
                 "tampered": result.tampered,
             }
             if marks is not None:
-                auto_mark = sum(
-                    marks[k] for k in marks if k in check_map and check_map[k] == "PASS"
-                )
+                auto_mark = _compute_auto_mark(result.checks, marks)
                 row["auto_mark"] = auto_mark
                 row["total_mark"] = sum(marks.values())
         rows.append(row)

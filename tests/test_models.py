@@ -30,3 +30,17 @@ def test_notebook_result_with_checks():
     nr = NotebookResult(path=Path("s.py"), checks=checks, cell_errors=2)
     assert len(nr.checks) == 2
     assert nr.cell_errors == 2
+
+
+def test_check_result_default_weights():
+    cr = CheckResult(label="Q1: Foo", status="success")
+    assert cr.earned_weight == 0
+    assert cr.total_weight == 0
+
+
+def test_check_result_with_weights():
+    cr = CheckResult(
+        label="Q1: Foo", status="success", earned_weight=3.0, total_weight=5.0
+    )
+    assert cr.earned_weight == 3.0
+    assert cr.total_weight == 5.0

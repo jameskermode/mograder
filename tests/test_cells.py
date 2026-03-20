@@ -282,6 +282,46 @@ def test_inject_with_marks_auto_mark_computation():
 # --- parse_gta_feedback still works with marks-aware feedback ---
 
 
+def test_verification_cell_fractional_marks():
+    """Partial checks → fractional earned in generated code."""
+    marks = {"Q1": 10, "Q2": 20}
+    checks = [
+        CheckResult("Q1: Computation", "partial", earned_weight=3.0, total_weight=5.0),
+        CheckResult("Q2: Greeting", "success", earned_weight=2.0, total_weight=2.0),
+    ]
+    result = inject_grading_cells(_make_notebook_lines(), checks, marks=marks)
+    text = "".join(result)
+    # Should have 4-tuple format with weights
+    assert "3.0, 5.0" in text
+    assert "2.0, 2.0" in text
+    assert "_ew, _tw" in text  # uses the weighted loop variable names
+
+
+def test_parse_auto_marks_fractional():
+    """4-tuple format with weights returns fractional marks."""
+    marks = {"Q1": 10, "Q2": 20}
+    checks = [
+        CheckResult("Q1: Computation", "partial", earned_weight=3.0, total_weight=5.0),
+        CheckResult("Q2: Greeting", "success", earned_weight=2.0, total_weight=2.0),
+    ]
+    injected = inject_grading_cells(_make_notebook_lines(), checks, marks=marks)
+    result = parse_auto_marks(injected)
+    # Q1: round(10*3/5,1)=6.0, Q2: round(20*2/2,1)=20.0
+    assert result == 26.0
+
+
+def test_parse_auto_marks_backward_compat():
+    """2-tuple format (weight 0,0) still works — binary PASS/FAIL."""
+    marks = {"Q1": 10, "Q2": 20}
+    checks = [
+        CheckResult("Q1: Computation", "success"),  # weights default 0,0
+        CheckResult("Q2: Greeting", "danger"),
+    ]
+    injected = inject_grading_cells(_make_notebook_lines(), checks, marks=marks)
+    result = parse_auto_marks(injected)
+    assert result == 10.0  # Only Q1 passed
+
+
 def test_parse_gta_feedback_with_marks():
     marks = {"Q1": 10, "Analysis": 90}
     checks = [CheckResult("Q1: Computation", "success")]

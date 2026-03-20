@@ -46,6 +46,11 @@ def _build_callout_html(content_html: str, kind: str) -> str:
     return f"<marimo-callout-output data-html='{encoded}' data-kind='{kind_encoded}'></marimo-callout-output>"
 
 
+def _fmt_mark(v: int | float) -> str:
+    """Format a mark value: show as int if whole, else as float."""
+    return str(int(v)) if v == int(v) else str(v)
+
+
 def _build_feedback_content(
     mark: int | float,
     feedback_text: str,
@@ -57,16 +62,16 @@ def _build_feedback_content(
     Returns HTML suitable for passing to ``_build_callout_html``.
     """
     parts = []
-    _total_str = str(int(total_available)) if total_available is not None else "100"
+    _total_str = _fmt_mark(total_available) if total_available is not None else "100"
 
     if auto_mark is not None:
         manual = mark - auto_mark
         parts.append(
-            f"<strong>Mark: {int(mark)}/{_total_str}</strong>"
-            f" (auto: {int(auto_mark)}, manual: {int(manual)})"
+            f"<strong>Mark: {_fmt_mark(mark)}/{_total_str}</strong>"
+            f" (auto: {_fmt_mark(auto_mark)}, manual: {_fmt_mark(manual)})"
         )
     else:
-        parts.append(f"<strong>Mark: {int(mark)}/100</strong>")
+        parts.append(f"<strong>Mark: {_fmt_mark(mark)}/100</strong>")
 
     if feedback_text:
         paragraphs = feedback_text.split("\n\n")

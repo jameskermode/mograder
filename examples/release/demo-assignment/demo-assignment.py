@@ -6,7 +6,7 @@
 #     "mograder",
 # ]
 # mograder-assignment = "demo-assignment"
-# mograder-cell-hashes = "375c0a19,6f11581d,83f06244,442241f7,c28e3951,06984910,e9e394ca,31db746f,92e2cea5,7294011f,f26057ad,b5f5459d"
+# mograder-cell-hashes = "375c0a19,6f11581d,83f06244,442241f7,c28e3951,06984910,eef64e3f,31db746f,92e2cea5,7294011f,f26057ad,b5f5459d"
 # ///
 
 import marimo
@@ -131,6 +131,7 @@ def _(check, finite_diff, mo, np, x, y):
             (
                 np.max(np.abs(_dydx - _exact)) < 0.05,
                 f"Max error {np.max(np.abs(_dydx - _exact)):.4f} should be < 0.05",
+                3,  # weight 3: accuracy matters more than type/shape
             ),
         ],
     )

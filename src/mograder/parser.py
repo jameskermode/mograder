@@ -16,7 +16,7 @@ CALLOUT_PATTERN = re.compile(
 )
 
 KIND_PATTERN = re.compile(
-    r"data-kind='\\u0026quot;(success|danger|warn|neutral)\\u0026quot;'"
+    r"data-kind='\\u0026quot;(success|danger|warn|info|neutral)\\u0026quot;'"
 )
 
 

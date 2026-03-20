@@ -11,6 +11,8 @@ class CheckResult:
     label: str
     status: str  # "success", "danger", "warn", or "error"
     details: list[str] = field(default_factory=list)
+    earned_weight: float = 0
+    total_weight: float = 0
 
 
 @dataclass

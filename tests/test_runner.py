@@ -435,6 +435,71 @@ def test_serialize_results():
     assert rows[2]["tampered"] == ["check(Q1)"]
 
 
+def test_read_sidecar_with_weights(tmp_path):
+    """JSONL with weights → CheckResult with weights."""
+    import json
+
+    sidecar = tmp_path / "sidecar.jsonl"
+    record = {
+        "label": "Q1: Foo",
+        "status": "warn",
+        "details": ["x failed"],
+        "earned_weight": 3.0,
+        "total_weight": 5.0,
+    }
+    sidecar.write_text(json.dumps(record) + "\n")
+
+    from mograder.runner import _read_sidecar
+
+    results = _read_sidecar(sidecar)
+    assert len(results) == 1
+    assert results[0].earned_weight == 3.0
+    assert results[0].total_weight == 5.0
+
+
+def test_read_sidecar_backward_compat(tmp_path):
+    """Old JSONL without weights → defaults to 0."""
+    import json
+
+    sidecar = tmp_path / "sidecar.jsonl"
+    record = {"label": "Q1: Foo", "status": "success", "details": []}
+    sidecar.write_text(json.dumps(record) + "\n")
+
+    from mograder.runner import _read_sidecar
+
+    results = _read_sidecar(sidecar)
+    assert len(results) == 1
+    assert results[0].earned_weight == 0
+    assert results[0].total_weight == 0
+
+
+def test_compute_auto_mark_fractional():
+    """Fractional auto_mark from weighted checks."""
+    from mograder.runner import _compute_auto_mark
+
+    checks = [
+        CheckResult("Q1: Foo", "partial", earned_weight=3.0, total_weight=5.0),
+        CheckResult("Q2: Bar", "success", earned_weight=2.0, total_weight=2.0),
+    ]
+    marks = {"Q1": 10, "Q2": 20}
+    result = _compute_auto_mark(checks, marks)
+    # Q1: round(10*3/5, 1)=6.0, Q2: round(20*2/2, 1)=20.0
+    assert result == 26.0
+
+
+def test_compute_auto_mark_binary_fallback():
+    """When total_weight=0, falls back to binary."""
+    from mograder.runner import _compute_auto_mark
+
+    checks = [
+        CheckResult("Q1: Foo", "success"),  # tw=0 → binary
+        CheckResult("Q2: Bar", "danger"),  # tw=0 → binary
+    ]
+    marks = {"Q1": 10, "Q2": 20}
+    result = _compute_auto_mark(checks, marks)
+    assert result == 10.0  # Only Q1 passed
+
+
 def test_serialize_results_without_marks():
     results = [
         NotebookResult(

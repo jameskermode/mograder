@@ -68,11 +68,13 @@ def parse_marks_metadata(source_lines: list[str]) -> dict[str, int | float] | No
     return marks if marks else None
 
 
-def parse_auto_marks(source_lines: list[str]) -> int | None:
+def parse_auto_marks(source_lines: list[str]) -> int | float | None:
     """Extract auto-scored marks from a verification cell with marks data.
 
     Looks for ``_mograder_marks`` and ``_mograder_checks`` in the verification
-    cell and computes sum of marks for PASS checks.
+    cell and computes sum of marks for PASS checks.  Supports both 4-tuple
+    format ``(label, status, earned_weight, total_weight)`` (fractional) and
+    legacy 2-tuple format ``(label, status)`` (binary).
 
     Returns None if no marks data found in the verification cell.
     """
@@ -97,15 +99,37 @@ def parse_auto_marks(source_lines: list[str]) -> int | None:
     if not checks_match:
         return None
 
-    # Parse check tuples to find PASS results
-    auto_mark = 0
+    # Try 4-tuple format first: ("label", "status", earned_weight, total_weight)
+    auto_mark = 0.0
+    found_4tuple = False
+    for m in re.finditer(
+        r'\("([^"]+)",\s*"([^"]+)",\s*([0-9.]+),\s*([0-9.]+)\)',
+        checks_match.group(1),
+    ):
+        found_4tuple = True
+        label, status = m.group(1), m.group(2)
+        ew, tw = float(m.group(3)), float(m.group(4))
+        key = label.split(":")[0].strip()
+        if key not in marks_dict:
+            continue
+        if tw > 0:
+            auto_mark += round(marks_dict[key] * ew / tw, 1)
+        elif status == "PASS":
+            # Backward compat: tw=0 means old binary data
+            auto_mark += marks_dict[key]
+
+    if found_4tuple:
+        return auto_mark
+
+    # Fall back to 2-tuple format: ("label", "status")
+    auto_mark_int = 0
     for m in re.finditer(r'\("([^"]+)",\s*"([^"]+)"\)', checks_match.group(1)):
         label, status = m.group(1), m.group(2)
         key = label.split(":")[0].strip()
         if status == "PASS" and key in marks_dict:
-            auto_mark += marks_dict[key]
+            auto_mark_int += marks_dict[key]
 
-    return auto_mark
+    return auto_mark_int
 
 
 def _build_verification_cell(
@@ -114,15 +138,18 @@ def _build_verification_cell(
     marks: dict[str, int | float] | None = None,
 ) -> str:
     """Build the verification summary cell source."""
-    # Map statuses: success -> PASS, danger -> FAIL, anything else -> WAIT
+    # Map statuses and include weights for fractional marks
     status_map = []
     for c in checks:
         if c.status == "success":
-            status_map.append(f'("{c.label}", "PASS")')
+            s = "PASS"
+        elif c.status == "partial":
+            s = "PARTIAL"
         elif c.status == "danger":
-            status_map.append(f'("{c.label}", "FAIL")')
+            s = "FAIL"
         else:
-            status_map.append(f'("{c.label}", "WAIT")')
+            s = "WAIT" if c.status == "warn" else "FAIL"
+        status_map.append(f'("{c.label}", "{s}", {c.earned_weight}, {c.total_weight})')
     checks_list = ",\n        ".join(status_map)
     checks_block = f"\n        {checks_list},\n    " if checks_list else ""
 
@@ -135,13 +162,13 @@ def _(mo):
     _mograder_checks = [{checks_block}]
     _cell_errors = {cell_errors}
     _table = "\\n".join(
-        f"| {{label}} | {{'PASS' if s == 'PASS' else 'FAIL' if s == 'FAIL' else 'WAIT'}} |"
-        for label, s in _mograder_checks
+        f"| {{_label}} | {{'PASS' if _s == 'PASS' else 'FAIL' if _s == 'FAIL' else 'PARTIAL' if _s == 'PARTIAL' else 'WAIT'}} |"
+        for _label, _s, *_rest in _mograder_checks
     )
     mo.callout(mo.md(f"## Verification Summary\\n\\n"
         f"| Check | Result |\\n|-------|--------|\\n{{_table}}\\n\\n"
         f"Cell errors: {{_cell_errors}}"),
-        kind="success" if all(s == "PASS" for _, s in _mograder_checks) else "danger")
+        kind="success" if all(_s == "PASS" for _, _s, *_rest in _mograder_checks) else "danger")
     return
 
 """
@@ -169,12 +196,17 @@ def _(mo):
     _cell_errors = {cell_errors}
     _auto_earned = 0
     _table = ""
-    for _label, _s in _mograder_checks:
+    for _label, _s, _ew, _tw in _mograder_checks:
         _key = _label.split(":")[0].strip()
         _avail = _mograder_marks.get(_key, "")
-        _earned = _avail if _s == "PASS" else 0
-        if _s == "PASS" and isinstance(_avail, (int, float)):
-            _auto_earned += _avail
+        if _tw > 0 and isinstance(_avail, (int, float)):
+            _earned = round(_avail * _ew / _tw, 1)
+        elif _s == "PASS" and isinstance(_avail, (int, float)):
+            _earned = _avail
+        else:
+            _earned = 0
+        if isinstance(_avail, (int, float)):
+            _auto_earned += _earned
         _marks_col = f"{{_earned}}/{{_avail}}" if _avail != "" else ""
         _table += f"| {{_label}} | {{_s}} | {{_marks_col}} |\\n"
 {manual_rows}\
@@ -183,7 +215,7 @@ def _(mo):
     mo.callout(mo.md(f"## Verification Summary\\n\\n"
         f"| Check | Result | Marks |\\n|-------|--------|-------|\\n{{_table}}\\n"
         f"Cell errors: {{_cell_errors}}"),
-        kind="success" if all(s == "PASS" for _, s in _mograder_checks) else "danger")
+        kind="success" if all(_s == "PASS" for _, _s, _ew, _tw in _mograder_checks) else "danger")
     return
 
 """
@@ -213,22 +245,29 @@ def _(mo):
 
 """
 
+    def _fm(v):
+        """Format mark: int if whole, else float."""
+        return int(v) if isinstance(v, float) and v == int(v) else v
+
+    _auto = _fm(auto_mark)
+    _auto_total = _fm(total_available - manual_available)
+
     return f"""\
 @app.cell
 def _(mo):
     {FEEDBACK_MARKER}
-    # Auto marks: {auto_mark}/{total_available - manual_available}
+    # Auto marks: {_auto}/{_auto_total}
     # Set _mark for manual questions (out of {manual_available}), then save.
     _mark = None       # e.g. _mark = {manual_available}
     _feedback = ""     # e.g. _feedback = "Good analysis of the DP approach..."
 
     # --- display (do not edit below) ---
     if _mark is not None:
-        _total = {auto_mark} + _mark
-        mo.callout(mo.md(f"**Mark: {{_total}}/{total_available}** (auto: {auto_mark}, manual: {{_mark}})\\n\\n{{_feedback}}"), kind="success")
+        _total = {_auto} + _mark
+        mo.callout(mo.md(f"**Mark: {{_total}}/{total_available}** (auto: {_auto}, manual: {{_mark}})\\n\\n{{_feedback}}"), kind="success")
     else:
         mo.callout(mo.md("**Awaiting GTA feedback** — edit `_mark` (out of {manual_available}) and `_feedback` above\\n\\n"
-            f"Auto marks so far: {auto_mark}/{total_available - manual_available}"), kind="warn")
+            f"Auto marks so far: {_auto}/{_auto_total}"), kind="warn")
     return
 
 """
@@ -258,18 +297,18 @@ def inject_grading_cells(
         return source_lines
 
     if marks is not None:
-        # Compute auto marks and manual available
+        # Compute auto marks (fractional) and manual available
         check_keys = {c.label.split(":")[0].strip() for c in checks}
-        auto_mark = sum(
-            marks[k]
-            for k in check_keys
-            if k in marks
-            and any(
-                c.status == "success"
-                for c in checks
-                if c.label.split(":")[0].strip() == k
-            )
-        )
+        auto_mark = 0.0
+        for c in checks:
+            key = c.label.split(":")[0].strip()
+            if key not in marks:
+                continue
+            avail = marks[key]
+            if c.total_weight > 0:
+                auto_mark += round(avail * c.earned_weight / c.total_weight, 1)
+            elif c.status == "success":
+                auto_mark += avail
         manual_available = sum(v for k, v in marks.items() if k not in check_keys)
         total_available = sum(marks.values())
         verification = _build_verification_cell(checks, cell_errors, marks)

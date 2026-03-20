@@ -134,9 +134,20 @@ grader = Grader(mo, _marks)
 check = grader.check
 ```
 
-Questions matching a `check()` label are auto-scored (PASS = full marks, FAIL = 0). The question key is the text before the first colon in the label, so `check("Q1: Array creation", [...])` maps to `"Q1"`. Questions without a matching check (e.g. `"Analysis"`) are scored manually by the GTA.
+Questions matching a `check()` label are auto-scored with **partial credit**: marks are proportional to the weight of passing checks. Each check tuple can optionally include a weight as a third element (default 1):
 
-Call `grader.scores()` in a cell to display a reactive score table.
+```python
+check("Q2: Finite differences", [
+    (isinstance(dydx, np.ndarray), "result should be ndarray"),       # weight 1
+    (dydx.shape == x.shape, "shape should match"),                    # weight 1
+    (np.max(np.abs(dydx - np.cos(x))) < 0.05, "max error < 0.05", 3),  # weight 3
+])
+# If only the first two pass: earned = round(15 * 2/5, 1) = 6.0/15
+```
+
+The question key is the text before the first colon in the label, so `check("Q1: Array creation", [...])` maps to `"Q1"`. Questions without a matching check (e.g. `"Analysis"`) are scored manually by the GTA.
+
+Call `grader.scores()` in a cell to display a reactive score table (including fractional marks for partial credit).
 
 ## 4. Generate the release notebook
 

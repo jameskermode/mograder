@@ -134,6 +134,7 @@ def _(check, finite_diff, mo, np, x, y):
             (
                 np.max(np.abs(_dydx - _exact)) < 0.05,
                 f"Max error {np.max(np.abs(_dydx - _exact)):.4f} should be < 0.05",
+                3,  # weight 3: accuracy matters more than type/shape
             ),
         ],
     )

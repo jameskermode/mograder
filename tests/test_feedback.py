@@ -172,6 +172,36 @@ def test_write_grades_csv_with_auto_mark(tmp_path):
     assert rows[0]["auto_mark"] == "10"
 
 
+def test_collect_grades_fractional_auto(tmp_path):
+    """Fractional auto_mark in grade dict from weighted checks."""
+    marks = {"Q1": 10, "Analysis": 90}
+    lines = [
+        "import marimo\n",
+        "app = marimo.App()\n",
+        "\n",
+        "@app.cell\n",
+        "def _():\n",
+        "    x = 1\n",
+        "    return\n",
+        "\n",
+        "\n",
+        'if __name__ == "__main__":\n',
+        "    app.run()\n",
+    ]
+    checks = [CheckResult("Q1: Foo", "partial", earned_weight=3.0, total_weight=5.0)]
+    injected = inject_grading_cells(lines, checks, marks=marks)
+    text = "".join(injected)
+    # Simulate GTA grading
+    text = text.replace("_mark = None", "_mark = 70")
+    text = text.replace('_feedback = ""', '_feedback = "Good"')
+    nb = tmp_path / "alice.py"
+    nb.write_text(text)
+    grades = collect_grades([nb])
+    assert len(grades) == 1
+    assert grades[0]["auto_mark"] == 6.0  # round(10*3/5, 1)
+    assert grades[0]["mark"] == 76.0  # 6.0 + 70
+
+
 def test_write_grades_csv_omits_auto_mark_when_none(tmp_path):
     grades = [
         {"student": "alice", "mark": 72, "auto_mark": None, "feedback": "Good"},

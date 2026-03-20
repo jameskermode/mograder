@@ -85,7 +85,8 @@ When `--source` is provided to autograde, `integrity.check_integrity()` compares
 
 When a notebook has a `# === MOGRADER: MARKS ===` cell with `_marks = {"Q1": 10, ...}`:
 - The `Grader` class handles reactive score tracking at runtime — no generate-time code transforms
-- Questions matching a `check()` call are auto-scored (PASS = full marks, FAIL = 0)
+- Questions matching a `check()` call are auto-scored with **partial credit**: marks are proportional to the weight of passing checks (`earned = round(avail × earned_weight / total_weight, 1)`)
+- Check tuples support optional weights: `(bool, str)` (weight=1) or `(bool, str, weight)` (custom weight)
 - Questions without a matching check are manual (scored by GTA via `_mark`)
 - Total = auto earned + manual `_mark`
 - Without a marks cell, notebooks use standalone `check()` with holistic `_mark` 0–100
@@ -108,4 +109,4 @@ When a notebook has a `# === MOGRADER: MARKS ===` cell with `_marks = {"Q1": 10,
   1. Runs `uv run ruff format --check src/ tests/` on every commit.
   2. If any `examples/source/` file is staged, regenerates `examples/release/` and fails if the result differs — so you must stage the updated release files too.
 - CI runs tests on Python 3.11–3.13 and verifies `examples/release/` matches regenerated output.
-- Check status mapping: HTML `success`→PASS, `danger`→FAIL, `warn`→WAIT.
+- Check status mapping: HTML `success`→PASS, `partial`→PARTIAL (blue, fractional marks), `danger`→FAIL, `warn`→WAIT.

@@ -11,7 +11,7 @@ from mograder.runtime import check, Grader, hint
 Run a list of boolean checks and display coloured feedback.
 
 ```python
-check(label: str, checks: list[tuple[bool, str]]) -> mo.Html
+check(label: str, checks: list[tuple[bool, str] | tuple[bool, str, int | float]]) -> mo.Html
 ```
 
 **Parameters:**
@@ -19,7 +19,7 @@ check(label: str, checks: list[tuple[bool, str]]) -> mo.Html
 | Parameter | Type | Description |
 |-----------|------|-------------|
 | `label` | `str` | Name of the test, e.g. `"Q2: Model evaluation"` |
-| `checks` | `list[tuple[bool, str]]` | List of `(condition, failure_message)` tuples |
+| `checks` | `list[tuple[bool, str] \| tuple[bool, str, weight]]` | List of `(condition, message)` or `(condition, message, weight)` tuples. Default weight is 1. |
 
 **Returns:** A marimo `Html` callout element.
 
@@ -27,8 +27,8 @@ check(label: str, checks: list[tuple[bool, str]]) -> mo.Html
 
 | Condition | Callout | Sidecar |
 |-----------|---------|---------|
-| All checks pass | Green: "all checks passed" | Writes `status: "success"` |
-| Any check fails | Red: lists failure messages | Writes `status: "danger"` |
+| All checks pass | Green: "all checks passed" | `status: "success"` |
+| Some pass, some fail | Red: lists failure messages | `status: "danger"` |
 | Empty checks list | Amber: "waiting for your code" | Nothing written |
 
 The empty-checks case is designed for use with `mo.stop()` to show a "waiting" state before the student has written code:
@@ -45,7 +45,7 @@ def _(check, mo, x):
 
 When `x is None`, the first `check()` call returns the amber callout and `mo.stop()` halts the cell. Once `x` is defined, execution continues to the real check.
 
-**Sidecar mechanism:** During `mograder autograde`, the environment variable `MOGRADER_SIDECAR_PATH` is set to a temp JSONL file. Each `check()` call appends a JSON record `{"label", "status", "details"}` to this file. The runner polls it for live progress. Empty-check calls (the `mo.stop()` guard) do not write to the sidecar to avoid false results.
+**Sidecar mechanism:** During `mograder autograde`, the environment variable `MOGRADER_SIDECAR_PATH` is set to a temp JSONL file. Each `check()` call appends a JSON record `{"label", "status", "details", "earned_weight", "total_weight"}` to this file. The runner polls it for live progress. Empty-check calls (the `mo.stop()` guard) do not write to the sidecar to avoid false results.
 
 ## `Grader(mo, marks)`
 
@@ -65,10 +65,12 @@ check = grader.check
 
 ### `grader.check(label, checks)`
 
-Same signature and behaviour as the standalone `check()`, plus:
+Same signature as the standalone `check()` (including optional weights), plus:
 
 - Looks up marks from `self.marks` using the **question key** (text before the first colon in `label`). So `check("Q1: Array creation", [...])` maps to `marks["Q1"]`.
-- Displays a marks badge: `[10/10 marks]` or `[0/10 marks]`
+- Awards **partial credit**: earned marks = `round(available × earned_weight / total_weight, 1)`
+- Displays a marks badge: `[10/10 marks]` (all pass), `[6/10 marks]` (partial), or `[0/10 marks]` (none pass)
+- Callout colour: green (all pass), blue (partial), red (none pass)
 - Updates reactive state for the score table
 
 ### `grader.scores()`
@@ -84,11 +86,11 @@ Returns a callout with a markdown table:
 | Question | Status | Marks |
 |----------|--------|-------|
 | Q1 | PASS | 10/10 |
-| Q2 | FAIL | 0/15 |
-| Analysis | --- | 0/60 |
-| **Total** | | **10/85** |
+| Q2 | PARTIAL | 6/15 |
+| Analysis | — | 0/60 |
+| **Total** | | **16/85** |
 
-Questions without a matching `check()` call show "---" (manual grading required). The table updates reactively as students complete questions.
+Status values: **PASS** (all checks pass), **PARTIAL** (some pass — fractional marks), **FAIL** (none pass), **—** (not yet attempted). Questions without a matching `check()` call show "—" (manual grading required). The table updates reactively as students complete questions.
 
 ### Complete per-question example
 
@@ -114,10 +116,12 @@ def _(np):
 
 
 @app.cell(hide_code=True)
-def _(check, mo, x):
+def _(check, mo, np, x):
     mo.stop(x is None, check("Q1: Array creation", []))
     check("Q1: Array creation", [
+        (isinstance(x, np.ndarray), "x should be a numpy array"),
         (x.shape == (50,), f"Expected shape (50,), got {x.shape}"),
+        (abs(x[0]) < 1e-10, "x should start at 0", 3),  # weight 3
     ])
     return
 

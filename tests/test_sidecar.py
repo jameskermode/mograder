@@ -27,7 +27,13 @@ def test_write_sidecar_writes_jsonl(tmp_path):
     assert len(lines) == 2
 
     r1 = json.loads(lines[0])
-    assert r1 == {"label": "Q1: Foo", "status": "success", "details": []}
+    assert r1 == {
+        "label": "Q1: Foo",
+        "status": "success",
+        "details": [],
+        "earned_weight": 0,
+        "total_weight": 0,
+    }
 
     r2 = json.loads(lines[1])
     assert r2["label"] == "Q2: Bar"
@@ -56,7 +62,9 @@ def test_read_sidecar_parses_jsonl(tmp_path):
 
     results = _read_sidecar(sidecar)
     assert len(results) == 2
-    assert results[0] == CheckResult(label="Q1: Foo", status="success", details=[])
+    assert results[0] == CheckResult(
+        label="Q1: Foo", status="success", details=[], earned_weight=0, total_weight=0
+    )
     assert results[1].label == "Ex1: Bar"
     assert results[1].status == "danger"
     assert results[1].details == ["fail msg"]

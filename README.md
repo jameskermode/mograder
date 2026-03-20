@@ -8,6 +8,21 @@ Semi-automated grading for [Marimo](https://marimo.io) notebooks.
 
 mograder aspires to become a Marimo equivalent of [nbgrader](https://nbgrader.readthedocs.io/). It doesn't yet have full feature parity but should already be useable. mograder has been developed based on my experiences teaching computational modelling and machine learning with Jupyter and nbgrader in [HetSys CDT](https://warwick.ac.uk/fac/sci/hetsys/) and the [Predictive Modelling and Scientific Computing MSc course](https://warwick.ac.uk/study/postgraduate/courses/pga-pgcert-pgdip-msc-predictive-modelling-scientific-computing/), both at the University of Warwick, so it is a personal and opinionated take on the nbgrader workflow which may or may not suit other users!
 
+### Comparison with nbgrader and otter-grader
+
+| Feature | mograder | nbgrader | otter-grader |
+|---|---|---|---|
+| Notebook format | Marimo `.py` | Jupyter `.ipynb` | Jupyter `.ipynb` |
+| Version control friendly | Yes | No | No |
+| Student UX | Student dashboard | Requires JupyterHub | Minimal |
+| Moodle integration | Native API | None | None |
+| Parallel autograding | Yes | Manual | Docker |
+| Sandboxed execution | Partial (uv + rlimits) | Partial (JupyterHub) | Docker |
+| Partial credit | Yes (weighted) | Limited | Yes |
+| Gradescope/Canvas support | No | Partial | Yes |
+| Community/maturity | Solo/new | Mature | Active |
+| Documentation | Minimal | Good | Good |
+
 Three modes of operation are supported:
 - **Workshop mode** which is fully formative (i.e. no marks are assigned). Model solutions can be unlocked automatically by students when they pass automated tests. Solutions can also be released one by one by an instructor from a web dashboard, allowing 'un-sticking' of students during a live workshop.
 - **Manual grading** of a single holistic mark. Instant formative feedback is available to students on coding questions, while reflective interpretation is manually graded.
@@ -253,7 +268,7 @@ def _(check, mo, x):
 from mograder.runtime import check
 ```
 
-**Per-question marks** (automatic + manual): use the `Grader` class with a marks dictionary. Questions matching a `check()` label are auto-scored (PASS = full marks, FAIL = 0). Questions without a matching check (e.g. written analysis) are scored manually by the marker:
+**Per-question marks** (automatic + manual): use the `Grader` class with a marks dictionary. Questions matching a `check()` label are auto-scored with **partial credit**: marks are proportional to the weight of passing checks. Questions without a matching check (e.g. written analysis) are scored manually by the marker:
 
 ```python
 from mograder.runtime import Grader
@@ -264,7 +279,18 @@ grader = Grader(mo, _marks)
 check = grader.check
 ```
 
-The question key is the text before the first colon in the check label, so `check("Q1: Array creation", [...])` maps to the `"Q1"` entry. Call `grader.scores()` in a cell to display a reactive score table showing earned/available marks.
+Each check tuple can optionally include a weight as a third element (default weight is 1). Earned marks are `round(available × earned_weight / total_weight, 1)`:
+
+```python
+check("Q2: Finite differences", [
+    (isinstance(dydx, np.ndarray), "result should be ndarray"),       # weight 1
+    (dydx.shape == x.shape, "shape should match"),                    # weight 1
+    (np.max(np.abs(dydx - np.cos(x))) < 0.05, "max error < 0.05", 3),  # weight 3
+])
+# If only the first two pass: earned = round(15 * 2/5, 1) = 6.0/15
+```
+
+The question key is the text before the first colon in the check label, so `check("Q1: Array creation", [...])` maps to the `"Q1"` entry. Call `grader.scores()` in a cell to display a reactive score table showing earned/available marks (including fractional values for partial credit).
 
 #### PEP 723 script dependencies
 
