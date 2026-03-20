@@ -49,7 +49,9 @@ jobs:
             -o /tmp/student_wasm_app.py
 
       - name: Export WASM dashboard
-        run: uv run marimo export html-wasm /tmp/student_wasm_app.py -o site/dashboard/index.html --mode run
+        run: |
+          cp src/mograder/head.html /tmp/head.html
+          (cd /tmp && uv run --project "$GITHUB_WORKSPACE" marimo export html-wasm student_wasm_app.py -o "$GITHUB_WORKSPACE/site/dashboard/index.html" --mode run)
 
       - name: Export demo notebooks
         run: |
