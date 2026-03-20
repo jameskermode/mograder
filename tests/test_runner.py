@@ -537,9 +537,9 @@ def test_maybe_bwrap_cmd_ro_bind_extra():
     # Count --ro-bind occurrences: 1 for /, plus 2 extras = 3
     ro_binds = [i for i, x in enumerate(wrapped) if x == "--ro-bind"]
     assert len(ro_binds) == 3
-    # The extra paths should appear
-    assert "/opt/venv" in wrapped
-    assert "/home/user/.local/bin" in wrapped
+    # The extra paths should appear (resolved — on macOS /home → /System/Volumes/Data/home)
+    assert str(Path("/opt/venv").resolve()) in wrapped
+    assert str(Path("/home/user/.local/bin").resolve()) in wrapped
 
 
 def test_maybe_bwrap_cmd_fallback_when_missing():
