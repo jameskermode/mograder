@@ -7,7 +7,7 @@
 # ]
 # mograder-assignment = "demo-assignment"
 # mograder-hidden-tests = true
-# mograder-cell-hashes = "375c0a19,6f11581d,adc446de,442241f7,b5824e6b,06984910,eef64e3f,31db746f,92e2cea5,46efc5a1,f26057ad,b5f5459d"
+# mograder-cell-hashes = "ff18443f,6f11581d,adc446de,442241f7,b5824e6b,06984910,eef64e3f,31db746f,92e2cea5,46efc5a1,f26057ad,b5f5459d"
 # ///
 
 import marimo
@@ -23,7 +23,7 @@ def _():
 
     # === MOGRADER: MARKS ===
     _marks = {"Q1": 10, "Q2": 15, "Q3": 15, "Analysis": 60}
-    grader = Grader(mo, _marks)
+    grader = Grader(_marks)
     check = grader.check
     return check, grader, mo
 

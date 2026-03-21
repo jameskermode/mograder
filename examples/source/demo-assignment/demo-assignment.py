@@ -20,7 +20,7 @@ def _():
 
     # === MOGRADER: MARKS ===
     _marks = {"Q1": 10, "Q2": 15, "Q3": 15, "Analysis": 60}
-    grader = Grader(mo, _marks)
+    grader = Grader(_marks)
     check = grader.check
     return check, grader, mo
 

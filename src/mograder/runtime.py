@@ -10,7 +10,7 @@ Holistic usage::
 Per-question marks usage::
 
     from mograder.runtime import Grader
-    grader = Grader(mo, {"Q1": 10, "Q2": 15, "Analysis": 60})
+    grader = Grader({"Q1": 10, "Q2": 15, "Analysis": 60})
     check = grader.check
 """
 
@@ -112,15 +112,14 @@ class Grader:
 
     Usage in a marimo notebook::
 
-        grader = Grader(mo, {"Q1": 10, "Q2": 15, "Analysis": 60})
+        grader = Grader({"Q1": 10, "Q2": 15, "Analysis": 60})
         check = grader.check
 
     Then use ``check(label, checks)`` exactly like the standalone version.
     Call ``grader.scores()`` to display a reactive score table.
     """
 
-    def __init__(self, mo, marks: dict[str, int | float]):
-        self.mo = mo
+    def __init__(self, marks: dict[str, int | float]):
         self.marks = marks
         self._state, self._set = mo.state({})
         # Detect hidden tests flag from PEP 723 metadata in __file__
@@ -148,7 +147,6 @@ class Grader:
         weight is 1.  Earned marks are proportional to the weight of
         passing checks.
         """
-        _mo = self.mo
         key = label.split(":")[0].strip()
         avail = self.marks.get(key)
 
@@ -160,8 +158,8 @@ class Grader:
                 )
             else:
                 badge = ""
-            return _mo.callout(
-                _mo.md(f"{badge}**{label}** — waiting for your code"), kind="warn"
+            return mo.callout(
+                mo.md(f"{badge}**{label}** — waiting for your code"), kind="warn"
             )
 
         parsed = _parse_checks(checks)
@@ -190,22 +188,21 @@ class Grader:
                 sidecar_status = "danger"
             _write_sidecar(label, sidecar_status, failures, earned_w, total_w)
             items = "\n".join(f"- {f}" for f in failures)
-            return _mo.callout(
-                _mo.md(f"{badge}**{label}** — some checks failed:\n\n{items}"),
+            return mo.callout(
+                mo.md(f"{badge}**{label}** — some checks failed:\n\n{items}"),
                 kind=kind,
             )
         _write_sidecar(label, "success", [], earned_w, total_w)
-        return _mo.callout(
-            _mo.md(f"{badge}**{label}** — all checks passed"), kind="success"
+        return mo.callout(
+            mo.md(f"{badge}**{label}** — all checks passed"), kind="success"
         )
 
     def scores(self):
         # MOGRADER_SCORES_CELL — removed during feedback export
         """Display a reactive score table callout."""
-        _mo = self.mo
         if self._has_hidden:
-            return _mo.callout(
-                _mo.md("Scores will be available in your feedback after grading."),
+            return mo.callout(
+                mo.md("Scores will be available in your feedback after grading."),
                 kind="neutral",
             )
         results = self._state()
@@ -239,8 +236,8 @@ class Grader:
             rows += f"| {q} | {icon} | {got_str}/{pts} |\n"
         auto_str = str(int(auto)) if auto == int(auto) else str(auto)
         rows += f"| **Total** | | **{auto_str}/{total}** |\n"
-        return _mo.callout(
-            _mo.md(
+        return mo.callout(
+            mo.md(
                 f"## Your Score\n\n"
                 f"| Question | Status | Marks |\n|----------|--------|-------|\n{rows}"
             ),

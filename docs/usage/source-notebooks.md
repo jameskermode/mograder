@@ -80,7 +80,7 @@ from mograder.runtime import Grader
 
 # === MOGRADER: MARKS ===
 _marks = {"Q1": 10, "Q2": 15, "Analysis": 60}
-grader = Grader(mo, _marks)
+grader = Grader(_marks)
 check = grader.check
 ```
 

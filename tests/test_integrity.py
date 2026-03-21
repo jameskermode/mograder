@@ -70,7 +70,7 @@ SOURCE_WITH_MARKS = _notebook(
         "from mograder.runtime import Grader\n"
         "# === MOGRADER: MARKS ===\n"
         '_marks = {"Q1": 10, "Q2": 20}\n'
-        "grader = Grader(mo, _marks)\n"
+        "grader = Grader(_marks)\n"
         "check = grader.check",
         hide_code=True,
     ),

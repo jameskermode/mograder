@@ -2,6 +2,8 @@
 
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 from mograder.runtime import Grader
 
 
@@ -24,6 +26,14 @@ def _mock_mo():
 
     mo.state.side_effect = _make_state
     return mo
+
+
+@pytest.fixture
+def mock_mo():
+    """Patch mograder.runtime.mo with a mock for the duration of the test."""
+    mo = _mock_mo()
+    with patch("mograder.runtime.mo", mo):
+        yield mo
 
 
 def _make_check(mock_mo):
@@ -83,37 +93,33 @@ def test_check_mixed():
 # --- Grader.check() ---
 
 
-def test_grader_check_pass():
-    mo = _mock_mo()
-    grader = Grader(mo, {"Q1": 10, "Q2": 15})
+def test_grader_check_pass(mock_mo):
+    grader = Grader({"Q1": 10, "Q2": 15})
     result = grader.check("Q1: Array creation", [(True, "ok")])
     content, kind = result
     assert kind == "success"
     assert "[10/10 marks]" in content
 
 
-def test_grader_check_fail():
-    mo = _mock_mo()
-    grader = Grader(mo, {"Q1": 10})
+def test_grader_check_fail(mock_mo):
+    grader = Grader({"Q1": 10})
     result = grader.check("Q1: Array creation", [(False, "wrong")])
     content, kind = result
     assert kind == "danger"
     assert "[0/10 marks]" in content
 
 
-def test_grader_check_wait():
-    mo = _mock_mo()
-    grader = Grader(mo, {"Q1": 10})
+def test_grader_check_wait(mock_mo):
+    grader = Grader({"Q1": 10})
     result = grader.check("Q1: Array creation", [])
     content, kind = result
     assert kind == "warn"
     assert "[0/10 marks]" in content
 
 
-def test_grader_check_no_marks_for_key():
+def test_grader_check_no_marks_for_key(mock_mo):
     """Labels not in marks dict get no badge."""
-    mo = _mock_mo()
-    grader = Grader(mo, {"Q1": 10})
+    grader = Grader({"Q1": 10})
     result = grader.check("Q99: Unknown", [(True, "ok")])
     content, kind = result
     assert kind == "success"
@@ -123,9 +129,8 @@ def test_grader_check_no_marks_for_key():
 # --- Grader state tracking ---
 
 
-def test_grader_state_tracking():
-    mo = _mock_mo()
-    grader = Grader(mo, {"Q1": 10, "Q2": 15})
+def test_grader_state_tracking(mock_mo):
+    grader = Grader({"Q1": 10, "Q2": 15})
     grader.check("Q1: Array creation", [(True, "ok")])
     grader.check("Q2: Diff", [(False, "bad")])
     # Read state via the getter — now (earned_weight, total_weight) tuples
@@ -133,9 +138,8 @@ def test_grader_state_tracking():
     assert state == {"Q1": (1.0, 1.0), "Q2": (0, 1.0)}
 
 
-def test_grader_state_updates():
-    mo = _mock_mo()
-    grader = Grader(mo, {"Q1": 10})
+def test_grader_state_updates(mock_mo):
+    grader = Grader({"Q1": 10})
     grader.check("Q1: Foo", [(False, "fail")])
     assert grader._state()["Q1"] == (0, 1.0)
     grader.check("Q1: Foo", [(True, "ok")])
@@ -145,9 +149,8 @@ def test_grader_state_updates():
 # --- Grader.scores() ---
 
 
-def test_grader_scores_all_pass():
-    mo = _mock_mo()
-    grader = Grader(mo, {"Q1": 10, "Q2": 15})
+def test_grader_scores_all_pass(mock_mo):
+    grader = Grader({"Q1": 10, "Q2": 15})
     grader.check("Q1: Foo", [(True, "ok")])
     grader.check("Q2: Bar", [(True, "ok")])
     result = grader.scores()
@@ -158,9 +161,8 @@ def test_grader_scores_all_pass():
     assert "**25/25**" in content
 
 
-def test_grader_scores_partial():
-    mo = _mock_mo()
-    grader = Grader(mo, {"Q1": 10, "Q2": 15})
+def test_grader_scores_partial(mock_mo):
+    grader = Grader({"Q1": 10, "Q2": 15})
     grader.check("Q1: Foo", [(True, "ok")])
     grader.check("Q2: Bar", [(False, "bad")])
     result = grader.scores()
@@ -224,10 +226,9 @@ def test_hint_renders_markdown():
 # --- Partial credit ---
 
 
-def test_grader_check_partial_credit():
+def test_grader_check_partial_credit(mock_mo):
     """3/5 checks pass (uniform weight), 10 marks → badge [6/10 marks]."""
-    mo = _mock_mo()
-    grader = Grader(mo, {"Q1": 10})
+    grader = Grader({"Q1": 10})
     result = grader.check(
         "Q1: Array creation",
         [(True, "a"), (True, "b"), (True, "c"), (False, "d"), (False, "e")],
@@ -237,10 +238,9 @@ def test_grader_check_partial_credit():
     assert kind == "info"  # partial → blue
 
 
-def test_grader_check_weighted_partial():
+def test_grader_check_weighted_partial(mock_mo):
     """Weighted checks → correct fractional marks."""
-    mo = _mock_mo()
-    grader = Grader(mo, {"Q1": 10})
+    grader = Grader({"Q1": 10})
     result = grader.check(
         "Q1: Foo",
         [
@@ -254,30 +254,27 @@ def test_grader_check_weighted_partial():
     assert "[4/10 marks]" in content
 
 
-def test_grader_check_all_pass_unchanged():
+def test_grader_check_all_pass_unchanged(mock_mo):
     """All pass → full marks, green."""
-    mo = _mock_mo()
-    grader = Grader(mo, {"Q1": 10})
+    grader = Grader({"Q1": 10})
     result = grader.check("Q1: Foo", [(True, "a"), (True, "b")])
     content, kind = result
     assert "[10/10 marks]" in content
     assert kind == "success"
 
 
-def test_grader_check_all_fail_unchanged():
+def test_grader_check_all_fail_unchanged(mock_mo):
     """None pass → 0 marks, red."""
-    mo = _mock_mo()
-    grader = Grader(mo, {"Q1": 10})
+    grader = Grader({"Q1": 10})
     result = grader.check("Q1: Foo", [(False, "a"), (False, "b")])
     content, kind = result
     assert "[0/10 marks]" in content
     assert kind == "danger"
 
 
-def test_grader_scores_partial_credit():
+def test_grader_scores_partial_credit(mock_mo):
     """Scores table shows fractional earned marks."""
-    mo = _mock_mo()
-    grader = Grader(mo, {"Q1": 10, "Q2": 15})
+    grader = Grader({"Q1": 10, "Q2": 15})
     grader.check("Q1: Foo", [(True, "a"), (True, "b"), (False, "c")])  # 2/3 → 6.7
     grader.check("Q2: Bar", [(True, "ok")])  # 1/1 → 15
     result = grader.scores()
@@ -288,10 +285,9 @@ def test_grader_scores_partial_credit():
     assert "PASS" in content
 
 
-def test_grader_scores_backward_compat_bool():
+def test_grader_scores_backward_compat_bool(mock_mo):
     """Bool state values (from old code) still work in scores()."""
-    mo = _mock_mo()
-    grader = Grader(mo, {"Q1": 10, "Q2": 15})
+    grader = Grader({"Q1": 10, "Q2": 15})
     # Manually set state with bools (old format)
     grader._set(lambda prev: {"Q1": True, "Q2": False})
     result = grader.scores()
@@ -336,9 +332,8 @@ def test_check_mixed_tuple_formats():
     assert parsed == [(True, "a", 1.0), (False, "b", 5.0)]
 
 
-def test_grader_scores_unattempted():
-    mo = _mock_mo()
-    grader = Grader(mo, {"Q1": 10, "Q2": 15})
+def test_grader_scores_unattempted(mock_mo):
+    grader = Grader({"Q1": 10, "Q2": 15})
     # No checks run — all unattempted
     result = grader.scores()
     content, kind = result
