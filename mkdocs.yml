@@ -2,6 +2,7 @@ site_name: mograder
 site_url: https://jameskermode.github.io/mograder/
 repo_url: https://github.com/jameskermode/mograder
 repo_name: jameskermode/mograder
+edit_uri: edit/main/docs/
 
 theme:
   name: material
