@@ -1,11 +1,10 @@
 /* Override primary colour to match mograder logo green (#0AAD69) */
-:root {
+[data-md-color-scheme="default"] {
   --md-primary-fg-color: #0AAD69;
   --md-primary-fg-color--light: #2DC07E;
   --md-primary-fg-color--dark: #089056;
 }
 
-/* Slate (dark mode) uses the same green */
 [data-md-color-scheme="slate"] {
   --md-primary-fg-color: #0AAD69;
   --md-primary-fg-color--light: #2DC07E;
