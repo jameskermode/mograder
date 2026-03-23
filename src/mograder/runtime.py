@@ -87,6 +87,7 @@ def check(
     Returns a coloured callout: green (PASS), red (FAIL), or amber (WAIT).
     """
     if not checks:
+        _write_sidecar(label, "warn", [])
         return mo.callout(mo.md(f"**{label}** — waiting for your code"), kind="warn")
     parsed = _parse_checks(checks)
     failures = [msg for ok, msg, _w in parsed if not ok]
@@ -151,7 +152,7 @@ class Grader:
         avail = self.marks.get(key)
 
         if not checks:
-            # Don't write to sidecar for empty-check guards.
+            _write_sidecar(label, "warn", [])
             if avail is not None and not self._has_hidden:
                 badge = (
                     f'<span style="float:right"><code>[0/{avail} marks]</code></span>'

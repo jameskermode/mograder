@@ -316,6 +316,43 @@ def test_check_sidecar_includes_weights(tmp_path):
     assert record["total_weight"] == 5.0
 
 
+def test_empty_check_writes_warn_sidecar(tmp_path, mock_mo):
+    """check() with empty list writes a 'warn' entry to the sidecar."""
+    import json
+    import os
+
+    from mograder import runtime
+
+    sidecar = tmp_path / "sidecar.jsonl"
+    os.environ["MOGRADER_SIDECAR_PATH"] = str(sidecar)
+    try:
+        runtime.check("Q1: Foo", [])
+    finally:
+        del os.environ["MOGRADER_SIDECAR_PATH"]
+
+    record = json.loads(sidecar.read_text().strip())
+    assert record["label"] == "Q1: Foo"
+    assert record["status"] == "warn"
+
+
+def test_grader_empty_check_writes_warn_sidecar(tmp_path, mock_mo):
+    """Grader.check() with empty list writes a 'warn' entry to the sidecar."""
+    import json
+    import os
+
+    sidecar = tmp_path / "sidecar.jsonl"
+    os.environ["MOGRADER_SIDECAR_PATH"] = str(sidecar)
+    try:
+        grader = Grader({"Q1": 10})
+        grader.check("Q1: Foo", [])
+    finally:
+        del os.environ["MOGRADER_SIDECAR_PATH"]
+
+    record = json.loads(sidecar.read_text().strip())
+    assert record["label"] == "Q1: Foo"
+    assert record["status"] == "warn"
+
+
 def test_check_weighted_tuple_parsing():
     """(bool, str, weight) tuples parsed correctly."""
     from mograder.runtime import _parse_checks
