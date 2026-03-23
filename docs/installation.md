@@ -22,16 +22,16 @@ mograder has several optional dependency groups:
 
 | Extra | Purpose |
 |-------|---------|
-| `dev` | Testing, linting, and development tools |
+| `hub` | Hub multi-user server (`fastapi`, `starlette`, `uvicorn`, `lzstring`) |
+| `dev` | Testing and linting (includes `hub` deps + `pytest`, `ruff`, `markdown-it-py`) |
 | `editor` | Marimo sandbox support (`marimo[sandbox]`) |
-| `grader` | Plotting and visualization for grading (`seaborn`, `matplotlib`) |
-| `asgi` | ASGI deployment of the formgrader (`starlette`, `uvicorn`) |
 | `docs` | Documentation site building (`mkdocs-material`, `mkdocstrings`) |
 
-Install multiple extras with:
+Install extras with:
 
 ```bash
-pip install "mograder[dev,asgi]"
-# or:
-uv sync --extra dev --extra asgi
+pip install "mograder[hub]"       # hub server
+pip install "mograder[dev]"       # development (includes hub)
+# or with uv:
+uv sync --extra dev
 ```

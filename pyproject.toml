@@ -24,9 +24,15 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = [
+hub = [
+    "fastapi>=0.100",
     "lzstring>=1.0.4",
+    "starlette>=0.37.2",
+    "uvicorn>=0.24",
     "python-multipart>=0.0.6",
+]
+dev = [
+    "mograder[hub]",
     "pytest",
     "pytest-cov",
     "pytest-playwright",
@@ -35,18 +41,6 @@ dev = [
 ]
 editor = [
     "marimo[sandbox]>=0.19",
-]
-grader = [
-    "seaborn",
-    "matplotlib",
-    "markdown-it-py",
-]
-asgi = [
-    "fastapi>=0.100",
-    "lzstring>=1.0.4",
-    "starlette>=0.37.2",
-    "uvicorn>=0.24",
-    "python-multipart>=0.0.6",
 ]
 docs = [
     "mkdocs-material",
