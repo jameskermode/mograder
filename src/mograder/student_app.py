@@ -214,7 +214,8 @@ def _(
                 pass  # Sync is best-effort; stale config still works
 
         https_assignments = ()
-        if IS_HTTPS and not _assignments_cfg and get_token():
+        _https_needs_login = False
+        if IS_HTTPS and not _assignments_cfg:
             try:
                 _transport = build_transport(CONFIG)
                 _remote = _transport.list_assignments()
@@ -238,10 +239,12 @@ def _(
                     and _exc.response.status_code in (401, 403)
                 )
                 if _is_auth_error:
-                    # Stale token — clear cache and reset so login UI appears
+                    # Auth required — clear stale token and show login UI
                     clear_cached_https_token()
                     set_token("")
-                    set_action_log("Session expired — please log in again.")
+                    _https_needs_login = True
+                    if get_token():
+                        set_action_log("Session expired — please log in again.")
                 else:
                     mo.output.replace(
                         mo.callout(
@@ -253,7 +256,7 @@ def _(
         _has_assignments = bool(_assignments_cfg or https_assignments)
 
         if IS_HTTPS:
-            if get_token():
+            if not _https_needs_login:
                 mo.output.replace(
                     mo.hstack(
                         [_heading, mo.md(f"`{COURSE_DIR}`")],
