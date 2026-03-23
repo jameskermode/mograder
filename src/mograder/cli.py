@@ -2443,16 +2443,34 @@ def student(course_dir_or_url, port, headless, no_token):
         click.echo(f"Fetching course config from {url}...")
         resp = requests.get(url, timeout=15)
         resp.raise_for_status()
-        # Derive directory name from URL path
-        parts = urlparse(url).path.strip("/").split("/")
-        # For raw.githubusercontent.com/<user>/<repo>/branch/file, repo is parts[1]
-        # For other URLs, use parent dir name, falling back to filename stem
-        if len(parts) > 2:
-            dir_name = parts[1]
-        elif len(parts) > 1:
-            dir_name = parts[-2]
+        # Derive directory name: prefer title from config, fall back to URL path
+        import tomllib
+
+        try:
+            title = tomllib.loads(resp.text).get("title", "")
+        except Exception:
+            title = ""
+        if title:
+            # Slugify: lowercase, replace spaces/special chars with hyphens
+            import re
+
+            slug = re.sub(r"[^a-z0-9]+", "-", title.lower()).strip("-")
+            if not slug:
+                dir_name = "mograder-course"
+            elif slug.startswith("mograder"):
+                dir_name = slug
+            else:
+                dir_name = f"mograder-{slug}"
         else:
-            dir_name = Path(parts[0]).stem
+            parts = urlparse(url).path.strip("/").split("/")
+            # For raw.githubusercontent.com/<user>/<repo>/branch/file, repo is parts[1]
+            # For other URLs, use parent dir name, falling back to filename stem
+            if len(parts) > 2:
+                dir_name = f"mograder-{parts[1]}"
+            elif len(parts) > 1:
+                dir_name = f"mograder-{parts[-2]}"
+            else:
+                dir_name = f"mograder-{Path(parts[0]).stem}"
         course = Path(dir_name).resolve()
         course.mkdir(exist_ok=True)
         (course / "mograder.toml").write_text(resp.text)
