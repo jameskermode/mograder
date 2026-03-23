@@ -148,5 +148,37 @@ jobs:
           API=$(curl -s -o /dev/null -w "%{http_code}" https://mograder-demo.jrkermode.uk/assignments)
           KEYS=$(curl -s -o /dev/null -w "%{http_code}" https://mograder-demo.jrkermode.uk/keys.json)
           DASH=$(curl -s -o /dev/null -w "%{http_code}" https://mograder-demo.jrkermode.uk/dashboard.html)
-          echo "Root: $ROOT, Assignments: $API, Keys: $KEYS, Dashboard: $DASH"
-          [ "$ROOT" = "200" ] && [ "$API" = "200" ] && [ "$KEYS" = "200" ] && [ "$DASH" = "200" ] || { echo "::error::Health check failed"; exit 1; }
+          TOML=$(curl -s -o /dev/null -w "%{http_code}" https://mograder-demo.jrkermode.uk/mograder.toml)
+          echo "Root: $ROOT, Assignments: $API, Keys: $KEYS, Dashboard: $DASH, TOML: $TOML"
+          [ "$ROOT" = "200" ] && [ "$API" = "200" ] && [ "$KEYS" = "200" ] && [ "$DASH" = "200" ] && [ "$TOML" = "200" ] || { echo "::error::Health check failed"; exit 1; }
+
+  demo-student-test:
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    needs: [deploy-demo]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          python-version: "3.12"
+
+      - name: Fetch and validate demo config
+        run: |
+          curl -f https://mograder-demo.jrkermode.uk/mograder.toml -o /tmp/mograder.toml
+          cat /tmp/mograder.toml
+          python -c "
+          import tomllib
+          with open('/tmp/mograder.toml', 'rb') as f:
+              d = tomllib.load(f)
+          assert d['transport'] == 'https', f'expected https, got {d[\"transport\"]}'
+          assert d['https']['url'] == 'https://mograder-demo.jrkermode.uk', f'wrong url: {d[\"https\"][\"url\"]}'
+          assert 'config_url' in d, 'missing config_url'
+          print('Config validation passed')
+          "
+
+      - name: Test mograder student bootstrap
+        run: |
+          timeout 30 uvx mograder student https://mograder-demo.jrkermode.uk/mograder.toml --headless --no-token || true
+          test -f mograder/mograder.toml
+          echo "Bootstrap created mograder/mograder.toml successfully"
+          cat mograder/mograder.toml

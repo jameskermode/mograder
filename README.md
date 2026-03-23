@@ -49,10 +49,10 @@ mograder feedback hw1         # export HTML → feedback/
 
 ```bash
 curl -LsSf https://astral.sh/uv/install.sh | sh
-uvx mograder student <CONFIG_URL>
+uvx mograder student https://mograder-demo.jrkermode.uk/mograder.toml
 ```
 
-Or open in **[GitHub Codespaces](https://jameskermode.github.io/mograder/student-guide/#option-3-github-codespaces)** — one click, no install needed.
+For real courses, your instructor will provide the config URL. Or open in **[GitHub Codespaces](https://jameskermode.github.io/mograder/student-guide/#option-3-github-codespaces)** — one click, no install needed.
 
 ## License
 

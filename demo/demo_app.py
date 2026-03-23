@@ -128,6 +128,29 @@ if (course_dir / "release").is_dir():
                 await workshop_app(scope, receive, send)
                 return
 
+            if path == "/mograder.toml":
+                body = (
+                    'title = "mograder demo"\n'
+                    'transport = "https"\n'
+                    'config_url = "https://mograder-demo.jrkermode.uk/mograder.toml"\n'
+                    "\n"
+                    "[https]\n"
+                    'url = "https://mograder-demo.jrkermode.uk"\n'
+                ).encode()
+                await send(
+                    {
+                        "type": "http.response.start",
+                        "status": 200,
+                        "headers": [
+                            [b"content-type", b"application/toml; charset=utf-8"],
+                            [b"content-length", str(len(body)).encode()],
+                            [b"access-control-allow-origin", b"*"],
+                        ],
+                    }
+                )
+                await send({"type": "http.response.body", "body": body})
+                return
+
             if path.startswith("/assignments") or path == "/register":
                 # Intercept submit responses to trigger autograde
                 if "/submit" in path and scope.get("method") == "POST":

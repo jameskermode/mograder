@@ -39,6 +39,10 @@ uvx mograder student <CONFIG_URL>
 
 Your instructor will provide the `<CONFIG_URL>` (a link to the course's `mograder.toml` file).
 
+!!! tip "Try the demo"
+    To try mograder without a real course, use the public demo server:
+    `uvx mograder student https://mograder-demo.jrkermode.uk/mograder.toml`
+
 ### Windows (PowerShell)
 
 ```powershell

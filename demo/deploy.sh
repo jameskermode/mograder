@@ -63,6 +63,13 @@ if [ "$DASH_STATUS" = "200" ]; then
 else
     echo "WARNING: Expected 200, got $DASH_STATUS"
 fi
+# Config TOML should be accessible
+TOML_STATUS=$(curl -s -o /dev/null -w "%{http_code}" https://mograder-demo.jrkermode.uk/mograder.toml)
+if [ "$TOML_STATUS" = "200" ]; then
+    echo "Config TOML: OK (200)"
+else
+    echo "WARNING: Expected 200, got $TOML_STATUS"
+fi
 echo ""
 echo "Deploy complete: https://mograder-demo.jrkermode.uk"
 echo "Workshop dashboard: https://mograder-demo.jrkermode.uk/dashboard.html#token=$WORKSHOP_SECRET"

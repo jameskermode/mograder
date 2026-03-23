@@ -60,7 +60,7 @@ See the [Installation](installation.md) page for full details, the [Instructor G
 
 ```bash
 curl -LsSf https://astral.sh/uv/install.sh | sh
-uvx mograder student <CONFIG_URL>
+uvx mograder student https://mograder-demo.jrkermode.uk/mograder.toml
 ```
 
-Or open in **[GitHub Codespaces](student-guide.md#option-3-github-codespaces)** — one click, no install needed.
+For real courses, your instructor will provide the config URL. Or open in **[GitHub Codespaces](student-guide.md#option-3-github-codespaces)** — one click, no install needed.
