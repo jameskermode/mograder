@@ -258,8 +258,8 @@ def _(
         if IS_HTTPS:
             if not _https_needs_login:
                 _server_info = mo.Html(
-                    f"<b>Local:</b> <code>{COURSE_DIR}</code>"
-                    f"<br><b>Remote:</b> <code>{CONFIG.https_url}</code>"
+                    f"<div><b>Local:</b> <code>{COURSE_DIR}</code>"
+                    f"<br><b>Remote:</b> <code>{CONFIG.https_url}</code></div>"
                 )
                 mo.output.replace(
                     mo.hstack(
@@ -352,12 +352,13 @@ def _(
             )
         elif get_token():
             _moodle_info = mo.Html(
-                f"<b>Local:</b> <code>{COURSE_DIR}</code>"
+                f"<div><b>Local:</b> <code>{COURSE_DIR}</code>"
                 + (
                     f"<br><b>Remote:</b> <code>{moodle_url}</code>"
                     if moodle_url
                     else ""
                 )
+                + "</div>"
             )
             mo.output.replace(
                 mo.hstack(
