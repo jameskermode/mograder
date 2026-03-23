@@ -837,30 +837,34 @@ def _(
                         rewrite_codespaces_url,
                     )
 
-                    try:
-                        _hs = spawn_headless_edit(
-                            _path,
-                            host="0.0.0.0"
-                            if _os.environ.get("CODESPACES")
-                            else "127.0.0.1",
-                        )
-                        if _os.environ.get("CODESPACES"):
-                            _url = rewrite_codespaces_url(_hs.url)
-                        else:
-                            _url = _hs.url
-                            if _os.environ.get("TAURI"):
-                                # Open in system browser — Tauri webview
-                                # silently blocks target=_blank links
-                                import webbrowser as _wb
+                    with mo.status.spinner(
+                        title=f"Starting editor for {_name}...",
+                        remove_on_exit=True,
+                    ):
+                        try:
+                            _hs = spawn_headless_edit(
+                                _path,
+                                host="0.0.0.0"
+                                if _os.environ.get("CODESPACES")
+                                else "127.0.0.1",
+                            )
+                            if _os.environ.get("CODESPACES"):
+                                _url = rewrite_codespaces_url(_hs.url)
+                            else:
+                                _url = _hs.url
+                                if _os.environ.get("TAURI"):
+                                    # Open in system browser — Tauri webview
+                                    # silently blocks target=_blank links
+                                    import webbrowser as _wb
 
-                                _wb.open(_url)
-                        set_action_log(
-                            f"Opened **{_name}** for editing: [{_url}]({_url})"
-                        )
-                    except TimeoutError:
-                        set_action_log(
-                            f"Opened **{_name}** for editing (could not detect URL)"
-                        )
+                                    _wb.open(_url)
+                            set_action_log(
+                                f"Opened **{_name}** for editing: [{_url}]({_url})"
+                            )
+                        except TimeoutError:
+                            set_action_log(
+                                f"Opened **{_name}** for editing (could not detect URL)"
+                            )
                 else:
                     _cmd = [sys.executable, "-m", "marimo", "edit", "--sandbox", _path]
                     sp.Popen(_cmd)
