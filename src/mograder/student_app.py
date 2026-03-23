@@ -17,7 +17,7 @@ def _():
 
     import marimo as mo
 
-    from mograder._brand import logo_html as brand_logo_html
+    from mograder._brand import logo_html as brand_logo_html, version_html
     from mograder.check_cache import (
         format_check_summary,
         get_submission_status,
@@ -53,6 +53,7 @@ def _():
         MoodleAPIError,
         Path,
         brand_logo_html,
+        version_html,
         build_transport,
         clear_cached_https_token,
         create_shared_sandbox,
@@ -123,6 +124,7 @@ def _(
     MoodleAPIClient,
     MoodleAPIError,
     brand_logo_html,
+    version_html,
     build_transport,
     clear_cached_https_token,
     get_token,
@@ -135,8 +137,9 @@ def _(
     moodle_url = CONFIG.moodle_url
     token_input = mo.ui.text(label="", value="")
     _app_title = CONFIG.title or "mograder student"
+    _version = version_html()
     _heading = mo.Html(
-        f'<div style="display:flex;align-items:center;gap:0.3em">{brand_logo_html()} <span style="font-size:2em;font-weight:bold">{_app_title}</span></div>'
+        f'<div style="display:flex;align-items:center;gap:0.3em">{brand_logo_html()} <span style="font-size:2em;font-weight:bold">{_app_title}</span> {_version}</div>'
     )
 
     # Auto-sync assignments from Moodle when a token is available

@@ -18,7 +18,7 @@ def _():
     import matplotlib.pyplot as plt
     import seaborn as sns
 
-    from mograder._brand import logo_html as brand_logo_html
+    from mograder._brand import logo_html as brand_logo_html, version_html
     from mograder.config import load_config
     from mograder.formgrader import DirNames
     from mograder.gradebook import Gradebook
@@ -138,6 +138,7 @@ def _():
         TRANSPORT_TYPE,
         Path,
         brand_logo_html,
+        version_html,
         match_transport_assignment,
         moodle_grading_url,
         moodle_upload_url,
@@ -1676,6 +1677,7 @@ def _(
     active_editors_content,
     assignments_content,
     brand_logo_html,
+    version_html,
     get_user_display,
     grading_content,
     mo,
@@ -1685,6 +1687,7 @@ def _(
     students_content,
     submissions_content,
 ):
+    _version = version_html()
     _style = mo.Html("""<style>
         /* Normalize download links to match mo.ui.button sizing */
         marimo-download a {
@@ -1712,7 +1715,7 @@ def _(
             mo.hstack(
                 [
                     mo.Html(
-                        f'<div style="display:flex;align-items:center;gap:0.3em">{brand_logo_html()} <span style="font-size:2em;font-weight:bold">mograder</span></div>'
+                        f'<div style="display:flex;align-items:center;gap:0.3em">{brand_logo_html()} <span style="font-size:2em;font-weight:bold">mograder</span> {_version}</div>'
                     ),
                     refresh_btn,
                     mo.md(f"`{get_user_display()}:{COURSE_DIR}`"),
