@@ -23,6 +23,41 @@ def _rel(p: Path) -> str:
         return str(p)
 
 
+def download_assignment_files(
+    transport: Transport,
+    files: list[dict],
+    output_dir: Path,
+    assignment_name: str,
+) -> list[Path]:
+    """Download files, extract ZIPs, and cache .py files for integrity.
+
+    Returns the list of downloaded file paths.  Usable from both the CLI
+    (``do_fetch``) and the student dashboard.
+    """
+    import shutil
+
+    output_dir.mkdir(parents=True, exist_ok=True)
+    downloaded: list[Path] = []
+    for f in files:
+        dest = output_dir / f["filename"]
+        transport.download_file(f["url"], dest)
+        downloaded.append(dest)
+
+    # Auto-extract ZIP files
+    for dest in downloaded:
+        if dest.suffix.lower() == ".zip":
+            with zipfile.ZipFile(dest) as zf:
+                zf.extractall(output_dir)
+
+    # Cache .py files for integrity validation (--fix)
+    cache_dir = output_dir / ".mograder" / "release" / assignment_name
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    for py in output_dir.glob("*.py"):
+        shutil.copy2(py, cache_dir / py.name)
+
+    return downloaded
+
+
 def do_fetch(
     transport: Transport,
     assignment: str | None,
@@ -64,30 +99,11 @@ def do_fetch(
         click.echo(f"No files attached to assignment '{match.name}'")
         return
 
-    output_dir.mkdir(parents=True, exist_ok=True)
-    downloaded = []
-    for f in files:
-        dest = output_dir / f["filename"]
-        transport.download_file(f["url"], dest)
-        downloaded.append(dest)
+    downloaded = download_assignment_files(transport, files, output_dir, match.name)
+    for dest in downloaded:
         click.echo(f"  Downloaded: {_rel(dest)}")
-
-    # Auto-extract ZIP files
-    for dest in downloaded:
         if dest.suffix.lower() == ".zip":
-            with zipfile.ZipFile(dest) as zf:
-                zf.extractall(output_dir)
-                click.echo(f"  Extracted: {dest.name} ({len(zf.namelist())} files)")
-
-    # Cache .py files for integrity validation (--fix)
-    cache_dir = output_dir / ".mograder" / "release" / match.name
-    cache_dir.mkdir(parents=True, exist_ok=True)
-    for dest in downloaded:
-        if dest.suffix == ".py":
-            import shutil
-
-            shutil.copy2(dest, cache_dir / dest.name)
-
+            click.echo(f"  Extracted: {dest.name}")
     click.echo(f"Fetched {len(downloaded)} file(s) for '{match.name}'")
 
 

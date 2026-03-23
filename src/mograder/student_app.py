@@ -169,8 +169,7 @@ def _(
                     "name": d.name,
                     "id": d.name,
                     "files": [
-                        {"name": f.name, "url": ""}
-                        for f in sorted(d.glob("*.py"))
+                        {"name": f.name, "url": ""} for f in sorted(d.glob("*.py"))
                     ],
                 }
                 for d in sorted(_rel_dir.iterdir())
@@ -676,7 +675,9 @@ def _(
                         _up = _httpx.post(
                             f"{_hub_base}/upload/{HUB_USER}/{_name}",
                             headers=_hub_headers,
-                            files={"file": (f"{_name}.py", _resp.content, "text/x-python")},
+                            files={
+                                "file": (f"{_name}.py", _resp.content, "text/x-python")
+                            },
                             timeout=30,
                         )
                         if _up.status_code == 200:
@@ -706,7 +707,7 @@ def _(
                             # the current page (works behind reverse proxies)
                             _url = _data["url"].lstrip("/")
                             set_action_log(
-                                f'Editing **{_name}** — '
+                                f"Editing **{_name}** — "
                                 f'<a href="{_url}" target="_blank">open editor</a>'
                             )
                         else:
@@ -745,8 +746,7 @@ def _(
                 _name = pending["assignment"]
                 _url = f"export/{HUB_USER}/{_name}"
                 set_action_log(
-                    f'Export **{_name}**: '
-                    f'<a href="{_url}" target="_blank">download</a>'
+                    f'Export **{_name}**: <a href="{_url}" target="_blank">download</a>'
                 )
 
             elif _act == "hub_reset":
@@ -796,30 +796,26 @@ def _(
                 _assign = pending["assign"]
                 _slug = pending["slug"]
                 _adir = COURSE_DIR / _slug
-                _adir.mkdir(exist_ok=True)
                 _name = _assign["name"]
-                _py_files = [
-                    f for f in _assign.get("files", []) if f["name"].endswith(".py")
-                ]
-                if not _py_files:
-                    set_action_log(f"No `.py` file attached to **{_name}**")
+                _all_files = _assign.get("files", [])
+                if not _all_files:
+                    set_action_log(f"No files attached to **{_name}**")
                 else:
                     try:
-                        for _finfo in _py_files:
-                            _dest = _adir / _finfo["name"]
-                            if _transport:
-                                _transport.download_file(_finfo["url"], _dest)
-                            else:
-                                _client.download_file(_finfo["url"], _dest)
-                        # Cache release for integrity validation
-                        _cache_dir = COURSE_DIR / ".mograder" / "release" / _slug
-                        _cache_dir.mkdir(parents=True, exist_ok=True)
-                        import shutil as _shutil
+                        from mograder.transport_commands import (
+                            download_assignment_files,
+                        )
 
-                        for _finfo2 in _py_files:
-                            _src = _adir / _finfo2["name"]
-                            if _src.exists():
-                                _shutil.copy2(_src, _cache_dir / _src.name)
+                        # Remap {"name": ..} to {"filename": ..} for shared helper
+                        _files = [
+                            {
+                                "filename": f.get("filename", f.get("name")),
+                                "url": f["url"],
+                            }
+                            for f in _all_files
+                        ]
+                        _dl_transport = _transport or _client
+                        download_assignment_files(_dl_transport, _files, _adir, _name)
                         set_action_log(f"Downloaded **{_name}** to `{_slug}/`")
                     except Exception as _exc:
                         set_action_log(f"Download failed for **{_name}**: {_exc}")
@@ -858,7 +854,9 @@ def _(
                                 import webbrowser as _wb
 
                                 _wb.open(_url)
-                        set_action_log(f"Opened **{_name}** for editing: [{_url}]({_url})")
+                        set_action_log(
+                            f"Opened **{_name}** for editing: [{_url}]({_url})"
+                        )
                     except TimeoutError:
                         set_action_log(
                             f"Opened **{_name}** for editing (could not detect URL)"
@@ -883,14 +881,16 @@ def _(
                         )
                         _mtime = _path.stat().st_mtime
                         save_cached_results(COURSE_DIR, _path.name, _result, _mtime)
-                        _passed = sum(1 for c in _result.checks if c.status == "success")
+                        _passed = sum(
+                            1 for c in _result.checks if c.status == "success"
+                        )
                         _total = len(_result.checks)
                         if not _result.export_ok:
-                            _msg = (
-                                f"Validation of **{_name}** failed: {_result.export_error}"
-                            )
+                            _msg = f"Validation of **{_name}** failed: {_result.export_error}"
                         elif _total == 0:
-                            _msg = f"Validation of **{_name}** complete (no checks found)"
+                            _msg = (
+                                f"Validation of **{_name}** complete (no checks found)"
+                            )
                         else:
                             _msg = (
                                 f"Validation of **{_name}** complete: "
@@ -903,7 +903,9 @@ def _(
 
                         _hw = validate_cell_hashes(_path.read_text())
                         if _hw:
-                            _msg += "\n\n**Warning:** modified non-solution cells detected:"
+                            _msg += (
+                                "\n\n**Warning:** modified non-solution cells detected:"
+                            )
                             for _w in _hw:
                                 _msg += f"\n- Cell {_w.index + 1}: `{_w.snippet}`"
                         set_action_log(_msg)
@@ -923,7 +925,9 @@ def _(
                     else:
                         _item_id = _client.upload_file(_path)
                         _client.save_submission(_assign["id"], _item_id)
-                    save_submission_record(COURSE_DIR, _path.name, _path.stat().st_mtime)
+                    save_submission_record(
+                        COURSE_DIR, _path.name, _path.stat().st_mtime
+                    )
                     set_action_log(f"Submitted **{_name}** (`{_path.name}`)")
                 except Exception as _exc:
                     set_action_log(f"Submit failed for **{_name}**: {_exc}")
@@ -946,7 +950,16 @@ def _(mo, set_action_log, set_report_path):
 
 # --- Active editors panel (hub mode) ---
 @app.cell
-def _(CONFIG, HUB_MODE, HUB_USER, get_refresh, mo, set_action_log, set_pending, set_refresh):
+def _(
+    CONFIG,
+    HUB_MODE,
+    HUB_USER,
+    get_refresh,
+    mo,
+    set_action_log,
+    set_pending,
+    set_refresh,
+):
     _ = get_refresh()
     active_editors_content = None
 
@@ -982,7 +995,7 @@ def _(CONFIG, HUB_MODE, HUB_USER, get_refresh, mo, set_action_log, set_pending, 
                     mo.hstack(
                         [
                             mo.md(
-                                f'**{_name}** — '
+                                f"**{_name}** — "
                                 f'<a href="{_url}" target="_blank">open</a>'
                             ),
                             _stop_btn,

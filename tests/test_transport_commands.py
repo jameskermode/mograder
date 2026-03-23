@@ -71,6 +71,36 @@ class TestDoFetch:
         with pytest.raises(click.UsageError, match="Provide an assignment"):
             do_fetch(transport, None, tmp_path)
 
+    def test_fetch_extracts_zip(self, tmp_path, capsys):
+        """do_fetch auto-extracts .zip files and caches the .py inside."""
+        import io
+        import zipfile
+
+        # Build a zip containing a .py file
+        buf = io.BytesIO()
+        with zipfile.ZipFile(buf, "w") as zf:
+            zf.writestr("hw1.py", "# code")
+        zip_bytes = buf.getvalue()
+
+        transport = MagicMock()
+        transport.list_assignments.return_value = [
+            RemoteAssignment(
+                name="HW1",
+                id="10",
+                files=[{"filename": "hw1.zip", "url": "http://example.com/hw1.zip"}],
+            ),
+        ]
+        transport.download_file.side_effect = lambda url, dest: (
+            dest.write_bytes(zip_bytes) or dest
+        )
+        do_fetch(transport, "HW1", tmp_path)
+        # .py extracted from zip
+        assert (tmp_path / "hw1.py").exists()
+        assert (tmp_path / "hw1.py").read_text() == "# code"
+        # Cached for integrity
+        cache = tmp_path / ".mograder" / "release" / "HW1" / "hw1.py"
+        assert cache.exists()
+
 
 class TestDoSubmit:
     def test_submit(self, tmp_path, capsys):
