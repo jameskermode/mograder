@@ -257,9 +257,13 @@ def _(
 
         if IS_HTTPS:
             if not _https_needs_login:
+                _server_info = mo.Html(
+                    f"<b>Local:</b> <code>{COURSE_DIR}</code>"
+                    f"<br><b>Remote:</b> <code>{CONFIG.https_url}</code>"
+                )
                 mo.output.replace(
                     mo.hstack(
-                        [_heading, mo.md(f"`{COURSE_DIR}`")],
+                        [_heading, _server_info],
                         justify="space-between",
                         align="center",
                     )
