@@ -72,7 +72,12 @@ def version_html() -> str:
     """Return an HTML snippet showing the current version and update availability."""
     current = get_version()
     latest = check_latest_version()
-    if latest and latest != current:
+    if (
+        latest
+        and latest != current
+        and tuple(int(x) for x in latest.split("."))
+        > tuple(int(x) for x in current.split("."))
+    ):
         return (
             f'<span style="font-size:0.8em;color:var(--text-secondary,#666)">'
             f"v{current}"
