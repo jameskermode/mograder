@@ -66,6 +66,22 @@ jobs:
           uv run mograder generate examples/source/demo-assignment/demo-assignment.py examples/source/demo-holistic/demo-holistic.py -o examples/release
           git diff --exit-code examples/release/
 
+  pyodide-compat:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install Pyodide
+        run: npm install pyodide
+
+      - name: Check runtime API matches PyPI
+        run: node tests/test_pyodide_compat.js
+
   linkcheck:
     runs-on: ubuntu-latest
     steps:
