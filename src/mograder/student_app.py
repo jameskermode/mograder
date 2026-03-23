@@ -351,9 +351,17 @@ def _(
                 )
             )
         elif get_token():
+            _moodle_info = mo.Html(
+                f"<b>Local:</b> <code>{COURSE_DIR}</code>"
+                + (
+                    f"<br><b>Remote:</b> <code>{moodle_url}</code>"
+                    if moodle_url
+                    else ""
+                )
+            )
             mo.output.replace(
                 mo.hstack(
-                    [_heading, mo.md(f"`{COURSE_DIR}`")],
+                    [_heading, _moodle_info],
                     justify="space-between",
                     align="center",
                 )
