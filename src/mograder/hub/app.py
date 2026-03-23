@@ -288,13 +288,15 @@ def create_hub_app(
             alive = s.process is not None and s.process.returncode is None
             if not alive:
                 continue
-            result.append({
-                "username": u,
-                "assignment": a,
-                "port": s.port,
-                "url": f"edit/{u}/{a}/",
-                "last_seen": s.last_seen,
-            })
+            result.append(
+                {
+                    "username": u,
+                    "assignment": a,
+                    "port": s.port,
+                    "url": f"edit/{u}/{a}/",
+                    "last_seen": s.last_seen,
+                }
+            )
         return result
 
     # -- List assignments --

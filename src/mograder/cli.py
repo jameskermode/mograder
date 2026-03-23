@@ -3459,9 +3459,7 @@ def hub_publish(ctx, assignment, moodle_assignment, url, hub_token, force, dry_r
                 assignment_dir = matches[0]
             elif len(matches) > 1:
                 names = "\n  ".join(p.name for p in matches)
-                click.echo(
-                    f"Ambiguous assignment '{s}'. Matches:\n  {names}", err=True
-                )
+                click.echo(f"Ambiguous assignment '{s}'. Matches:\n  {names}", err=True)
                 raise SystemExit(1)
 
     if not assignment_dir.is_dir():

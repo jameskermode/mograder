@@ -89,9 +89,7 @@ class StorageManager:
 
     # -- reset --
 
-    def reset_to_release(
-        self, username: str, assignment: str
-    ) -> Path | None:
+    def reset_to_release(self, username: str, assignment: str) -> Path | None:
         """Archive existing notebook and optionally copy from release.
 
         Returns the archive path, or None if no existing file to archive.

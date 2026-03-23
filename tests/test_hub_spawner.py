@@ -195,7 +195,7 @@ class TestEnv:
 class TestWarmCache:
     def test_parses_deps(self):
         """PEP 723 deps are extracted correctly."""
-        source = '''# /// script
+        source = """# /// script
 # dependencies = [
 #     "numpy",
 #     "jax",
@@ -203,7 +203,7 @@ class TestWarmCache:
 # ///
 
 import numpy as np
-'''
+"""
         from mograder.hub.spawner import parse_pep723_deps
 
         deps = parse_pep723_deps(source)

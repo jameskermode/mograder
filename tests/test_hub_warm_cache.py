@@ -5,7 +5,7 @@ from mograder.hub.spawner import parse_pep723_deps
 
 def test_parses_pep723_deps():
     """Extracts dependencies from PEP 723 inline script metadata."""
-    source = '''# /// script
+    source = """# /// script
 # dependencies = [
 #     "numpy>=1.26",
 #     "jax",
@@ -14,7 +14,7 @@ def test_parses_pep723_deps():
 # ///
 
 import numpy as np
-'''
+"""
     deps = parse_pep723_deps(source)
     assert deps == ["numpy>=1.26", "jax", "marimo"]
 
@@ -39,12 +39,12 @@ print("hello")
 
 def test_multiple_metadata_fields():
     """Only dependencies are extracted, other fields ignored."""
-    source = '''# /// script
+    source = """# /// script
 # requires-python = ">=3.11"
 # dependencies = [
 #     "numpy",
 # ]
 # ///
-'''
+"""
     deps = parse_pep723_deps(source)
     assert deps == ["numpy"]

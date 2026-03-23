@@ -131,9 +131,7 @@ class TestMiddleware:
     def test_unknown_ip_403(self):
         """No cookie, untrusted IP → 403."""
         mw = _make_middleware()
-        resp = asyncio.run(
-            _call_middleware(mw, client=("192.168.1.1", 9999))
-        )
+        resp = asyncio.run(_call_middleware(mw, client=("192.168.1.1", 9999)))
         assert resp["status"] == 403
 
     def test_bearer_token_accepted(self):
@@ -173,9 +171,7 @@ class TestMiddleware:
             trusted_header="x-remote-user",
             dev=True,
         )
-        resp = asyncio.run(
-            _call_middleware(mw, client=("192.168.1.1", 9999))
-        )
+        resp = asyncio.run(_call_middleware(mw, client=("192.168.1.1", 9999)))
         assert resp["status"] == 200
         assert b"user=dev-user" in resp["body"]
 

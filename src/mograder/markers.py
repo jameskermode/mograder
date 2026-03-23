@@ -25,9 +25,7 @@ SUBMIT_MARKER = "# === MOGRADER: SUBMIT ==="
 _SIMPLE_NAME_RE = re.compile(r"^[a-zA-Z_]\w*$")
 _ASSIGN_RE = re.compile(r"^\s*([a-zA-Z_]\w*)\s*=")
 # Matches simple and tuple unpacking: "x = ...", "a, b = ...", "(a, b) = ..."
-_TUPLE_ASSIGN_RE = re.compile(
-    r"^\s*\(?([a-zA-Z_]\w*(?:\s*,\s*[a-zA-Z_]\w*)*)\)?\s*="
-)
+_TUPLE_ASSIGN_RE = re.compile(r"^\s*\(?([a-zA-Z_]\w*(?:\s*,\s*[a-zA-Z_]\w*)*)\)?\s*=")
 
 
 def _extract_assigned_names(line: str) -> list[str]:
@@ -574,7 +572,9 @@ def build_release_zip(release_dir: Path) -> Path | None:
     candidates = sorted(
         f
         for f in release_dir.iterdir()
-        if f.is_file() and not f.name.startswith(".") and f.suffix not in _EXCLUDE_SUFFIXES
+        if f.is_file()
+        and not f.name.startswith(".")
+        and f.suffix not in _EXCLUDE_SUFFIXES
     )
 
     # Skip zip when there's only a single file (e.g. just the .py notebook)

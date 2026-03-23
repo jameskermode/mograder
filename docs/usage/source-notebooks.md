@@ -21,20 +21,20 @@ def _(np):
     return (finite_diff,)
 ```
 
-For written-response cells, assign the model answer to `_response` inside a solution block. The generated release version is automatically converted to an editable `mo.md()` block for the student:
+For written-response cells, assign the model answer to `response_text` inside a solution block. The generated release version is automatically converted to an editable `mo.md()` block for the student:
 
 ```python
 @app.cell
 def _(mo):
-    _response = "*Write your analysis here...*"
+    response_text = "*Write your analysis here...*"
     ### BEGIN SOLUTION
-    _response = r"""
+    response_text = r"""
     The finite difference method approximates derivatives using nearby
     function values. Central differences achieve second-order accuracy...
     """
     ### END SOLUTION
-    mo.md(_response)
-    return
+    mo.md(response_text)
+    return (response_text,)
 ```
 
 ## Autograding checks

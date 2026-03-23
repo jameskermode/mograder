@@ -48,9 +48,7 @@ def test_hub_config_from_toml(tmp_path):
 
 def test_hub_config_partial(tmp_path):
     """Partial [hub] section uses defaults for missing keys."""
-    (tmp_path / "mograder.toml").write_text(
-        "[hub]\n" "port = 3000\n" "session_ttl = 1800\n"
-    )
+    (tmp_path / "mograder.toml").write_text("[hub]\nport = 3000\nsession_ttl = 1800\n")
     config = load_config(tmp_path)
     assert config.hub_port == 3000
     assert config.hub_notebooks_dir == "hub-notebooks"  # default
@@ -63,7 +61,7 @@ def test_hub_config_partial(tmp_path):
 def test_hub_config_coexists_with_other_sections(tmp_path):
     """[hub] section coexists with other sections."""
     (tmp_path / "mograder.toml").write_text(
-        "[defaults]\njobs = 8\n\n" "[hub]\nport = 9090\n"
+        "[defaults]\njobs = 8\n\n[hub]\nport = 9090\n"
     )
     config = load_config(tmp_path)
     assert config.jobs == 8
