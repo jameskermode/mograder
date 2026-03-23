@@ -866,9 +866,26 @@ def _(
                                 f"Opened **{_name}** for editing (could not detect URL)"
                             )
                 else:
-                    _cmd = [sys.executable, "-m", "marimo", "edit", "--sandbox", _path]
-                    sp.Popen(_cmd)
-                    set_action_log(f"Opened **{_name}** for editing")
+                    from mograder.edit_sessions import spawn_headless_edit
+
+                    with mo.status.spinner(
+                        title=f"Starting editor for {_name}...",
+                        remove_on_exit=True,
+                    ):
+                        try:
+                            _hs = spawn_headless_edit(
+                                _path, token=False, spawn_timeout=120
+                            )
+                            import webbrowser as _wb
+
+                            _wb.open(_hs.url)
+                            set_action_log(
+                                f"Opened **{_name}** for editing: [{_hs.url}]({_hs.url})"
+                            )
+                        except TimeoutError:
+                            set_action_log(
+                                f"Failed to start editor for **{_name}** (timed out)"
+                            )
 
             elif _act == "validate":
                 _path = Path(pending["path"])
