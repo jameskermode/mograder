@@ -152,6 +152,19 @@ jobs:
           echo "Root: $ROOT, Assignments: $API, Keys: $KEYS, Dashboard: $DASH, TOML: $TOML"
           [ "$ROOT" = "200" ] && [ "$API" = "200" ] && [ "$KEYS" = "200" ] && [ "$DASH" = "200" ] && [ "$TOML" = "200" ] || { echo "::error::Health check failed"; exit 1; }
 
+      - name: Check for import errors
+        run: |
+          # Trigger a page load so marimo executes the app cells
+          curl -s https://mograder-demo.jrkermode.uk/ > /dev/null
+          sleep 5
+          ERRORS=$(ssh ubuntu@mograder-demo.jrkermode.uk "sudo journalctl -u mograder-demo --no-pager -n 30 --since '1 min ago' 2>/dev/null" | grep -c "ModuleNotFoundError" || true)
+          if [ "$ERRORS" -gt 0 ]; then
+            ssh ubuntu@mograder-demo.jrkermode.uk "sudo journalctl -u mograder-demo --no-pager -n 30 --since '1 min ago'" | grep "ModuleNotFoundError"
+            echo "::error::Formgrader has import errors ($ERRORS occurrences)"
+            exit 1
+          fi
+          echo "No import errors detected"
+
   demo-student-test:
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     needs: [deploy-demo]

@@ -27,6 +27,8 @@ dependencies = [
 hub = [
     "fastapi>=0.100",
     "lzstring>=1.0.4",
+    "matplotlib",
+    "seaborn",
     "starlette>=0.37.2",
     "uvicorn>=0.24",
     "python-multipart>=0.0.6",
