@@ -18,9 +18,11 @@ def hub_dirs(tmp_path):
     notebooks.mkdir()
     release = tmp_path / "hub-release"
     release.mkdir()
-    # Create mograder.toml
+    # Create mograder.toml (use forward slashes for Windows TOML compat)
+    nb_str = str(notebooks).replace("\\", "/")
+    rel_str = str(release).replace("\\", "/")
     (tmp_path / "mograder.toml").write_text(
-        f'[hub]\nnotebooks_dir = "{notebooks}"\nrelease_dir = "{release}"\n'
+        f'[hub]\nnotebooks_dir = "{nb_str}"\nrelease_dir = "{rel_str}"\n'
     )
     return {"course_dir": tmp_path, "notebooks": notebooks, "release": release}
 
