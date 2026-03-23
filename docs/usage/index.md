@@ -55,3 +55,4 @@ course/
 12. **[`mograder moodle sync`](moodle.md#sync-assignment-metadata-instructor)** — syncs assignment metadata from Moodle into `mograder.toml`
 13. **[`mograder student`](student-dashboard.md)** — launches an interactive student dashboard
 14. **[`mograder serve`](https-transport.md)** / **[`mograder https *`](https-transport.md)** — lightweight HTTPS server + transport for assignment distribution without Moodle
+15. **[`mograder hub`](hub.md)** — multi-user hub server for browser-based assignment delivery (publish, edit, validate)

@@ -4,6 +4,7 @@ from mograder.markers import (
     SOLUTION_BEGIN,
     SOLUTION_END,
     SUBMIT_MARKER,
+    _extract_assigned_names,
     _extract_return_names,
     _hash_cell,
     _inject_assignment_metadata,
@@ -382,6 +383,49 @@ def test_strip_solutions_sentinel_parenthesised_tuple():
     assert "        # YOUR CODE HERE\n" in result
 
 
+def test_strip_solutions_no_sentinel_for_tuple_unpacking():
+    """Tuple unpacking (fig, ax = ...) should mark both names as pre-assigned."""
+    lines = [
+        "    fig, ax = plt.subplots()\n",
+        f"    {SOLUTION_BEGIN}\n",
+        "    ax.plot(x, y)\n",
+        f"    {SOLUTION_END}\n",
+        "    return (ax,)\n",
+    ]
+    result = strip_solutions(lines)
+    # ax is pre-assigned by tuple unpacking, no sentinel needed
+    assert "    ax = ...\n" not in result
+
+
+def test_strip_solutions_no_sentinel_for_triple_tuple():
+    """Triple tuple unpacking (a, b, c = func()) marks all names."""
+    lines = [
+        "    a, b, c = func()\n",
+        f"    {SOLUTION_BEGIN}\n",
+        "    a = a + 1\n",
+        f"    {SOLUTION_END}\n",
+        "    return (a, b, c)\n",
+    ]
+    result = strip_solutions(lines)
+    assert "    a = ...\n" not in result
+    assert "    b = ...\n" not in result
+    assert "    c = ...\n" not in result
+
+
+def test_strip_solutions_no_sentinel_for_parens_tuple():
+    """Parenthesised tuple unpacking ((a, b) = func()) marks both names."""
+    lines = [
+        "    (a, b) = func()\n",
+        f"    {SOLUTION_BEGIN}\n",
+        "    a = a * 2\n",
+        f"    {SOLUTION_END}\n",
+        "    return (a, b)\n",
+    ]
+    result = strip_solutions(lines)
+    assert "    a = ...\n" not in result
+    assert "    b = ...\n" not in result
+
+
 # --- _inject_assignment_metadata ---
 
 
@@ -562,15 +606,40 @@ def test_build_release_zip(tmp_path):
     assert names == ["data.csv", "hw1.py"]
 
 
+def test_build_release_zip_skips_single_file(tmp_path):
+    """Single-file release (just the .py) returns None — no zip needed."""
+    release = tmp_path / "hw1"
+    release.mkdir()
+    (release / "hw1.py").write_text("# code")
+
+    zip_path = build_release_zip(release)
+    assert zip_path is None
+    assert not (release / "hw1.zip").exists()
+
+
+def test_build_release_zip_removes_stale_zip(tmp_path):
+    """Stale zip from a previous run is removed when no longer needed."""
+    release = tmp_path / "hw1"
+    release.mkdir()
+    (release / "hw1.py").write_text("# code")
+    stale = release / "hw1.zip"
+    stale.write_text("old zip")
+
+    zip_path = build_release_zip(release)
+    assert zip_path is None
+    assert not stale.exists()
+
+
 def test_build_release_zip_skips_dirs(tmp_path):
     """Zip excludes subdirectories like __marimo__/."""
     release = tmp_path / "hw1"
     release.mkdir()
     (release / "hw1.py").write_text("# code")
+    (release / "data.csv").write_text("a,b\n1,2\n")
     (release / "__marimo__").mkdir()
     (release / "__marimo__" / "session.json").write_text("{}")
 
     zip_path = build_release_zip(release)
     with zipfile.ZipFile(zip_path) as zf:
-        names = zf.namelist()
-    assert names == ["hw1.py"]
+        names = sorted(zf.namelist())
+    assert names == ["data.csv", "hw1.py"]

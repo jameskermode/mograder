@@ -24,6 +24,18 @@ SUBMIT_MARKER = "# === MOGRADER: SUBMIT ==="
 
 _SIMPLE_NAME_RE = re.compile(r"^[a-zA-Z_]\w*$")
 _ASSIGN_RE = re.compile(r"^\s*([a-zA-Z_]\w*)\s*=")
+# Matches simple and tuple unpacking: "x = ...", "a, b = ...", "(a, b) = ..."
+_TUPLE_ASSIGN_RE = re.compile(
+    r"^\s*\(?([a-zA-Z_]\w*(?:\s*,\s*[a-zA-Z_]\w*)*)\)?\s*="
+)
+
+
+def _extract_assigned_names(line: str) -> list[str]:
+    """Extract all variable names from an assignment LHS (simple or tuple)."""
+    m = _TUPLE_ASSIGN_RE.match(line)
+    if not m:
+        return []
+    return [n.strip() for n in m.group(1).split(",") if n.strip()]
 
 
 def _extract_return_names(line: str) -> list[str]:
@@ -113,9 +125,8 @@ def _find_sentinel_vars(lines: list[str]) -> dict[int, list[str]]:
             prev_indent = prev[: len(prev) - len(prev.lstrip())]
             if prev_stripped and len(prev_indent) < len(indent):
                 break
-            m = _ASSIGN_RE.match(prev)
-            if m:
-                pre_assigned.add(m.group(1))
+            for _name in _extract_assigned_names(prev):
+                pre_assigned.add(_name)
 
         orphaned = [n for n in return_names if n not in pre_assigned]
         if orphaned:
@@ -548,19 +559,33 @@ def process_file(
     return True
 
 
-def build_release_zip(release_dir: Path) -> Path:
+def build_release_zip(release_dir: Path) -> Path | None:
     """Create a zip of student-facing release files, excluding artifacts.
+
+    Returns *None* (and removes any stale zip) when the directory contains
+    only a single file — a zip that wraps one file adds no value.
 
     Uses a fixed timestamp so the zip is reproducible across runs.
     """
     zip_path = release_dir / f"{release_dir.name}.zip"
     _EXCLUDE_SUFFIXES = {".html", ".zip"}
+
+    # Collect candidate files
+    candidates = sorted(
+        f
+        for f in release_dir.iterdir()
+        if f.is_file() and not f.name.startswith(".") and f.suffix not in _EXCLUDE_SUFFIXES
+    )
+
+    # Skip zip when there's only a single file (e.g. just the .py notebook)
+    if len(candidates) <= 1:
+        zip_path.unlink(missing_ok=True)
+        return None
+
     # Fixed date_time for reproducible output (2025-01-01 00:00:00)
     _FIXED_TIME = (2025, 1, 1, 0, 0, 0)
     with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
-        for f in sorted(release_dir.iterdir()):
-            if f.is_dir() or f.name.startswith(".") or f.suffix in _EXCLUDE_SUFFIXES:
-                continue
+        for f in candidates:
             info = zipfile.ZipInfo(f.name, date_time=_FIXED_TIME)
             info.compress_type = zipfile.ZIP_DEFLATED
             zf.writestr(info, f.read_bytes())

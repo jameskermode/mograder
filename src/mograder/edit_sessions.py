@@ -420,6 +420,63 @@ def _filter_response_headers(headers) -> dict[str, str]:
     return {k: v for k, v in headers.items() if k.lower() not in _HOP_BY_HOP}
 
 
+async def proxy_http_request(client, request, target_url: str):
+    """Forward *request* to *target_url* via *client*, filtering hop-by-hop headers."""
+    from starlette.responses import Response
+
+    body = await request.body()
+    resp = await client.request(
+        method=request.method,
+        url=target_url,
+        headers=_filter_headers(request.headers),
+        content=body,
+        timeout=60,
+    )
+    return Response(
+        content=resp.content,
+        status_code=resp.status_code,
+        headers=_filter_response_headers(resp.headers),
+    )
+
+
+async def proxy_ws_relay(websocket, target_url: str) -> None:
+    """Relay WebSocket frames between *websocket* and upstream *target_url*.
+
+    Caller must have already called ``await websocket.accept()``.
+    """
+    try:
+        import websockets
+
+        async with websockets.connect(target_url) as upstream:
+
+            async def client_to_upstream() -> None:
+                try:
+                    while True:
+                        data = await websocket.receive_text()
+                        await upstream.send(data)
+                except Exception:
+                    pass
+
+            async def upstream_to_client() -> None:
+                try:
+                    async for msg in upstream:
+                        if isinstance(msg, str):
+                            await websocket.send_text(msg)
+                        else:
+                            await websocket.send_bytes(msg)
+                except Exception:
+                    pass
+
+            await asyncio.gather(client_to_upstream(), upstream_to_client())
+    except Exception:
+        pass
+    finally:
+        try:
+            await websocket.close()
+        except Exception:
+            pass
+
+
 def build_edit_proxy_app(
     manager: EditSessionManager,
     http_client: object | None = None,
@@ -473,22 +530,7 @@ def build_edit_proxy_app(
         if request.url.query:
             target_url += f"?{request.url.query}"
 
-        body = await request.body()
-        resp = await _proxy_client.request(
-            method=request.method,
-            url=target_url,
-            headers=_filter_headers(request.headers),
-            content=body,
-            timeout=60,
-        )
-
-        resp_headers = _filter_response_headers(resp.headers)
-
-        return Response(
-            content=resp.content,
-            status_code=resp.status_code,
-            headers=resp_headers,
-        )
+        return await proxy_http_request(_proxy_client, request, target_url)
 
     async def proxy_ws(websocket: WebSocket) -> None:
         user = websocket.scope.get("user", {})
@@ -507,38 +549,7 @@ def build_edit_proxy_app(
             target += f"?{websocket.url.query}"
 
         await websocket.accept()
-
-        try:
-            import websockets
-
-            async with websockets.connect(target) as upstream:
-
-                async def client_to_upstream() -> None:
-                    try:
-                        while True:
-                            data = await websocket.receive_text()
-                            await upstream.send(data)
-                    except Exception:
-                        pass
-
-                async def upstream_to_client() -> None:
-                    try:
-                        async for msg in upstream:
-                            if isinstance(msg, str):
-                                await websocket.send_text(msg)
-                            else:
-                                await websocket.send_bytes(msg)
-                    except Exception:
-                        pass
-
-                await asyncio.gather(client_to_upstream(), upstream_to_client())
-        except Exception:
-            pass
-        finally:
-            try:
-                await websocket.close()
-            except Exception:
-                pass
+        await proxy_ws_relay(websocket, target)
 
     async def create_session(request: Request) -> JSONResponse:
         user = request.scope.get("user", {})

@@ -63,6 +63,14 @@ max = 100                          # maximum penalty percentage (default: 100)
 
 [edit_links]                       # custom "Edit in ..." links for the student dashboard
 molab = "https://molab.marimo.io/new/#code/{content_lz}"
+
+[hub]                              # multi-user hub server settings
+port = 8080
+notebooks_dir = "hub-notebooks"
+release_dir = "hub-release"
+session_ttl = 3600
+trusted_header = "X-Remote-User"
+uv_cache_dir = ""
 ```
 
 ## Section reference
@@ -111,6 +119,19 @@ Late submission penalty configuration. Penalties are applied during `mograder fe
 | `max` | `100` | Maximum penalty percentage (100 = can lose all marks) |
 
 Partial days are rounded up to the next whole day (e.g. 1.1 days late = 2-day penalty). The due date is read from the `duedate` field in `[[assignments]]`. Both raw and penalised marks are stored in the gradebook. Use `--no-penalties` on the `feedback` command to skip, or `--due-date` to override the deadline.
+
+### `[hub]`
+
+Multi-user hub server settings. See [Hub](usage/hub.md) for usage details.
+
+| Key | Default | Description |
+|-----|---------|-------------|
+| `port` | `8080` | Server port |
+| `notebooks_dir` | `hub-notebooks` | Directory for student work |
+| `release_dir` | `hub-release` | Directory for published assignments |
+| `session_ttl` | `3600` | Edit session idle timeout (seconds) |
+| `trusted_header` | `X-Remote-User` | SSO proxy header name |
+| `uv_cache_dir` | `""` | Custom uv cache location (empty = default `~/.cache/uv`) |
 
 ### `[edit_links]`
 

@@ -58,6 +58,13 @@ class MograderConfig:
     penalty_max: float = 100.0
     # [edit_links]
     edit_links: tuple[tuple[str, str], ...] = ()
+    # [hub]
+    hub_port: int = 8080
+    hub_notebooks_dir: str = "hub-notebooks"
+    hub_release_dir: str = "hub-release"
+    hub_session_ttl: int = 3600
+    hub_trusted_header: str = "X-Remote-User"
+    hub_uv_cache_dir: str = ""
 
 
 DEFAULT_CONFIG = MograderConfig()
@@ -79,6 +86,7 @@ def load_config(course_dir: Path) -> MograderConfig:
     sync = data.get("sync", {})
     edit_links_data = data.get("edit_links", {})
     penalties = data.get("penalties", {})
+    hub = data.get("hub", {})
 
     # [[assignments]] with fallback to [[moodle.assignments]]
     top_assignments = tuple(data.get("assignments", []))
@@ -123,6 +131,12 @@ def load_config(course_dir: Path) -> MograderConfig:
         penalty_per_day=penalties.get("per_day", 5.0),
         penalty_max=penalties.get("max", 100.0),
         edit_links=tuple((k, v) for k, v in edit_links_data.items()),
+        hub_port=hub.get("port", 8080),
+        hub_notebooks_dir=hub.get("notebooks_dir", "hub-notebooks"),
+        hub_release_dir=hub.get("release_dir", "hub-release"),
+        hub_session_ttl=hub.get("session_ttl", 3600),
+        hub_trusted_header=hub.get("trusted_header", "X-Remote-User"),
+        hub_uv_cache_dir=hub.get("uv_cache_dir", ""),
     )
 
 

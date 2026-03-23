@@ -362,7 +362,8 @@ def generate(
             rel_dir = output_dir / src_dir.name if src_dir.name != "." else output_dir
             if rel_dir.is_dir():
                 zip_path = markers.build_release_zip(rel_dir)
-                click.echo(f"ZIP: {_rel(zip_path)}")
+                if zip_path:
+                    click.echo(f"ZIP: {_rel(zip_path)}")
 
     # Phase 3: Validate release notebooks (no cell errors allowed)
     if not dry_run and not validate and not no_validate:
@@ -3106,3 +3107,448 @@ def wasm_edit_links(wasm_app, notebooks, output, url_template):
     dest = output or wasm_app
     Path(dest).write_text(source)
     click.echo(f"Wrote {len(links)} edit link(s) to {_rel(Path(dest))}")
+
+
+# ---------------------------------------------------------------------------
+# Hub commands
+# ---------------------------------------------------------------------------
+
+
+@cli.group(invoke_without_command=True)
+@click.option(
+    "-C",
+    "--course-dir",
+    type=click.Path(exists=True, path_type=Path),
+    default=".",
+    help="Course directory (default: .)",
+)
+@click.option("--port", type=int, default=8080, help="Port for hub server")
+@click.option("--host", default="0.0.0.0", help="Host to bind")
+@click.option(
+    "--notebooks-dir",
+    type=click.Path(path_type=Path),
+    default=None,
+    help="Directory for student notebooks",
+)
+@click.option("--session-ttl", type=int, default=3600, help="Session idle timeout (s)")
+@click.option("--trusted-header", default="X-Remote-User", help="Trusted proxy header")
+@click.option("--dev", is_flag=True, help="Dev mode: trust any X-Remote-User")
+@click.option("--headless", is_flag=True, help="Don't open browser")
+@click.pass_context
+def hub(
+    ctx,
+    course_dir,
+    port,
+    host,
+    notebooks_dir,
+    session_ttl,
+    trusted_header,
+    dev,
+    headless,
+):
+    """Multi-user hub server for mograder.
+
+    Run without a subcommand to start the hub server.
+    Use subcommands (check, warm-cache, generate-token) for utilities.
+    """
+    ctx.ensure_object(dict)
+    ctx.obj["hub_course_dir"] = course_dir
+    ctx.obj["hub_port"] = port
+    ctx.obj["hub_host"] = host
+    ctx.obj["hub_notebooks_dir"] = notebooks_dir
+    ctx.obj["hub_session_ttl"] = session_ttl
+    ctx.obj["hub_trusted_header"] = trusted_header
+    ctx.obj["hub_dev"] = dev
+    ctx.obj["hub_headless"] = headless
+
+    if ctx.invoked_subcommand is None:
+        _start_hub_server(
+            course_dir,
+            port,
+            host,
+            notebooks_dir,
+            session_ttl,
+            trusted_header,
+            dev,
+            headless,
+        )
+
+
+def _start_hub_server(
+    course_dir,
+    port,
+    host,
+    notebooks_dir,
+    session_ttl,
+    trusted_header,
+    dev,
+    headless,
+):
+    """Start the hub server via uvicorn."""
+    import subprocess as sp
+
+    secret = os.environ.get("MOGRADER_HUB_SECRET", "")
+    if not secret and not dev:
+        click.echo(
+            "Error: MOGRADER_HUB_SECRET must be set (or use --dev for ephemeral secret)",
+            err=True,
+        )
+        raise SystemExit(1)
+
+    os.environ["MOGRADER_COURSE_DIR"] = str(Path(course_dir).resolve())
+    os.environ["MOGRADER_HUB_MODE"] = "1"
+    if dev:
+        os.environ["MOGRADER_HUB_DEV"] = "1"
+
+    cmd = [
+        sys.executable,
+        "-m",
+        "uvicorn",
+        "mograder.hub.app:app",
+        "--host",
+        host,
+        "--port",
+        str(port),
+    ]
+
+    click.echo(f"Starting hub server for: {Path(course_dir).resolve()}")
+    click.echo(f"  bind: {host}:{port}")
+    if dev:
+        click.echo("  mode: development (no auth required)")
+
+    try:
+        proc = sp.run(cmd)
+        sys.exit(proc.returncode)
+    except KeyboardInterrupt:
+        pass
+
+
+@hub.command("check")
+@click.argument(
+    "course_dir",
+    type=click.Path(exists=True, path_type=Path),
+    default=".",
+    required=False,
+)
+def hub_check(course_dir):
+    """Preflight check: verify hub requirements."""
+    from mograder.config import load_config
+
+    config = load_config(course_dir)
+    issues = []
+
+    # Check secret
+    secret = os.environ.get("MOGRADER_HUB_SECRET", "")
+    if secret:
+        click.echo("  [ok] MOGRADER_HUB_SECRET is set")
+    else:
+        click.echo("  [!!] MOGRADER_HUB_SECRET not set (use --dev or set env var)")
+        issues.append("secret")
+
+    # Check marimo
+    if shutil.which("marimo") or shutil.which(sys.executable):
+        click.echo("  [ok] marimo available")
+    else:
+        click.echo("  [!!] marimo not found on PATH")
+        issues.append("marimo")
+
+    # Check bwrap
+    if shutil.which("bwrap"):
+        click.echo("  [ok] bubblewrap available")
+    else:
+        click.echo("  [--] bubblewrap not found (optional, recommended)")
+
+    # Check directories
+    nb_dir = Path(course_dir) / config.hub_notebooks_dir
+    rel_dir = Path(course_dir) / config.hub_release_dir
+    click.echo(f"  notebooks_dir: {nb_dir}")
+    click.echo(f"  release_dir: {rel_dir}")
+
+    # Check port
+    import socket
+
+    port = config.hub_port
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            s.bind(("127.0.0.1", port))
+        click.echo(f"  [ok] port {port} is free")
+    except OSError:
+        click.echo(f"  [!!] port {port} is in use")
+        issues.append("port")
+
+    if issues:
+        click.echo(f"\nHub check: {len(issues)} issue(s) found")
+    else:
+        click.echo("\nHub check: all good")
+
+
+@hub.command("warm-cache")
+@click.argument(
+    "notebooks",
+    nargs=-1,
+    type=click.Path(exists=True, path_type=Path),
+)
+@click.option(
+    "--all", "warm_all", is_flag=True, help="Warm cache for all release notebooks"
+)
+@click.option("--dry-run", is_flag=True, help="Print deps but don't invoke uv")
+@click.option(
+    "--url",
+    envvar="MOGRADER_HUB_URL",
+    default=None,
+    help="Hub URL — POST to remote /warm-cache instead of running locally",
+)
+@click.option(
+    "--token",
+    "hub_token",
+    envvar="MOGRADER_HUB_INSTRUCTOR_TOKEN",
+    default=None,
+    help="Instructor token for remote warm-cache",
+)
+@click.pass_context
+def hub_warm_cache(ctx, notebooks, warm_all, dry_run, url, hub_token):
+    """Warm the uv cache for notebook dependencies.
+
+    Parses PEP 723 inline script metadata to find dependencies,
+    then runs ``uv run --with <deps> python -c pass`` to populate the cache.
+
+    With --url, sends a POST to the hub's /warm-cache endpoint instead.
+    """
+    # Remote mode: delegate to hub API
+    if url:
+        import requests as req
+
+        if not hub_token:
+            click.echo(
+                "Error: --token required for remote warm-cache "
+                "(or set MOGRADER_HUB_INSTRUCTOR_TOKEN)",
+                err=True,
+            )
+            raise SystemExit(1)
+        resp = req.post(
+            f"{url.rstrip('/')}/warm-cache",
+            headers={"Authorization": f"Bearer {hub_token}"},
+            timeout=300,
+        )
+        if resp.status_code != 200:
+            click.echo(f"warm-cache failed ({resp.status_code}): {resp.text}", err=True)
+            raise SystemExit(1)
+        data = resp.json()
+        warmed = data.get("warmed", [])
+        click.echo(f"Warmed {len(warmed)} notebooks: {', '.join(warmed) or '(none)'}")
+        return
+
+    from mograder.hub.spawner import parse_pep723_deps
+
+    targets = list(notebooks)
+    if warm_all:
+        course_dir = ctx.obj.get("hub_course_dir", Path("."))
+        from mograder.config import load_config
+
+        config = load_config(course_dir)
+        rel_dir = Path(course_dir) / config.hub_release_dir
+        if rel_dir.is_dir():
+            for d in sorted(rel_dir.iterdir()):
+                if d.is_dir():
+                    for f in d.glob("*.py"):
+                        targets.append(f)
+
+    if not targets:
+        click.echo("No notebooks specified. Use --all or pass notebook paths.")
+        return
+
+    for nb_path in targets:
+        source = Path(nb_path).read_text()
+        deps = parse_pep723_deps(source)
+        if not deps:
+            click.echo(f"  {_rel(Path(nb_path))}: no PEP 723 deps")
+            continue
+
+        click.echo(f"  {_rel(Path(nb_path))}: {', '.join(deps)}")
+        if dry_run:
+            continue
+
+        import subprocess as sp
+
+        dep_args = []
+        for d in deps:
+            dep_args.extend(["--with", d])
+        cmd = ["uv", "run"] + dep_args + ["python", "-c", "pass"]
+        try:
+            sp.run(cmd, check=True, capture_output=True, timeout=120)
+            click.echo("    cached ok")
+        except sp.CalledProcessError as e:
+            click.echo(f"    cache failed: {e.stderr.decode()[:200]}")
+        except FileNotFoundError:
+            click.echo("    uv not found on PATH")
+            break
+
+
+@hub.command("generate-token")
+@click.argument("username")
+@click.option(
+    "--role",
+    type=click.Choice(["student", "instructor"]),
+    default="student",
+    help="Token role",
+)
+def hub_generate_token(username, role):
+    """Generate an HMAC authentication token for a user."""
+    from mograder.auth import INSTRUCTOR_USER, make_token
+
+    secret = os.environ.get("MOGRADER_HUB_SECRET", "")
+    if not secret:
+        click.echo("Error: MOGRADER_HUB_SECRET must be set", err=True)
+        raise SystemExit(1)
+
+    if role == "instructor":
+        token = make_token(secret, INSTRUCTOR_USER)
+        click.echo(token)
+    else:
+        token = make_token(secret, username)
+        click.echo(token)
+
+
+@hub.command("publish")
+@click.argument("assignment")
+@click.option(
+    "--moodle-assignment",
+    default=None,
+    help="Moodle assignment name to verify against (default: same as ASSIGNMENT)",
+)
+@click.option("--url", envvar="MOGRADER_HUB_URL", default=None, help="Hub base URL")
+@click.option(
+    "--token",
+    "hub_token",
+    envvar="MOGRADER_HUB_INSTRUCTOR_TOKEN",
+    default=None,
+    help="Instructor token for hub API",
+)
+@click.option("--force", is_flag=True, help="Skip Moodle verification")
+@click.option("--dry-run", is_flag=True, help="Verify only, don't publish")
+@click.pass_context
+def hub_publish(ctx, assignment, moodle_assignment, url, hub_token, force, dry_run):
+    """Publish a release assignment to the hub.
+
+    ASSIGNMENT is an assignment name (e.g. "A1-Intro-to-SciML" or prefix "A1")
+    resolved from the release directory, or an explicit directory path.
+
+    By default, verifies the release files match what's on Moodle before
+    publishing. Use --force to skip this check.
+    """
+    import requests as req
+
+    from mograder.config import load_config
+
+    config = ctx.obj.get("config") or load_config(Path("."))
+
+    # Resolve assignment name to release directory
+    s = str(assignment)
+    if "/" in s or os.sep in s or Path(s).is_dir():
+        # Explicit path
+        assignment_dir = Path(s)
+    else:
+        # Name-based resolution from release_dir
+        rel_base = Path(config.release_dir)
+        assignment_dir = rel_base / s
+        if not assignment_dir.is_dir() and rel_base.is_dir():
+            matches = sorted(
+                p for p in rel_base.iterdir() if p.is_dir() and p.name.startswith(s)
+            )
+            if len(matches) == 1:
+                assignment_dir = matches[0]
+            elif len(matches) > 1:
+                names = "\n  ".join(p.name for p in matches)
+                click.echo(
+                    f"Ambiguous assignment '{s}'. Matches:\n  {names}", err=True
+                )
+                raise SystemExit(1)
+
+    if not assignment_dir.is_dir():
+        click.echo(f"Release directory not found: {assignment_dir}", err=True)
+        raise SystemExit(1)
+
+    assignment_name = assignment_dir.name
+
+    # Collect local files
+    local_files = {
+        f.name: f
+        for f in assignment_dir.iterdir()
+        if f.is_file() and not f.name.startswith(".")
+    }
+    if not local_files:
+        click.echo(f"No files found in {assignment_dir}", err=True)
+        raise SystemExit(1)
+
+    click.echo(f"Assignment: {assignment_name}")
+    click.echo(f"Local files: {', '.join(sorted(local_files))}")
+
+    # Moodle verification (unless --force)
+    if not force:
+        _moodle_name = moodle_assignment or assignment_name
+
+        import tempfile
+
+        from mograder.transport_commands import _find_remote_assignment
+
+        transport = _build_moodle_transport(ctx, None, None, None)
+        assignments = transport.list_assignments()
+        match = _find_remote_assignment(assignments, _moodle_name)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmpdir = Path(tmpdir)
+            for f in match.files:
+                transport.download_file(f["url"], tmpdir / f["filename"])
+
+            # Compare byte-for-byte
+            remote_files = {p.name: p for p in tmpdir.iterdir() if p.is_file()}
+            mismatches = []
+            for name, local_path in sorted(local_files.items()):
+                if name not in remote_files:
+                    mismatches.append(f"  {name}: missing on Moodle")
+                elif local_path.read_bytes() != remote_files[name].read_bytes():
+                    mismatches.append(f"  {name}: content differs")
+            for name in sorted(remote_files):
+                if name not in local_files:
+                    mismatches.append(f"  {name}: extra on Moodle (not local)")
+
+            if mismatches:
+                click.echo("Moodle verification FAILED:", err=True)
+                for m in mismatches:
+                    click.echo(m, err=True)
+                click.echo("\nUse --force to publish anyway.", err=True)
+                raise SystemExit(1)
+
+        click.echo("Moodle verification: OK")
+
+    if dry_run:
+        click.echo("Dry run — not publishing.")
+        return
+
+    # Publish to hub
+    if not url:
+        click.echo("Error: --url required (or set MOGRADER_HUB_URL)", err=True)
+        raise SystemExit(1)
+    if not hub_token:
+        click.echo(
+            "Error: --token required (or set MOGRADER_HUB_INSTRUCTOR_TOKEN)",
+            err=True,
+        )
+        raise SystemExit(1)
+
+    multipart_files = []
+    for name, path in sorted(local_files.items()):
+        multipart_files.append(("files", (name, path.read_bytes())))
+
+    resp = req.post(
+        f"{url.rstrip('/')}/publish/{assignment_name}",
+        files=multipart_files,
+        headers={"Authorization": f"Bearer {hub_token}"},
+        timeout=120,
+    )
+    if resp.status_code != 200:
+        click.echo(f"Publish failed ({resp.status_code}): {resp.text}", err=True)
+        raise SystemExit(1)
+
+    data = resp.json()
+    click.echo(f"Published {len(data.get('files', []))} files to hub.")

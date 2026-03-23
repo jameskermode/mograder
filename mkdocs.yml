@@ -79,6 +79,7 @@ nav:
     - Moodle: usage/moodle.md
     - HTTPS Transport: usage/https-transport.md
     - Student Dashboard: usage/student-dashboard.md
+    - Hub: usage/hub.md
     - WASM Deployment: usage/wasm-deployment.md
   - Reference:
     - reference/index.md

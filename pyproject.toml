@@ -42,6 +42,7 @@ grader = [
     "markdown-it-py",
 ]
 asgi = [
+    "fastapi>=0.100",
     "lzstring>=1.0.4",
     "starlette>=0.37.2",
     "uvicorn>=0.24",

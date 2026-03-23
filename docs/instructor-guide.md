@@ -300,9 +300,34 @@ mograder autograde demo-assignment
 mograder feedback demo-assignment
 ```
 
+## Hub deployment
+
+For cloud-hosted assignment delivery, the **hub** provides a multi-user server where students access assignments through a browser without installing mograder locally.
+
+```toml
+# mograder.toml
+[hub]
+port = 8080
+notebooks_dir = "hub-notebooks"
+release_dir = "hub-release"
+session_ttl = 3600
+```
+
+Publish workflow:
+
+1. Generate release notebooks: `mograder generate A1`
+2. Upload to Moodle: `mograder moodle upload A1`
+3. Publish to hub: `mograder hub publish A1 --url $HUB_URL --token $TOKEN`
+4. Warm the dependency cache: `mograder hub warm-cache --url $HUB_URL --token $TOKEN`
+
+The hub requires `MOGRADER_HUB_SECRET` to be set on the server. Use `--headless` when running on a remote server. Students export their work from the hub and upload to Moodle for submission.
+
+See [Hub usage guide](usage/hub.md) and [Hub deployment guide](hub-deployment.md) for details.
+
 ## Next steps
 
 - [Grader API Reference](reference/runtime.md) — detailed documentation of `check()`, `Grader`, and `hint()`
 - [Security](security.md) — threat model and hardening options for autograde
 - [Student Setup Guide](student-guide.md) — share this with your students
 - [Configuration](configuration.md) — full `mograder.toml` reference
+- [Hub](usage/hub.md) — multi-user hub server for cloud-hosted assignment delivery

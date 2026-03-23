@@ -1,13 +1,30 @@
 # Student Setup Guide
 
-There are four ways to work on assignments. Pick whichever suits you best:
+There are five ways to work on assignments. Pick whichever suits you best:
 
-| | **Desktop app** | **Local install** | **GitHub Codespaces** | **Molab** |
-|---|---|---|---|---|
-| Setup | Download installer | Install uv (2 commands) | One click | None |
-| Platforms | Windows, macOS, Linux | macOS, Linux, Windows | Any browser | Any browser |
-| Best for | No-terminal workflow | Full offline workflow | Windows users, quick start | Light editing, no install |
-| Validate | Yes | Yes | Yes | Via assessment cell |
+| | **Hub** | **Desktop app** | **Local install** | **GitHub Codespaces** | **Molab** |
+|---|---|---|---|---|---|
+| Setup | None | Download installer | Install uv (2 commands) | One click | None |
+| Platforms | Any browser | Windows, macOS, Linux | macOS, Linux, Windows | Any browser | Any browser |
+| Best for | No install needed | No-terminal workflow | Full offline workflow | Windows users, quick start | Light editing, no install |
+| Validate | Yes | Yes | Yes | Yes | Via assessment cell |
+
+## Option 0: Hub (browser-based)
+
+If your instructor has set up a hub server, assignments are available directly in your browser — no installation required.
+
+1. Go to the hub URL provided by your instructor
+2. Log in via your university SSO
+3. Click **Download** to fetch the assignment
+4. Click **Edit** to open it in the marimo editor
+5. Work on the assignment in your browser
+6. Click **Validate** to check your work
+7. Click **Export** to download the completed `.py` notebook
+8. Upload the exported file to Moodle for submission
+
+!!! note
+    Some assignments may include hidden tests that are only checked during
+    final grading. Exported files must be uploaded to Moodle for submission.
 
 ## Option 1: Desktop app
 
