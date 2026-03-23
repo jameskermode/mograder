@@ -182,3 +182,19 @@ jobs:
           test -f mograder/mograder.toml
           echo "Bootstrap created mograder/mograder.toml successfully"
           cat mograder/mograder.toml
+
+      - name: Verify assignment file download
+        run: |
+          FILE_URL=$(curl -sf https://mograder-demo.jrkermode.uk/assignments | python -c "
+          import json, sys
+          data = json.load(sys.stdin)
+          for a in data:
+              for f in a.get('files', []):
+                  print('https://mograder-demo.jrkermode.uk' + f['url'])
+                  sys.exit(0)
+          print('No files found', file=sys.stderr)
+          sys.exit(1)
+          ")
+          echo "Downloading: $FILE_URL"
+          curl -f "$FILE_URL" -o /tmp/test-download
+          echo "Download OK: $(wc -c < /tmp/test-download) bytes"
