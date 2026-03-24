@@ -100,12 +100,13 @@ def suggest_upgrade_cmd() -> str:
 
 def version_html() -> str:
     """Return an HTML snippet showing the current version and update availability."""
+    display = get_version_info()
     current = get_version()
     latest = check_latest_version()
     if latest and is_newer(latest, current):
         return (
             f'<span style="font-size:0.8em;color:var(--text-secondary,#666)">'
-            f"v{current}"
+            f"v{display}"
             f'</span> <a href="https://pypi.org/project/mograder/{latest}/" '
             f'target="_blank" style="font-size:0.75em;color:#e67e22;'
             f"text-decoration:none;border:1px solid #e67e22;border-radius:4px;"
@@ -115,7 +116,7 @@ def version_html() -> str:
         )
     return (
         f'<span style="font-size:0.8em;color:var(--text-secondary,#666)">'
-        f"v{current}</span>"
+        f"v{display}</span>"
     )
 
 
