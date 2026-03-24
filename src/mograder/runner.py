@@ -135,30 +135,33 @@ def create_shared_sandbox(notebook_path: Path) -> Path | None:
 
 
 def _read_sidecar(path: Path) -> list[CheckResult]:
-    """Read check results from a sidecar JSONL file."""
-    results = []
+    """Read check results from a sidecar JSONL file.
+
+    When the same label appears multiple times (e.g. an empty-check guard
+    followed by the real check), only the last entry for each label is kept.
+    """
+    by_label: dict[str, CheckResult] = {}
     try:
         text = path.read_text().strip()
     except OSError:
-        return results
+        return []
     if not text:
-        return results
+        return []
     for line in text.splitlines():
         try:
             record = json.loads(line)
-            results.append(
-                CheckResult(
-                    label=record["label"],
-                    status=record["status"],
-                    details=record.get("details", []),
-                    earned_weight=record.get("earned_weight", 0),
-                    total_weight=record.get("total_weight", 0),
-                    hidden=record.get("hidden", False),
-                )
+            cr = CheckResult(
+                label=record["label"],
+                status=record["status"],
+                details=record.get("details", []),
+                earned_weight=record.get("earned_weight", 0),
+                total_weight=record.get("total_weight", 0),
+                hidden=record.get("hidden", False),
             )
+            by_label[cr.label] = cr
         except (json.JSONDecodeError, KeyError):
             continue
-    return results
+    return list(by_label.values())
 
 
 def _poll_sidecar(
