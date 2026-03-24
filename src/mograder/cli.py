@@ -155,11 +155,36 @@ def _compute_auto_mark(
     )
 
 
+def _show_version(ctx, _param, value):
+    if not value or ctx.resilient_parsing:
+        return
+    from mograder.version import get_version_info
+
+    click.echo(f"mograder {get_version_info()}")
+    ctx.exit()
+
+
 @click.group()
+@click.option(
+    "-v",
+    "--version",
+    is_flag=True,
+    callback=_show_version,
+    expose_value=False,
+    is_eager=True,
+    help="Show version and exit.",
+)
 @click.pass_context
 def cli(ctx):
     """mograder — Semi-automated grading for Marimo notebooks."""
+    import os
+
     from mograder.config import load_config
+
+    if os.environ.get("MOGRADER_SKIP_UPDATE_CHECK") != "1":
+        from mograder.version import check_for_update
+
+        check_for_update()
 
     ctx.ensure_object(dict)
     config = load_config(Path.cwd())

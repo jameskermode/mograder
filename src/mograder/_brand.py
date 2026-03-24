@@ -2,11 +2,7 @@
 
 from __future__ import annotations
 
-import importlib.metadata
-import json
-import logging
 from pathlib import Path
-from urllib.request import urlopen
 
 _PKG_DIR = Path(__file__).resolve().parent
 
@@ -41,9 +37,6 @@ _LOGO_B64 = (
 )
 
 
-_logger = logging.getLogger(__name__)
-
-
 def logo_html(size: int = 48) -> str:
     """Return an ``<img>`` tag with the mograder logo as an inline data URI."""
     return (
@@ -53,42 +46,5 @@ def logo_html(size: int = 48) -> str:
     )
 
 
-def get_version() -> str:
-    """Return the installed mograder version."""
-    return importlib.metadata.version("mograder")
-
-
-def check_latest_version() -> str | None:
-    """Query PyPI for the latest mograder version. Returns None on failure."""
-    try:
-        with urlopen("https://pypi.org/pypi/mograder/json", timeout=3) as resp:
-            return json.loads(resp.read().decode())["info"]["version"]
-    except Exception:
-        _logger.debug("Failed to check PyPI for latest version", exc_info=True)
-        return None
-
-
-def version_html() -> str:
-    """Return an HTML snippet showing the current version and update availability."""
-    current = get_version()
-    latest = check_latest_version()
-    if (
-        latest
-        and latest != current
-        and tuple(int(x) for x in latest.split("."))
-        > tuple(int(x) for x in current.split("."))
-    ):
-        return (
-            f'<span style="font-size:0.8em;color:var(--text-secondary,#666)">'
-            f"v{current}"
-            f'</span> <a href="https://pypi.org/project/mograder/{latest}/" '
-            f'target="_blank" style="font-size:0.75em;color:#e67e22;'
-            f"text-decoration:none;border:1px solid #e67e22;border-radius:4px;"
-            f'padding:1px 6px;margin-left:4px" '
-            f'title="Run: uvx --refresh mograder student .">'
-            f"update: v{latest}</a>"
-        )
-    return (
-        f'<span style="font-size:0.8em;color:var(--text-secondary,#666)">'
-        f"v{current}</span>"
-    )
+# Re-export version functions so marimo app imports don't need to change.
+from mograder.version import version_html  # noqa: E402, F401
