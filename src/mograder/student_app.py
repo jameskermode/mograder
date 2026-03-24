@@ -269,11 +269,10 @@ def _(
                     )
                 )
             else:
+                import getpass as _getpass
                 import os as _os
 
-                detected_user = _os.environ.get("GITHUB_USER") or _os.environ.get(
-                    "USER", ""
-                )
+                detected_user = _os.environ.get("GITHUB_USER") or _getpass.getuser()
                 username_input = mo.ui.text(
                     label="Username",
                     value=detected_user,
