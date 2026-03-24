@@ -2496,7 +2496,8 @@ def student(course_dir_or_url, port, headless, no_token):
                 dir_name = f"mograder-{parts[-2]}"
             else:
                 dir_name = f"mograder-{Path(parts[0]).stem}"
-        course = Path(dir_name).resolve()
+        base = Path.home() if os.environ.get("TAURI") else Path.cwd()
+        course = (base / dir_name).resolve()
         course.mkdir(exist_ok=True)
         (course / "mograder.toml").write_text(resp.text)
         click.echo(f"  Created {course}/mograder.toml")
