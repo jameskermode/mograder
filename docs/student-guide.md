@@ -1,7 +1,7 @@
 # Student Setup Guide
 
 <p align="center">
-  <img src="assets/mograder-demo.gif" alt="mograder student demo" width="720">
+  <img src="../assets/mograder-demo.gif" alt="mograder student demo" width="720">
 </p>
 
 There are five ways to work on assignments. Pick whichever suits you best:
