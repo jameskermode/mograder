@@ -14,6 +14,10 @@
 
 Semi-automated grading for [Marimo](https://marimo.io) notebooks.
 
+<p align="center">
+  <img src="assets/mograder-demo.gif" alt="mograder student demo" width="720">
+</p>
+
 **How it works:** Instructors author source notebooks with solution blocks and automated checks. `mograder generate` strips solutions to create release versions. Students complete the notebooks and get instant formative feedback from `check()` calls. `mograder autograde` executes submissions in sandboxed subprocesses, parses results, and stores grades in an SQLite gradebook. Markers review and add manual marks via the formgrader dashboard. `mograder feedback` exports annotated HTML for students.
 
 ## Quick start
