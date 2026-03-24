@@ -192,9 +192,11 @@ jobs:
       - name: Test mograder student bootstrap
         run: |
           timeout 30 uvx mograder student https://mograder-demo.jrkermode.uk/mograder.toml --headless --no-token || true
-          test -f mograder-demo/mograder.toml
-          echo "Bootstrap created mograder-demo/mograder.toml successfully"
-          cat mograder-demo/mograder.toml
+          # Accept either mograder-demo/ (>=0.2.2) or mograder/ (<=0.2.1)
+          TOML=$(ls mograder-demo/mograder.toml mograder/mograder.toml 2>/dev/null | head -1)
+          test -n "$TOML"
+          echo "Bootstrap created $TOML successfully"
+          cat "$TOML"
 
       - name: Verify assignment file download
         run: |
