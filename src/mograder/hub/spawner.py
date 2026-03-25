@@ -111,6 +111,7 @@ class SessionManager:
         env = {}
         env["XDG_CONFIG_HOME"] = str(student_dir / ".config")
         env["XDG_DATA_HOME"] = str(student_dir / ".local" / "share")
+        env["MOGRADER_DASHBOARD"] = "1"
         return env
 
     def _build_command(

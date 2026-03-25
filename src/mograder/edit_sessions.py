@@ -43,6 +43,7 @@ def spawn_headless_edit(
     token: bool = True,
     timeout: float | None = None,
     spawn_timeout: float = 30,
+    extra_env: dict[str, str] | None = None,
 ) -> HeadlessSession:
     """Spawn ``marimo edit --headless`` and wait for the served URL.
 
@@ -66,12 +67,16 @@ def spawn_headless_edit(
 
     log = logging.getLogger("uvicorn.error")
     log.info("spawn_headless_edit: %s", " ".join(cmd))
+    env = None
+    if extra_env:
+        env = {**os.environ, **extra_env}
     proc = subprocess.Popen(
         cmd,
         stdout=PIPE,
         stderr=STDOUT,
         text=True,
         start_new_session=True,  # new process group so we can kill the tree
+        env=env,
     )
     log.info("spawn_headless_edit: pid=%d", proc.pid)
 

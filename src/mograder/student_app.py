@@ -856,12 +856,14 @@ def _(
                         title=f"Starting editor for {_name}...",
                         remove_on_exit=True,
                     ):
+                        _dashboard_env = {"MOGRADER_DASHBOARD": "1"}
                         try:
                             _hs = spawn_headless_edit(
                                 _path,
                                 host="0.0.0.0"
                                 if _os.environ.get("CODESPACES")
                                 else "127.0.0.1",
+                                extra_env=_dashboard_env,
                             )
                             if _os.environ.get("CODESPACES"):
                                 _url = rewrite_codespaces_url(_hs.url)
@@ -887,9 +889,13 @@ def _(
                         title=f"Starting editor for {_name}...",
                         remove_on_exit=True,
                     ):
+                        _dashboard_env = {"MOGRADER_DASHBOARD": "1"}
                         try:
                             _hs = spawn_headless_edit(
-                                _path, token=False, spawn_timeout=120
+                                _path,
+                                token=False,
+                                spawn_timeout=120,
+                                extra_env=_dashboard_env,
                             )
                             import webbrowser as _wb
 
