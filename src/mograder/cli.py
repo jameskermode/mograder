@@ -2132,17 +2132,11 @@ def moodle_sync_users(ctx, course_id, url, token, hub_url, hub_token, dry_run):
     provided, writes allowed_users.txt locally instead.
     """
     from mograder.config import load_config
-    from mograder.moodle_api import MoodleAPIClient
+    from mograder.moodle_api import MoodleAPIClient, resolve_credentials
 
     config = ctx.obj.get("config") or load_config(Path("."))
-    moodle_url = url or config.moodle_url
-    if not moodle_url:
-        click.echo("Error: Moodle URL not set", err=True)
-        raise SystemExit(1)
-
-    client = MoodleAPIClient(
-        moodle_url, token=token, course_id=course_id or config.moodle_course_id
-    )
+    moodle_url, moodle_token = resolve_credentials(url, token, config)
+    client = MoodleAPIClient(moodle_url, moodle_token)
 
     # Find first assignment with a valid ID
     assignments = config.assignments or []
