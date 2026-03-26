@@ -458,7 +458,17 @@ def _(
             _nb_path = _nb_dir / HUB_USER / _slug / f"{_slug}.py"
             _has_file = _nb_path.exists()
 
-            status = "uploaded" if _has_file else "not started"
+            if not _has_file:
+                status = "not started"
+            else:
+                _uploaded_marker = _nb_path.parent / ".uploaded"
+                if _uploaded_marker.exists():
+                    if _nb_path.stat().st_mtime > _uploaded_marker.stat().st_mtime:
+                        status = "edited"
+                    else:
+                        status = "downloaded"
+                else:
+                    status = "downloaded"
             check_summary = "---"
 
             btn_keys = []
@@ -697,6 +707,7 @@ def _(
                         )
                         if _up.status_code == 200:
                             set_action_log(f"Downloaded **{_name}**")
+                            set_refresh(lambda v: v + 1)
                         else:
                             set_action_log(f"Upload failed: {_up.text}")
                     else:
@@ -800,6 +811,7 @@ def _(
                     )
                     if _resp.status_code == 200:
                         set_action_log(f"Reset **{_name}** to release version.")
+                        set_refresh(lambda v: v + 1)
                     else:
                         set_action_log(f"Reset failed: {_resp.text}")
                 except Exception as _exc:
