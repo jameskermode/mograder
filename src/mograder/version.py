@@ -38,30 +38,38 @@ def is_editable_install() -> bool:
 
 
 def get_version_info() -> str:
-    """Return a version string, including git SHA for editable installs."""
+    """Return a version string, including git SHA for dev/git installs."""
     version = get_version()
-    if not is_editable_install():
-        return version
     try:
         dist = importlib.metadata.distribution("mograder")
         for f in dist.files or []:
             if f.name == "direct_url.json":
                 data = json.loads(dist.locate_file(f).read_text())
-                src_dir = data.get("url", "").removeprefix("file://")
-                if src_dir:
-                    result = subprocess.run(
-                        ["git", "rev-parse", "--short", "HEAD"],
-                        capture_output=True,
-                        text=True,
-                        cwd=src_dir,
-                        timeout=5,
-                    )
-                    if result.returncode == 0:
-                        sha = result.stdout.strip()
-                        return f"{version} (dev, {sha})"
+
+                # Git-based install (e.g. uv add "mograder @ git+...")
+                vcs = data.get("vcs_info", {})
+                if vcs.get("vcs") == "git" and vcs.get("commit_id"):
+                    sha = vcs["commit_id"][:8]
+                    return f"{version} ({sha})"
+
+                # Editable install (local dev)
+                if data.get("dir_info", {}).get("editable"):
+                    src_dir = data.get("url", "").removeprefix("file://")
+                    if src_dir:
+                        result = subprocess.run(
+                            ["git", "rev-parse", "--short", "HEAD"],
+                            capture_output=True,
+                            text=True,
+                            cwd=src_dir,
+                            timeout=5,
+                        )
+                        if result.returncode == 0:
+                            sha = result.stdout.strip()
+                            return f"{version} (dev, {sha})"
+                    return f"{version} (dev)"
     except Exception:
         pass
-    return f"{version} (dev)"
+    return version
 
 
 def check_latest_version() -> str | None:
