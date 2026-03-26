@@ -2108,6 +2108,96 @@ def _write_edit_links_html(
     path.write_text("\n".join(parts))
 
 
+@moodle_group.command("sync-users")
+@_add_moodle_api_options
+@click.option(
+    "--hub-url",
+    envvar="MOGRADER_HUB_URL",
+    default=None,
+    help="Hub URL to POST user list to (if omitted, writes local allowed_users.txt)",
+)
+@click.option(
+    "--hub-token",
+    envvar="MOGRADER_HUB_INSTRUCTOR_TOKEN",
+    default=None,
+    help="Instructor token for hub API",
+)
+@click.option("--dry-run", is_flag=True, help="Show users without syncing")
+@click.pass_context
+def moodle_sync_users(ctx, course_id, url, token, hub_url, hub_token, dry_run):
+    """Sync enrolled Moodle users to the hub allowlist.
+
+    Fetches participants from the first Moodle assignment and pushes the
+    username list to the hub's /sync-users endpoint.  If --hub-url is not
+    provided, writes allowed_users.txt locally instead.
+    """
+    from mograder.config import load_config
+    from mograder.moodle_api import MoodleAPIClient
+
+    config = ctx.obj.get("config") or load_config(Path("."))
+    moodle_url = url or config.moodle_url
+    if not moodle_url:
+        click.echo("Error: Moodle URL not set", err=True)
+        raise SystemExit(1)
+
+    client = MoodleAPIClient(
+        moodle_url, token=token, course_id=course_id or config.moodle_course_id
+    )
+
+    # Find first assignment with a valid ID
+    assignments = config.assignments or []
+    assign_id = None
+    for a in assignments:
+        if a.get("id", 0) > 0:
+            assign_id = a["id"]
+            break
+    if assign_id is None:
+        click.echo(
+            "Error: No assignment with a valid Moodle ID found in config. "
+            "Run 'mograder moodle sync' first.",
+            err=True,
+        )
+        raise SystemExit(1)
+
+    participants = client.list_participants(assign_id)
+    usernames = sorted(p["username"] for p in participants if p.get("username"))
+    click.echo(f"Found {len(usernames)} enrolled users on Moodle.")
+
+    if dry_run:
+        for u in usernames:
+            click.echo(f"  {u}")
+        return
+
+    if hub_url:
+        import requests as req
+
+        if not hub_token:
+            click.echo(
+                "Error: --hub-token required for remote sync "
+                "(or set MOGRADER_HUB_INSTRUCTOR_TOKEN)",
+                err=True,
+            )
+            raise SystemExit(1)
+        resp = req.post(
+            f"{hub_url.rstrip('/')}/sync-users",
+            json={"users": usernames},
+            headers={"Authorization": f"Bearer {hub_token}"},
+            timeout=30,
+        )
+        if resp.status_code != 200:
+            click.echo(f"sync-users failed ({resp.status_code}): {resp.text}", err=True)
+            raise SystemExit(1)
+        data = resp.json()
+        click.echo(f"Synced {data.get('count', 0)} users to hub.")
+    else:
+        from mograder.hub.auth import ALLOWED_USERS_FILE
+
+        path = Path(".") / ALLOWED_USERS_FILE
+        lines = "# Allowed users — synced from Moodle\n" + "\n".join(usernames) + "\n"
+        path.write_text(lines)
+        click.echo(f"Wrote {len(usernames)} users to {path}")
+
+
 @moodle_group.command("login")
 @click.option("--url", default=None, help="Moodle URL (overrides config/env)")
 @click.option(
@@ -3618,3 +3708,58 @@ def hub_publish(
                 f"Warning: cache warm failed ({warm_resp.status_code}): {warm_resp.text}",
                 err=True,
             )
+
+
+@hub.command("sync-users")
+@click.argument("file", type=click.Path(exists=True))
+@click.option("--url", envvar="MOGRADER_HUB_URL", default=None, help="Hub base URL")
+@click.option(
+    "--token",
+    "hub_token",
+    envvar="MOGRADER_HUB_INSTRUCTOR_TOKEN",
+    default=None,
+    help="Instructor token for hub API",
+)
+@click.pass_context
+def hub_sync_users(ctx, file, url, hub_token):
+    """Sync allowed users to the hub from a file.
+
+    FILE contains one username per line (# comments allowed).
+    Uploads the list to the hub's /sync-users endpoint.
+
+    For Moodle courses, use ``mograder moodle sync-users`` instead to
+    automatically fetch the enrolled user list.
+    """
+    import requests as req
+
+    path = Path(file)
+    usernames = sorted(
+        {
+            line.strip()
+            for line in path.read_text().splitlines()
+            if line.strip() and not line.strip().startswith("#")
+        }
+    )
+    click.echo(f"Read {len(usernames)} users from {path}")
+
+    if not url:
+        click.echo("Error: --url required (or set MOGRADER_HUB_URL)", err=True)
+        raise SystemExit(1)
+    if not hub_token:
+        click.echo(
+            "Error: --token required (or set MOGRADER_HUB_INSTRUCTOR_TOKEN)",
+            err=True,
+        )
+        raise SystemExit(1)
+
+    resp = req.post(
+        f"{url.rstrip('/')}/sync-users",
+        json={"users": usernames},
+        headers={"Authorization": f"Bearer {hub_token}"},
+        timeout=30,
+    )
+    if resp.status_code != 200:
+        click.echo(f"sync-users failed ({resp.status_code}): {resp.text}", err=True)
+        raise SystemExit(1)
+    data = resp.json()
+    click.echo(f"Synced {data.get('count', 0)} users to hub.")

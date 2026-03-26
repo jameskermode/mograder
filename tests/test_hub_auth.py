@@ -9,6 +9,7 @@ import pytest
 
 from mograder.hub.auth import (
     RemoteUserMiddleware,
+    load_allowed_users,
     make_session_cookie,
     require_instructor,
     require_user,
@@ -207,3 +208,90 @@ class TestDependencies:
             scope = {"user": {"username": "__instructor__", "is_instructor": True}}
 
         assert require_instructor(FakeRequest()) == "__instructor__"
+
+
+class TestAllowlist:
+    def test_no_file_allows_all(self, tmp_path):
+        """No allowed_users.txt → all authenticated users allowed."""
+        mw = RemoteUserMiddleware(
+            _echo_app(),
+            secret=SECRET,
+            trusted_proxies={"10.0.0.1"},
+            allowed_users_file=tmp_path / "allowed_users.txt",
+        )
+        resp = asyncio.run(
+            _call_middleware(
+                mw,
+                headers=[(b"x-remote-user", b"anyone")],
+                client=("10.0.0.1", 9999),
+            )
+        )
+        assert resp["status"] == 200
+        assert b"user=anyone" in resp["body"]
+
+    def test_allowed_user_passes(self, tmp_path):
+        """User in allowlist gets through."""
+        (tmp_path / "allowed_users.txt").write_text("alice\nbob\n")
+        mw = RemoteUserMiddleware(
+            _echo_app(),
+            secret=SECRET,
+            trusted_proxies={"10.0.0.1"},
+            allowed_users_file=tmp_path / "allowed_users.txt",
+        )
+        resp = asyncio.run(
+            _call_middleware(
+                mw,
+                headers=[(b"x-remote-user", b"alice")],
+                client=("10.0.0.1", 9999),
+            )
+        )
+        assert resp["status"] == 200
+        assert b"user=alice" in resp["body"]
+
+    def test_blocked_user_gets_403(self, tmp_path):
+        """User not in allowlist gets friendly 403."""
+        (tmp_path / "allowed_users.txt").write_text("alice\nbob\n")
+        mw = RemoteUserMiddleware(
+            _echo_app(),
+            secret=SECRET,
+            trusted_proxies={"10.0.0.1"},
+            allowed_users_file=tmp_path / "allowed_users.txt",
+        )
+        resp = asyncio.run(
+            _call_middleware(
+                mw,
+                headers=[(b"x-remote-user", b"eve")],
+                client=("10.0.0.1", 9999),
+            )
+        )
+        assert resp["status"] == 403
+        assert b"not enrolled" in resp["body"]
+
+    def test_instructor_bypasses_allowlist(self, tmp_path):
+        """Instructor token always passes even if not in allowlist."""
+        from mograder.auth import INSTRUCTOR_USER, make_token
+
+        (tmp_path / "allowed_users.txt").write_text("alice\n")
+        mw = RemoteUserMiddleware(
+            _echo_app(),
+            secret=SECRET,
+            trusted_proxies=set(),
+            allowed_users_file=tmp_path / "allowed_users.txt",
+        )
+        token = make_token(SECRET, INSTRUCTOR_USER)
+        resp = asyncio.run(
+            _call_middleware(
+                mw,
+                headers=[(b"authorization", f"Bearer {token}".encode())],
+                client=("192.168.1.1", 9999),
+            )
+        )
+        assert resp["status"] == 200
+
+    def test_comments_and_blanks_ignored(self, tmp_path):
+        """Comments and blank lines in allowlist are skipped."""
+        (tmp_path / "allowed_users.txt").write_text(
+            "# header comment\nalice\n\n# another\nbob\n"
+        )
+        users = load_allowed_users(tmp_path / "allowed_users.txt")
+        assert users == {"alice", "bob"}

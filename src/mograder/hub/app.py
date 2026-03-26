@@ -14,7 +14,7 @@ from pathlib import Path
 from fastapi import FastAPI, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse, JSONResponse
 
-from mograder.hub.auth import RemoteUserMiddleware
+from mograder.hub.auth import ALLOWED_USERS_FILE, RemoteUserMiddleware
 from mograder.hub.proxy import create_proxy_router
 from mograder.hub.spawner import SessionManager
 from mograder.hub.storage import StorageManager
@@ -92,6 +92,7 @@ def create_hub_app(
         trusted_proxies=_proxies,
         trusted_header=trusted_header,
         dev=dev,
+        allowed_users_file=course_dir / ALLOWED_USERS_FILE,
     )
 
     # Include proxy router
@@ -426,6 +427,30 @@ def create_hub_app(
                 log.warning("warm-cache failed for %s: %s", nb.stem, e)
 
         return {"status": "ok", "warmed": warmed}
+
+    # -- Sync allowed users --
+
+    @app.post("/sync-users")
+    async def sync_users(request: Request):
+        user = request.scope.get("user", {})
+        if not user.get("is_instructor"):
+            raise HTTPException(status_code=403, detail="Instructor access required")
+
+        body = await request.json()
+        users = body.get("users", [])
+        if not isinstance(users, list):
+            raise HTTPException(status_code=400, detail="'users' must be a list")
+
+        # Write allowed_users.txt
+        allowed_path = course_dir / ALLOWED_USERS_FILE
+        lines = sorted(set(u.strip() for u in users if u.strip()))
+        allowed_path.write_text(
+            "# Allowed users — managed by mograder sync-users\n"
+            + "\n".join(lines)
+            + "\n"
+        )
+        log.info("sync-users: wrote %d users to %s", len(lines), allowed_path)
+        return {"status": "ok", "count": len(lines)}
 
     # -- Intercept /api/status for marimo dashboard --
     # marimo's /api/status requires "edit" permission but run-mode only

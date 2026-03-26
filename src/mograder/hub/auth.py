@@ -7,6 +7,7 @@ import hashlib
 import hmac
 import http.cookies
 import time
+from pathlib import Path
 
 from mograder.auth import is_instructor, verify_token
 
@@ -87,6 +88,39 @@ def _parse_cookie(scope: dict, cookie_name: str) -> str | None:
     return morsel.value if morsel else None
 
 
+ALLOWED_USERS_FILE = "allowed_users.txt"
+
+_NOT_ENROLLED_HTML = b"""<!DOCTYPE html>
+<html>
+<head>
+    <title>Access Restricted</title>
+    <style>
+        body { font-family: system-ui, sans-serif; max-width: 600px; margin: 80px auto; padding: 20px; text-align: center; }
+        h1 { color: #c0392b; }
+        .message { background: #fdecea; border: 1px solid #e74c3c; border-radius: 8px; padding: 1.5em; margin: 2em 0; }
+    </style>
+</head>
+<body>
+    <h1>Access Restricted</h1>
+    <div class="message">
+        <p>You are not enrolled on this course.</p>
+        <p>If you believe this is an error, please contact your instructor.</p>
+    </div>
+</body>
+</html>"""
+
+
+def load_allowed_users(path: Path) -> set[str] | None:
+    """Load allowed usernames from file. Returns None if file doesn't exist."""
+    if not path.is_file():
+        return None
+    return {
+        line.strip()
+        for line in path.read_text().splitlines()
+        if line.strip() and not line.strip().startswith("#")
+    }
+
+
 class RemoteUserMiddleware:
     """ASGI middleware for hub authentication.
 
@@ -96,6 +130,9 @@ class RemoteUserMiddleware:
     3. Authorization: Bearer token
     4. Dev mode fallback
     5. 403
+
+    If ``allowed_users_file`` exists, only listed users (and instructors)
+    may access the hub.
     """
 
     def __init__(
@@ -106,12 +143,14 @@ class RemoteUserMiddleware:
         trusted_proxies: set[str] | None = None,
         trusted_header: str = "x-remote-user",
         dev: bool = False,
+        allowed_users_file: Path | None = None,
     ):
         self.app = app
         self.secret = secret
         self.trusted_proxies = trusted_proxies or set()
         self.trusted_header = trusted_header.lower()
         self.dev = dev
+        self.allowed_users_file = allowed_users_file
 
     async def __call__(self, scope, receive, send):
         if scope["type"] not in ("http", "websocket"):
@@ -148,7 +187,7 @@ class RemoteUserMiddleware:
             if header_user:
                 set_cookie = True
 
-        # 5. Reject
+        # 5. Reject unauthenticated
         if username is None:
             if scope["type"] == "http":
                 await send(
@@ -161,9 +200,28 @@ class RemoteUserMiddleware:
                 await send({"type": "http.response.body", "body": b"403 Forbidden"})
             return
 
+        instructor = is_instructor(username)
+
+        # 6. Check allowlist (instructors always pass)
+        if not instructor and self.allowed_users_file is not None:
+            allowed = load_allowed_users(self.allowed_users_file)
+            if allowed is not None and username not in allowed:
+                if scope["type"] == "http":
+                    await send(
+                        {
+                            "type": "http.response.start",
+                            "status": 403,
+                            "headers": [(b"content-type", b"text/html")],
+                        }
+                    )
+                    await send(
+                        {"type": "http.response.body", "body": _NOT_ENROLLED_HTML}
+                    )
+                return
+
         scope["user"] = {
             "username": username,
-            "is_instructor": is_instructor(username),
+            "is_instructor": instructor,
         }
 
         if not set_cookie:
