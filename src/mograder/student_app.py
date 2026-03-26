@@ -99,6 +99,9 @@ def _(CONFIG, IS_HTTPS, load_cached_https_token, load_cached_token, mo):
     get_report_path, set_report_path = mo.state("")
     get_refresh, set_refresh = mo.state(0)
     get_pending, set_pending = mo.state(None)
+    get_confirm_reset, set_confirm_reset = mo.state(
+        ""
+    )  # assignment name awaiting reset confirmation
 
     # Initialize token from cache if available
     _initial_token = ""
@@ -118,11 +121,13 @@ def _(CONFIG, IS_HTTPS, load_cached_https_token, load_cached_token, mo):
 
     return (
         get_action_log,
+        get_confirm_reset,
         get_pending,
         get_refresh,
         get_report_path,
         get_token,
         set_action_log,
+        set_confirm_reset,
         set_pending,
         set_refresh,
         set_report_path,
@@ -419,6 +424,7 @@ def _(
     Path,
     datetime,
     format_check_summary,
+    get_confirm_reset,
     get_refresh,
     get_submission_status,
     get_token,
@@ -428,6 +434,7 @@ def _(
     mo,
     moodle_url,
     re,
+    set_confirm_reset,
     set_pending,
     timezone,
 ):
@@ -511,14 +518,31 @@ def _(
                 )
                 btn_keys.append(key)
 
-                key = f"{i}_reset"
-                all_buttons[key] = mo.ui.button(
-                    label="Reset",
-                    on_change=lambda _, n=_slug: set_pending(
-                        {"action": "hub_reset_confirm", "assignment": n}
-                    ),
-                )
-                btn_keys.append(key)
+                if get_confirm_reset() == _slug:
+                    # Show confirm button inline
+                    key = f"{i}_reset_confirm"
+                    all_buttons[key] = mo.ui.button(
+                        label="Confirm reset",
+                        kind="danger",
+                        on_change=lambda _, n=_slug: (
+                            set_confirm_reset(""),
+                            set_pending({"action": "hub_reset", "assignment": n}),
+                        ),
+                    )
+                    btn_keys.append(key)
+                    key = f"{i}_reset_cancel"
+                    all_buttons[key] = mo.ui.button(
+                        label="Cancel",
+                        on_change=lambda _: set_confirm_reset(""),
+                    )
+                    btn_keys.append(key)
+                else:
+                    key = f"{i}_reset"
+                    all_buttons[key] = mo.ui.button(
+                        label="Reset",
+                        on_change=lambda _, n=_slug: set_confirm_reset(n),
+                    )
+                    btn_keys.append(key)
 
             rows.append(
                 {
@@ -775,32 +799,6 @@ def _(
                     f'Export **{_name}**: <a href="{_url}" target="_blank">download</a>'
                 )
 
-            elif _act == "hub_reset_confirm":
-                _name = pending["assignment"]
-                _confirm_btn = mo.ui.button(
-                    label="Yes, reset to release version",
-                    kind="danger",
-                    on_change=lambda _, n=_name: set_pending(
-                        {"action": "hub_reset", "assignment": n}
-                    ),
-                )
-                set_action_log(
-                    mo.callout(
-                        mo.vstack(
-                            [
-                                mo.md(
-                                    f"**Reset {_name}?** This will replace your "
-                                    f"notebook with the original release version. "
-                                    f"Any changes you have made will be lost."
-                                ),
-                                _confirm_btn,
-                            ],
-                            align="center",
-                        ),
-                        kind="warn",
-                    )
-                )
-
             elif _act == "hub_reset":
                 _name = pending["assignment"]
                 try:
@@ -811,11 +809,11 @@ def _(
                     )
                     if _resp.status_code == 200:
                         set_action_log(f"Reset **{_name}** to release version.")
-                        set_refresh(lambda v: v + 1)
                     else:
                         set_action_log(f"Reset failed: {_resp.text}")
                 except Exception as _exc:
                     set_action_log(f"Reset failed: {_exc}")
+                set_refresh(lambda v: v + 1)
 
             elif _act == "hub_stop_edit":
                 _name = pending["assignment"]
@@ -1101,16 +1099,12 @@ def _(active_editors_content, dismiss_btn, get_action_log, get_report_path, mo):
     if active_editors_content:
         _parts.append(active_editors_content)
     if log_text:
-        if isinstance(log_text, str):
-            kind = (
-                "danger"
-                if "failed" in log_text.lower() or "error" in log_text.lower()
-                else "info"
-            )
-            _parts.append(mo.callout(mo.md(log_text), kind=kind))
-        else:
-            # Already a marimo element (e.g. callout with confirm button)
-            _parts.append(log_text)
+        kind = (
+            "danger"
+            if "failed" in log_text.lower() or "error" in log_text.lower()
+            else "info"
+        )
+        _parts.append(mo.callout(mo.md(log_text), kind=kind))
         if report_path:
             _parts.append(mo.md("*See report below.*"))
         _parts.append(dismiss_btn)
