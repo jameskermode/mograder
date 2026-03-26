@@ -9,7 +9,7 @@
 #   --key SSH_KEY           Path to SSH private key (required)
 #   --user USER             SSH user (default: ubuntu)
 #   --volume DEVICE         Data volume device (default: /dev/nvme1n1)
-#   --mograder-version VER  Minimum mograder version (default: >=0.2.6)
+#   --mograder-source SRC   Install source: "git" (default) or PyPI version like ">=0.2.9"
 #
 # Prerequisites:
 #   - Ubuntu 24.04 instance with SSH access
@@ -40,7 +40,7 @@ HOST=""
 KEY=""
 SSH_USER="ubuntu"
 VOLUME="/dev/nvme1n1"
-MOGRADER_VERSION=">=0.2.6"
+MOGRADER_SOURCE="git"
 
 while [[ $# -gt 0 ]]; do
     case $1 in
@@ -48,7 +48,7 @@ while [[ $# -gt 0 ]]; do
         --key) KEY="$2"; shift 2 ;;
         --user) SSH_USER="$2"; shift 2 ;;
         --volume) VOLUME="$2"; shift 2 ;;
-        --mograder-version) MOGRADER_VERSION="$2"; shift 2 ;;
+        --mograder-source) MOGRADER_SOURCE="$2"; shift 2 ;;
         *) echo "Unknown option: $1"; exit 1 ;;
     esac
 done
@@ -137,8 +137,12 @@ fi
 echo "  Installing mograder[hub]..."
 APP
 
-# Pass the version variable (not single-quoted heredoc)
-$SSH "sudo -u mograder bash -c 'cd /srv/mograder/course && ~/.local/bin/uv add \"mograder[hub]$MOGRADER_VERSION\" --refresh-package mograder 2>&1 | tail -3'"
+# Install from git (default) or PyPI
+if [ "$MOGRADER_SOURCE" = "git" ]; then
+    $SSH "sudo -u mograder bash -c 'cd /srv/mograder/course && ~/.local/bin/uv add \"mograder[hub] @ git+https://github.com/jameskermode/mograder.git\" --refresh-package mograder 2>&1 | tail -3'"
+else
+    $SSH "sudo -u mograder bash -c 'cd /srv/mograder/course && ~/.local/bin/uv add \"mograder[hub]$MOGRADER_SOURCE\" --refresh-package mograder 2>&1 | tail -3'"
+fi
 
 # Write mograder.toml (only if it doesn't exist — don't overwrite user config)
 $SSH "sudo -u mograder bash -s" << 'TOML'
@@ -257,3 +261,6 @@ echo "  1. Edit /srv/mograder/course/mograder.toml to add transport config"
 echo "  2. Set up a reverse proxy with TLS and authentication"
 echo "  3. Publish assignments:  mograder hub publish ASSIGNMENT --url HUB_URL --token TOKEN"
 echo "  4. Warm the uv cache:   mograder hub warm-cache --url HUB_URL --token TOKEN"
+echo ""
+echo "To upgrade mograder after a git push:"
+echo "  ssh $SSH_USER@$HOST 'sudo -u mograder bash -c \"cd /srv/mograder/course && ~/.local/bin/uv lock --upgrade-package mograder && ~/.local/bin/uv sync\" && sudo systemctl restart mograder-hub'"
