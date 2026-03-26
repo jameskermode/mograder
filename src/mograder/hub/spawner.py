@@ -44,6 +44,9 @@ def parse_pep723_deps(source: str) -> list[str]:
 def warm_notebook_cache(nb_path: Path, dry_run: bool = False) -> list[str]:
     """Parse PEP 723 deps from *nb_path* and warm the uv cache.
 
+    Also creates a shared sandbox venv (via ``create_shared_sandbox``)
+    so that edit sessions can start without ``uv run`` overhead.
+
     Returns the dependency list (empty if none found).
     """
     deps = parse_pep723_deps(nb_path.read_text())
@@ -58,6 +61,14 @@ def warm_notebook_cache(nb_path: Path, dry_run: bool = False) -> list[str]:
         capture_output=True,
         timeout=120,
     )
+
+    # Create shared sandbox venv for fast edit-session startup
+    from mograder.runner import create_shared_sandbox
+
+    sandbox = create_shared_sandbox(nb_path)
+    if sandbox:
+        log.info("Created shared sandbox for %s: %s", nb_path.stem, sandbox)
+
     return deps
 
 
@@ -72,6 +83,7 @@ class SessionManager:
         use_bubblewrap: bool = False,
         uv_cache_dir: str = "",
         spawn_timeout: int = 120,
+        release_dir: Path | None = None,
     ):
         self.notebooks_dir = Path(notebooks_dir).resolve()
         self.session_ttl = session_ttl
@@ -79,8 +91,10 @@ class SessionManager:
         self.use_bubblewrap = use_bubblewrap
         self.uv_cache_dir = uv_cache_dir
         self.spawn_timeout = spawn_timeout
+        self.release_dir = Path(release_dir).resolve() if release_dir else None
         self.sessions: dict[tuple[str, str], MarimoSession] = {}
         self._locks: dict[tuple[str, str], asyncio.Lock] = {}
+        self._sandbox_dirs: dict[str, Path | None] = {}
         self._culler_task: asyncio.Task | None = None
 
     def _get_lock(self, key: tuple[str, str]) -> asyncio.Lock:
@@ -107,6 +121,33 @@ class SessionManager:
                     port += 1
         raise RuntimeError("No free ports available")
 
+    def _get_sandbox_dir(self, assignment: str) -> Path | None:
+        """Get or create a shared sandbox venv for an assignment.
+
+        Reuses ``create_shared_sandbox()`` from ``runner.py`` — creates a
+        persistent ``.venv`` inside the release directory for the assignment.
+        All students editing the same assignment share this venv.
+        """
+        if assignment in self._sandbox_dirs:
+            return self._sandbox_dirs[assignment]
+
+        if not self.release_dir:
+            self._sandbox_dirs[assignment] = None
+            return None
+
+        release_nb = self.release_dir / assignment / f"{assignment}.py"
+        if not release_nb.is_file():
+            self._sandbox_dirs[assignment] = None
+            return None
+
+        from mograder.runner import create_shared_sandbox
+
+        sandbox = create_shared_sandbox(release_nb)
+        self._sandbox_dirs[assignment] = sandbox
+        if sandbox:
+            log.info("Using shared sandbox for %s: %s", assignment, sandbox)
+        return sandbox
+
     def _build_env(self, username: str, notebook_path: Path) -> dict[str, str]:
         """Build environment for student marimo process."""
         student_dir = notebook_path.parent
@@ -124,13 +165,22 @@ class SessionManager:
         port: int,
     ) -> list[str]:
         """Build the marimo edit command, optionally wrapped in bwrap."""
+        from mograder.runner import _venv_python
+
         base_url = f"/edit/{username}/{assignment}"
+        sandbox_dir = self._get_sandbox_dir(assignment)
+
+        if sandbox_dir is not None:
+            python_exe = str(_venv_python(sandbox_dir))
+        else:
+            python_exe = sys.executable
+
         cmd = [
-            sys.executable,
+            python_exe,
             "-m",
             "marimo",
             "edit",
-            "--sandbox",
+            "--no-sandbox" if sandbox_dir else "--sandbox",
             "--headless",
             "--host",
             "127.0.0.1",
@@ -143,11 +193,15 @@ class SessionManager:
         ]
 
         if self.use_bubblewrap:
-            return self._wrap_with_bwrap(cmd, notebook_path.parent)
+            return self._wrap_with_bwrap(
+                cmd, notebook_path.parent, sandbox_dir=sandbox_dir
+            )
 
         return cmd
 
-    def _wrap_with_bwrap(self, cmd: list[str], cwd: Path) -> list[str]:
+    def _wrap_with_bwrap(
+        self, cmd: list[str], cwd: Path, sandbox_dir: Path | None = None
+    ) -> list[str]:
         """Wrap command in bubblewrap for isolation."""
         if shutil.which("bwrap") is None:
             log.warning(
@@ -174,6 +228,14 @@ class SessionManager:
         if self.uv_cache_dir:
             cache = str(Path(self.uv_cache_dir).resolve())
             args.extend(["--ro-bind", cache, cache])
+        if sandbox_dir:
+            # Mount the shared venv read-only so students can't tamper
+            venv = str(sandbox_dir.resolve())
+            args.extend(["--ro-bind", venv, venv])
+            # Also mount ~/.local for uv-managed Python symlinks
+            dot_local = str(Path.home() / ".local")
+            if Path(dot_local).is_dir():
+                args.extend(["--ro-bind", dot_local, dot_local])
         args.extend(["--unshare-net", "--die-with-parent", "--"])
         args.extend(cmd)
         return args

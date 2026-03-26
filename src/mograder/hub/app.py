@@ -68,6 +68,7 @@ def create_hub_app(
         session_ttl=session_ttl,
         use_bubblewrap=use_bubblewrap,
         uv_cache_dir=uv_cache_dir,
+        release_dir=rel_dir,
     )
 
     @asynccontextmanager
