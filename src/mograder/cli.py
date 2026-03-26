@@ -3470,8 +3470,11 @@ def hub_generate_token(username, role):
 )
 @click.option("--force", is_flag=True, help="Skip Moodle verification")
 @click.option("--dry-run", is_flag=True, help="Verify only, don't publish")
+@click.option("--no-warm", is_flag=True, help="Skip cache warming after publish")
 @click.pass_context
-def hub_publish(ctx, assignment, moodle_assignment, url, hub_token, force, dry_run):
+def hub_publish(
+    ctx, assignment, moodle_assignment, url, hub_token, force, dry_run, no_warm
+):
     """Publish a release assignment to the hub.
 
     ASSIGNMENT is an assignment name (e.g. "A1-Intro-to-SciML" or prefix "A1")
@@ -3594,3 +3597,24 @@ def hub_publish(ctx, assignment, moodle_assignment, url, hub_token, force, dry_r
 
     data = resp.json()
     click.echo(f"Published {len(data.get('files', []))} files to hub.")
+
+    # Warm uv cache for the published assignment
+    if no_warm:
+        click.echo("Skipping cache warm (--no-warm).")
+    else:
+        click.echo("Warming uv cache...")
+        warm_resp = req.post(
+            f"{url.rstrip('/')}/warm-cache",
+            headers={"Authorization": f"Bearer {hub_token}"},
+            timeout=300,
+        )
+        if warm_resp.status_code == 200:
+            warmed = warm_resp.json().get("warmed", [])
+            click.echo(
+                f"Warmed {len(warmed)} notebooks: {', '.join(warmed) or '(none)'}"
+            )
+        else:
+            click.echo(
+                f"Warning: cache warm failed ({warm_resp.status_code}): {warm_resp.text}",
+                err=True,
+            )

@@ -112,11 +112,14 @@ def test_hub_publish_force(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
 
     runner = CliRunner()
-    mock_resp = MagicMock()
-    mock_resp.status_code = 200
-    mock_resp.json.return_value = {"status": "ok", "files": ["data.csv", "hw1.py"]}
+    publish_resp = MagicMock()
+    publish_resp.status_code = 200
+    publish_resp.json.return_value = {"status": "ok", "files": ["data.csv", "hw1.py"]}
+    warm_resp = MagicMock()
+    warm_resp.status_code = 200
+    warm_resp.json.return_value = {"warmed": ["hw1"]}
 
-    with patch("requests.post", return_value=mock_resp) as mock_post:
+    with patch("requests.post", side_effect=[publish_resp, warm_resp]) as mock_post:
         result = runner.invoke(
             cli,
             [
@@ -132,7 +135,11 @@ def test_hub_publish_force(tmp_path, monkeypatch):
         )
     assert result.exit_code == 0, result.output
     assert "Published 2 files" in result.output
-    mock_post.assert_called_once()
+    # publish POST + warm-cache POST
+    assert mock_post.call_count == 2
+    assert "/publish/hw1" in mock_post.call_args_list[0].args[0]
+    assert "/warm-cache" in mock_post.call_args_list[1].args[0]
+    assert "Warmed" in result.output
 
 
 def test_hub_publish_dry_run(tmp_path, monkeypatch):
