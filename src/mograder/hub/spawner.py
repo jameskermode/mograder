@@ -122,11 +122,11 @@ class SessionManager:
         raise RuntimeError("No free ports available")
 
     def _get_sandbox_dir(self, assignment: str) -> Path | None:
-        """Get or create a shared sandbox venv for an assignment.
+        """Look up a pre-built shared sandbox venv for an assignment.
 
-        Reuses ``create_shared_sandbox()`` from ``runner.py`` — creates a
-        persistent ``.venv`` inside the release directory for the assignment.
-        All students editing the same assignment share this venv.
+        The venv is created at publish/warm-cache time (not on first spawn)
+        by ``warm_notebook_cache()`` calling ``create_shared_sandbox()``.
+        This method only checks if it exists — it never creates one.
         """
         if assignment in self._sandbox_dirs:
             return self._sandbox_dirs[assignment]
@@ -135,18 +135,16 @@ class SessionManager:
             self._sandbox_dirs[assignment] = None
             return None
 
-        release_nb = self.release_dir / assignment / f"{assignment}.py"
-        if not release_nb.is_file():
-            self._sandbox_dirs[assignment] = None
-            return None
+        from mograder.runner import _venv_python
 
-        from mograder.runner import create_shared_sandbox
+        venv_dir = self.release_dir / assignment / ".venv"
+        if _venv_python(venv_dir).exists():
+            log.info("Using shared sandbox for %s: %s", assignment, venv_dir)
+            self._sandbox_dirs[assignment] = venv_dir
+            return venv_dir
 
-        sandbox = create_shared_sandbox(release_nb)
-        self._sandbox_dirs[assignment] = sandbox
-        if sandbox:
-            log.info("Using shared sandbox for %s: %s", assignment, sandbox)
-        return sandbox
+        self._sandbox_dirs[assignment] = None
+        return None
 
     def _build_env(self, username: str, notebook_path: Path) -> dict[str, str]:
         """Build environment for student marimo process."""
