@@ -775,12 +775,17 @@ def _(
                 )
                 set_action_log(
                     mo.callout(
-                        mo.md(
-                            f"**Reset {_name}?** This will replace your "
-                            f"notebook with the original release version. "
-                            f"Any changes you have made will be lost.\n\n"
-                        ).center()
-                        + _confirm_btn.center(),
+                        mo.vstack(
+                            [
+                                mo.md(
+                                    f"**Reset {_name}?** This will replace your "
+                                    f"notebook with the original release version. "
+                                    f"Any changes you have made will be lost."
+                                ),
+                                _confirm_btn,
+                            ],
+                            align="center",
+                        ),
                         kind="warn",
                     )
                 )
