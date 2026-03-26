@@ -247,7 +247,7 @@ else
 fi
 
 echo -e "\n${YELLOW}Generating instructor token...${NC}"
-$SSH "sudo -u mograder bash -c 'cd /srv/mograder/course && MOGRADER_HUB_SECRET=\$(sudo cat /etc/mograder/hub-secret) ~/.local/bin/uv run mograder hub generate-token --role instructor admin'"
+$SSH "SECRET=\$(sudo cat /etc/mograder/hub-secret) && sudo -u mograder bash -c \"cd /srv/mograder/course && MOGRADER_HUB_SECRET=\$SECRET /home/mograder/.local/bin/uv run mograder hub generate-token --role instructor admin\""
 
 echo -e "\n${GREEN}=== Deployment complete ===${NC}"
 echo "Hub is running at http://$HOST:8080 (port 8080 must be reachable)"
