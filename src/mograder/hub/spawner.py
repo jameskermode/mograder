@@ -71,12 +71,14 @@ class SessionManager:
         base_port: int = 18000,
         use_bubblewrap: bool = False,
         uv_cache_dir: str = "",
+        spawn_timeout: int = 120,
     ):
         self.notebooks_dir = Path(notebooks_dir).resolve()
         self.session_ttl = session_ttl
         self.base_port = base_port
         self.use_bubblewrap = use_bubblewrap
         self.uv_cache_dir = uv_cache_dir
+        self.spawn_timeout = spawn_timeout
         self.sessions: dict[tuple[str, str], MarimoSession] = {}
         self._locks: dict[tuple[str, str], asyncio.Lock] = {}
         self._culler_task: asyncio.Task | None = None
@@ -195,7 +197,8 @@ class SessionManager:
             cwd=str(notebook_path.parent),
         )
         # Wait for port to become ready
-        for _ in range(60):
+        polls = self.spawn_timeout * 2  # poll every 0.5s
+        for _ in range(polls):
             await asyncio.sleep(0.5)
             with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
                 try:
@@ -208,7 +211,9 @@ class SessionManager:
                         )
 
         proc.kill()
-        raise TimeoutError(f"marimo did not start on port {port} within 30s")
+        raise TimeoutError(
+            f"marimo did not start on port {port} within {self.spawn_timeout}s"
+        )
 
     async def get_or_spawn(self, username: str, assignment: str) -> MarimoSession:
         """Get existing session or spawn a new one."""
