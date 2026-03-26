@@ -2,6 +2,20 @@
 
 Operational guide for deploying the mograder hub on a server.
 
+## Quick Deploy (AWS)
+
+For an AWS Ubuntu instance with an attached EBS data volume:
+
+```bash
+bash scripts/deploy-hub-aws.sh --host YOUR_HOST --key ~/.ssh/YOUR_KEY.pem
+```
+
+This installs all dependencies, creates a service user, configures the hub,
+and starts a systemd service. See the script for options (`--volume`,
+`--mograder-version`). After running, edit `mograder.toml` on the server to
+add your transport config (Moodle, HTTPS, etc.), then publish assignments and
+warm the uv cache.
+
 ## Prerequisites
 
 - Python 3.11+
