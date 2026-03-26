@@ -505,7 +505,7 @@ def _(
                 all_buttons[key] = mo.ui.button(
                     label="Reset",
                     on_change=lambda _, n=_slug: set_pending(
-                        {"action": "hub_reset", "assignment": n}
+                        {"action": "hub_reset_confirm", "assignment": n}
                     ),
                 )
                 btn_keys.append(key)
@@ -764,6 +764,27 @@ def _(
                     f'Export **{_name}**: <a href="{_url}" target="_blank">download</a>'
                 )
 
+            elif _act == "hub_reset_confirm":
+                _name = pending["assignment"]
+                _confirm_btn = mo.ui.button(
+                    label="Yes, reset to release version",
+                    kind="danger",
+                    on_change=lambda _, n=_name: set_pending(
+                        {"action": "hub_reset", "assignment": n}
+                    ),
+                )
+                set_action_log(
+                    mo.callout(
+                        mo.md(
+                            f"**Reset {_name}?** This will replace your "
+                            f"notebook with the original release version. "
+                            f"Any changes you have made will be lost.\n\n"
+                        ).center()
+                        + _confirm_btn.center(),
+                        kind="warn",
+                    )
+                )
+
             elif _act == "hub_reset":
                 _name = pending["assignment"]
                 try:
@@ -773,7 +794,7 @@ def _(
                         timeout=30,
                     )
                     if _resp.status_code == 200:
-                        set_action_log(f"Reset **{_name}**")
+                        set_action_log(f"Reset **{_name}** to release version.")
                     else:
                         set_action_log(f"Reset failed: {_resp.text}")
                 except Exception as _exc:
@@ -1063,12 +1084,16 @@ def _(active_editors_content, dismiss_btn, get_action_log, get_report_path, mo):
     if active_editors_content:
         _parts.append(active_editors_content)
     if log_text:
-        kind = (
-            "danger"
-            if "failed" in log_text.lower() or "error" in log_text.lower()
-            else "info"
-        )
-        _parts.append(mo.callout(mo.md(log_text), kind=kind))
+        if isinstance(log_text, str):
+            kind = (
+                "danger"
+                if "failed" in log_text.lower() or "error" in log_text.lower()
+                else "info"
+            )
+            _parts.append(mo.callout(mo.md(log_text), kind=kind))
+        else:
+            # Already a marimo element (e.g. callout with confirm button)
+            _parts.append(log_text)
         if report_path:
             _parts.append(mo.md("*See report below.*"))
         _parts.append(dismiss_btn)
