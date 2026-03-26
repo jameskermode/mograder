@@ -131,6 +131,52 @@ edit session runs inside a bubblewrap sandbox:
 on the host as the service user. Bubblewrap mitigates this but is not a
 complete container solution.
 
+## Access Control (User Allowlist)
+
+By default the hub allows any authenticated user. To restrict access to
+enrolled students, sync a user allowlist from Moodle or upload one manually.
+
+### Moodle courses
+
+Fetch enrolled participants and push them to the hub:
+
+```bash
+mograder moodle sync-users --hub-url HUB_URL --hub-token TOKEN
+```
+
+This calls `list_participants()` on the first Moodle assignment in the config
+and POSTs the username list to the hub's `/sync-users` endpoint. Run
+`mograder moodle sync` first to populate assignment metadata.
+
+Use `--dry-run` to preview the user list without syncing.
+
+If `--hub-url` is omitted, writes `allowed_users.txt` to the local course
+directory instead (useful when the hub runs on the same machine).
+
+### HTTPS transport (manual)
+
+Create a text file with one username per line (`#` comments allowed), then
+upload it:
+
+```bash
+mograder hub sync-users users.txt --url HUB_URL --token TOKEN
+```
+
+### How it works
+
+The hub reads `allowed_users.txt` in the course directory on every request.
+If the file exists, only listed usernames (and instructors) may access the
+hub. Non-enrolled users see a friendly HTML error page asking them to contact
+their instructor.
+
+- **No file** → all authenticated users are allowed (backwards compatible)
+- **Empty file** → only instructors can access
+- **Instructors** always bypass the allowlist
+- The file is hot-reloaded — no restart needed after syncing
+
+To remove the restriction entirely, delete `allowed_users.txt` from the
+course directory.
+
 ## Monitoring
 
 ```bash
