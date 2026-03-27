@@ -691,13 +691,31 @@ def _(
     sys,
 ):
     # Detect reset button confirmations from anywidget ConfirmButtons
+    # Execute directly (not via set_pending) since state updates don't
+    # take effect within the same cell execution cycle.
     if HUB_MODE and reset_widgets:
+        import httpx as _reset_httpx
+
+        _hub_base = f"http://127.0.0.1:{CONFIG.hub_port}"
+        _hub_headers = {"X-Remote-User": HUB_USER}
         for _widget in reset_widgets.values():
             _val = _widget.value
             if isinstance(_val, dict) and _val.get("count", 0) > 0:
                 _asgn = _val.get("assignment", "")
                 if _asgn:
-                    set_pending({"action": "hub_reset", "assignment": _asgn})
+                    try:
+                        _resp = _reset_httpx.post(
+                            f"{_hub_base}/reset/{HUB_USER}/{_asgn}",
+                            headers=_hub_headers,
+                            timeout=30,
+                        )
+                        if _resp.status_code == 200:
+                            set_action_log(f"Reset **{_asgn}** to release version.")
+                        else:
+                            set_action_log(f"Reset failed: {_resp.text}")
+                    except Exception as _exc:
+                        set_action_log(f"Reset failed: {_exc}")
+                    set_refresh(lambda v: v + 1)
 
     pending = get_pending()
     if pending is not None:
