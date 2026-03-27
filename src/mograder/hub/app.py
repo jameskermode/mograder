@@ -469,7 +469,7 @@ def create_hub_app(
 
     from mograder.edit_sessions import MarimoOptimizeMiddleware
 
-    _student_app_path = str(Path(__file__).parent.parent / "student_app.py")
+    _student_app_path = str(Path(__file__).parent.parent / "hub_student_app.py")
     _builder = marimo.create_asgi_app(quiet=True, token="")
     _builder = _builder.with_app(
         path="/",
