@@ -2159,8 +2159,23 @@ def moodle_sync_users(ctx, course_id, url, token, hub_url, hub_token, dry_run):
 
     if dry_run:
         for u in usernames:
-            click.echo(f"  {u}")
+            _full = next(
+                (p["fullname"] for p in participants if p["username"] == u), ""
+            )
+            click.echo(f"  {u}" + (f"  ({_full})" if _full else ""))
         return
+
+    # Update gradebook with student names (for formgrader display)
+    name_mapping = {
+        p["username"]: p["fullname"]
+        for p in participants
+        if p.get("username") and p.get("fullname")
+    }
+    if name_mapping:
+        db_path = Path.cwd() / config.gradebook
+        with Gradebook(db_path) as gb:
+            gb.upsert_students(name_mapping)
+        click.echo(f"Updated {len(name_mapping)} student names in {_rel(db_path)}")
 
     if hub_url:
         import requests as req
@@ -2263,48 +2278,6 @@ def moodle_login(ctx, url, sso):
     save_cached_token(url, token, info["fullname"])
     click.echo(f"Logged in as {info['fullname']} ({info['username']})")
     click.echo("Token cached to ~/.config/mograder/token.json")
-
-
-@cli.command("import-students")
-@click.argument("worksheet", type=click.Path(exists=True, path_type=Path))
-@click.option(
-    "--match-column",
-    default=None,
-    help="Moodle CSV column to match student against (default: from config)",
-)
-@click.pass_context
-def import_students(ctx, worksheet, match_column):
-    """Import student names from a Moodle CSV into the gradebook."""
-    config = ctx.obj["config"]
-    match_col = match_column or config.moodle_match_column
-    name_col = config.moodle_name_column
-
-    fieldnames, rows = moodle.read_moodle_worksheet(worksheet)
-    if match_col not in fieldnames:
-        click.echo(
-            f"ERROR: match column '{match_col}' not found in worksheet "
-            f"(available: {', '.join(fieldnames)})",
-            err=True,
-        )
-        sys.exit(1)
-    if name_col not in fieldnames:
-        click.echo(
-            f"ERROR: name column '{name_col}' not found in worksheet "
-            f"(available: {', '.join(fieldnames)})",
-            err=True,
-        )
-        sys.exit(1)
-
-    mapping = {
-        r[match_col]: r[name_col]
-        for r in rows
-        if match_col in r and name_col in r and r[match_col] and r[name_col]
-    }
-
-    db_path = Path.cwd() / config.gradebook
-    with Gradebook(db_path) as gb:
-        gb.upsert_students(mapping)
-    click.echo(f"Imported {len(mapping)} students into {_rel(db_path)}")
 
 
 @cli.command()

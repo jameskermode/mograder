@@ -144,8 +144,9 @@ Fetch enrolled participants and push them to the hub:
 mograder moodle sync-users --hub-url HUB_URL --hub-token TOKEN
 ```
 
-This calls `list_participants()` on the first Moodle assignment in the config
-and POSTs the username list to the hub's `/sync-users` endpoint. Run
+This calls `list_participants()` on the first Moodle assignment in the config,
+POSTs the username list to the hub's `/sync-users` endpoint, and updates
+the local gradebook with student full names (for formgrader display). Run
 `mograder moodle sync` first to populate assignment metadata.
 
 Use `--dry-run` to preview the user list without syncing.

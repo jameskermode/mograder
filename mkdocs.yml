@@ -74,7 +74,7 @@ nav:
     - Validate: usage/validate.md
     - Autograde: usage/autograde.md
     - Feedback: usage/feedback.md
-    - Import Students: usage/import-students.md
+    - Sync Users: usage/sync-users.md
     - Sync Remote: usage/sync-remote.md
     - Moodle: usage/moodle.md
     - HTTPS Transport: usage/https-transport.md

@@ -93,10 +93,15 @@ def test_full_workflow(course, monkeypatch):
     for f in submitted:
         _strip_script_header(f)
 
-    # --- 3. Import students ---
-    result = runner.invoke(cli, ["import-students", str(csv_path)])
-    assert result.exit_code == 0, f"import-students failed:\n{result.output}"
-    assert "Imported 6 students" in result.output
+    # --- 3. Import students (directly via gradebook, replaces removed import-students CLI) ---
+    from mograder import moodle
+    from mograder.gradebook import Gradebook
+
+    fieldnames, rows = moodle.read_moodle_worksheet(csv_path)
+    name_mapping = {r["Username"]: r["Full name"] for r in rows if r.get("Username")}
+    with Gradebook(course / "gradebook.db") as gb:
+        gb.upsert_students(name_mapping)
+    assert len(name_mapping) == 6
 
     # --- 4. Autograde ---
     sub_files = [str(f) for f in submitted]
