@@ -42,3 +42,4 @@ class ConfirmButton(anywidget.AnyWidget):
     count = traitlets.Int(0).tag(sync=True)
     label = traitlets.Unicode("Reset").tag(sync=True)
     message = traitlets.Unicode("Are you sure?").tag(sync=True)
+    assignment = traitlets.Unicode("").tag(sync=True)

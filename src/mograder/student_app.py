@@ -438,6 +438,7 @@ def _(
     _ = get_refresh()
 
     buttons = mo.ui.dictionary({})
+    reset_widgets = {}
 
     if HUB_MODE:
         _ready = bool(assignments_cfg)
@@ -450,6 +451,7 @@ def _(
         _nb_dir = Path(COURSE_DIR / CONFIG.hub_notebooks_dir)
 
         all_buttons = {}
+        reset_widgets = {}  # anywidgets can't go in mo.ui.dictionary
         rows = []
 
         for i, a in enumerate(assignments_cfg):
@@ -513,10 +515,10 @@ def _(
 
                 from mograder.confirm_button import ConfirmButton
 
-                key = f"{i}_reset"
-                all_buttons[key] = mo.ui.anywidget(
+                reset_widgets[i] = mo.ui.anywidget(
                     ConfirmButton(
                         label="Reset",
+                        assignment=_slug,
                         message=(
                             f"Reset {_display}?\n\n"
                             f"This will replace your notebook with the "
@@ -524,11 +526,7 @@ def _(
                             f"have made will be lost."
                         ),
                     ),
-                    on_change=lambda _, n=_slug: set_pending(
-                        {"action": "hub_reset", "assignment": n}
-                    ),
                 )
-                btn_keys.append(key)
 
             rows.append(
                 {
@@ -536,6 +534,7 @@ def _(
                     "Status": status,
                     "Checks": check_summary,
                     "btn_keys": btn_keys,
+                    "row_idx": i,
                 }
             )
 
@@ -544,7 +543,10 @@ def _(
         display_rows = []
         for row in rows:
             keys = row.pop("btn_keys")
+            idx = row.pop("row_idx")
             btns = [buttons[k] for k in keys]
+            if idx in reset_widgets:
+                btns.append(reset_widgets[idx])
             row["Actions"] = (
                 mo.hstack(btns, gap=0.5, justify="center") if btns else mo.md("")
             )
@@ -658,7 +660,7 @@ def _(
             table = mo.ui.table(display_rows, selection=None)
             mo.output.replace(mo.vstack([mo.md("### Assignments"), table]))
 
-    return (buttons,)
+    return buttons, reset_widgets
 
 
 # --- Execution cell: reads get_pending() and does the actual work ---
@@ -672,6 +674,7 @@ def _(
     MoodleAPIClient,
     Path,
     build_transport,
+    reset_widgets,
     create_shared_sandbox,
     get_pending,
     get_token,
@@ -687,6 +690,15 @@ def _(
     sp,
     sys,
 ):
+    # Detect reset button confirmations from anywidget ConfirmButtons
+    if HUB_MODE and reset_widgets:
+        for _widget in reset_widgets.values():
+            _val = _widget.value
+            if isinstance(_val, dict) and _val.get("count", 0) > 0:
+                _asgn = _val.get("assignment", "")
+                if _asgn:
+                    set_pending({"action": "hub_reset", "assignment": _asgn})
+
     pending = get_pending()
     if pending is not None:
         _act = pending["action"]
