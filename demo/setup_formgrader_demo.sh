@@ -3,9 +3,13 @@
 # Run from the repo root: bash demo/setup_formgrader_demo.sh
 set -e
 
-# Resolve to absolute paths so subshells (cd) work
-PYTHON="$(realpath "${PYTHON:-$(command -v python)}")"
-MOGRADER="$(realpath "${MOGRADER:-$(command -v mograder)}")"
+# Resolve to absolute paths so subshells (cd) work.
+# Use cd+pwd instead of realpath to avoid resolving symlinks —
+# realpath on a venv python follows the symlink to the base
+# interpreter, losing the venv's site-packages.
+_resolve() { (cd "$(dirname "$1")" && echo "$(pwd)/$(basename "$1")"); }
+PYTHON="$(_resolve "${PYTHON:-$(command -v python)}")"
+MOGRADER="$(_resolve "${MOGRADER:-$(command -v mograder)}")"
 
 COURSE=demo/formgrader-course
 
