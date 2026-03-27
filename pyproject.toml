@@ -25,11 +25,13 @@ dependencies = [
 
 [project.optional-dependencies]
 hub = [
+    "anywidget>=0.9",
     "fastapi>=0.100",
     "lzstring>=1.0.4",
     "matplotlib",
     "seaborn",
     "starlette>=0.37.2",
+    "traitlets>=5.0",
     "uvicorn>=0.24",
     "python-multipart>=0.0.6",
 ]
