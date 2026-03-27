@@ -438,7 +438,6 @@ def _(
     _ = get_refresh()
 
     buttons = mo.ui.dictionary({})
-    reset_widgets = {}
 
     if HUB_MODE:
         _ready = bool(assignments_cfg)
@@ -451,7 +450,6 @@ def _(
         _nb_dir = Path(COURSE_DIR / CONFIG.hub_notebooks_dir)
 
         all_buttons = {}
-        reset_widgets = {}  # anywidgets can't go in mo.ui.dictionary
         rows = []
 
         for i, a in enumerate(assignments_cfg):
@@ -513,35 +511,12 @@ def _(
                 )
                 btn_keys.append(key)
 
-                from mograder.confirm_button import ConfirmButton
-
-                _cb_widget = ConfirmButton(
-                    label="Reset",
-                    assignment=_slug,
-                    message=(
-                        f"Reset {_display}?\n\n"
-                        f"This will replace your notebook with the "
-                        f"original release version. Any changes you "
-                        f"have made will be lost."
-                    ),
-                )
-                # Use traitlets.observe to fire reset directly when
-                # user confirms — bypasses marimo's reactive graph.
-                _cb_widget.observe(
-                    lambda change, n=_slug: set_pending(
-                        {"action": "hub_reset", "assignment": n}
-                    ),
-                    names=["count"],
-                )
-                reset_widgets[i] = mo.ui.anywidget(_cb_widget)
-
             rows.append(
                 {
                     "Assignment": _display,
                     "Status": status,
                     "Checks": check_summary,
                     "btn_keys": btn_keys,
-                    "row_idx": i,
                 }
             )
 
@@ -550,10 +525,7 @@ def _(
         display_rows = []
         for row in rows:
             keys = row.pop("btn_keys")
-            idx = row.pop("row_idx")
             btns = [buttons[k] for k in keys]
-            if idx in reset_widgets:
-                btns.append(reset_widgets[idx])
             row["Actions"] = (
                 mo.hstack(btns, gap=0.5, justify="center") if btns else mo.md("")
             )
@@ -793,22 +765,6 @@ def _(
                 set_action_log(
                     f'Export **{_name}**: <a href="{_url}" target="_blank">download</a>'
                 )
-
-            elif _act == "hub_reset":
-                _name = pending["assignment"]
-                try:
-                    _resp = _httpx.post(
-                        f"{_hub_base}/reset/{HUB_USER}/{_name}",
-                        headers=_hub_headers,
-                        timeout=30,
-                    )
-                    if _resp.status_code == 200:
-                        set_action_log(f"Reset **{_name}** to release version.")
-                    else:
-                        set_action_log(f"Reset failed: {_resp.text}")
-                except Exception as _exc:
-                    set_action_log(f"Reset failed: {_exc}")
-                set_refresh(lambda v: v + 1)
 
             elif _act == "hub_stop_edit":
                 _name = pending["assignment"]
