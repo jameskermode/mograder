@@ -48,15 +48,15 @@ cp examples/gradebook.db "$COURSE/"
 cp examples/moodle_worksheet.csv "$COURSE/import/demo-assignment.csv"
 
 echo "=== Importing student names ==="
-(cd "$COURSE" && $PYTHON -c "
+"$PYTHON" -c "
 from mograder.gradebook import Gradebook
 from mograder.moodle import read_moodle_worksheet
-_, rows = read_moodle_worksheet('import/demo-assignment.csv')
+_, rows = read_moodle_worksheet('$COURSE/import/demo-assignment.csv')
 mapping = {r['Username']: r['Full name'] for r in rows if r.get('Username')}
-with Gradebook('gradebook.db') as gb:
+with Gradebook('$COURSE/gradebook.db') as gb:
     gb.upsert_students(mapping)
 print(f'Imported {len(mapping)} students')
-")
+"
 
 # Copy source and release notebooks from demo/course if available
 if [ -d demo/course ]; then
