@@ -24,13 +24,19 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-hub = [
-    "fastapi>=0.100",
-    "lzstring>=1.0.4",
-    "matplotlib",
-    "seaborn",
+asgi = [
     "starlette>=0.37.2",
     "uvicorn>=0.24",
+]
+grader = [
+    "mograder[asgi]",
+    "matplotlib",
+    "seaborn",
+]
+hub = [
+    "mograder[grader]",
+    "fastapi>=0.100",
+    "lzstring>=1.0.4",
     "python-multipart>=0.0.6",
 ]
 dev = [
