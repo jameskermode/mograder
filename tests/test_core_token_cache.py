@@ -49,13 +49,16 @@ def test_save_strips_trailing_slash(tmp_path):
 
 def test_file_permissions(tmp_path):
     import os
+    import sys
+
     from mograder.core._token_cache import TokenCache
 
     p = tmp_path / "cache.json"
     cache = TokenCache(p)
     cache.save({"url": "x", "token": "y"})
-    mode = os.stat(p).st_mode & 0o777
-    assert mode == 0o600
+    if sys.platform != "win32":
+        mode = os.stat(p).st_mode & 0o777
+        assert mode == 0o600
 
 
 def test_corrupted_json_returns_none(tmp_path):

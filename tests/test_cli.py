@@ -1,3 +1,4 @@
+import os
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -258,7 +259,7 @@ def test_grader_launches_marimo(mock_run, tmp_path):
     cmd = mock_run.call_args[0][0]
     assert "marimo" in " ".join(cmd)
     assert "run" in cmd
-    assert cmd[-1].endswith("grader/app.py")
+    assert cmd[-1].endswith(os.path.join("grader", "app.py"))
 
 
 @patch("subprocess.run")
