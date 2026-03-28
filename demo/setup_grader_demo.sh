@@ -53,8 +53,8 @@ cp examples/moodle_worksheet.csv "$COURSE/import/demo-assignment.csv"
 
 echo "=== Importing student names ==="
 "$PYTHON" -c "
-from mograder.gradebook import Gradebook
-from mograder.moodle import read_moodle_worksheet
+from mograder.grading.gradebook import Gradebook
+from mograder.transport.moodle import read_moodle_worksheet
 _, rows = read_moodle_worksheet('$COURSE/import/demo-assignment.csv')
 mapping = {r['Username']: r['Full name'] for r in rows if r.get('Username')}
 with Gradebook('$COURSE/gradebook.db') as gb:
