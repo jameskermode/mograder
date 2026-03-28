@@ -1,7 +1,17 @@
-"""Combined ASGI app serving grader UI and assignment API.
+"""Combined ASGI app serving hub, grader, assignment API, and workshop.
+
+Layout:
+    /              — Hub student dashboard (edit notebooks in browser)
+    /edit/...      — Hub edit sessions (marimo edit per student/assignment)
+    /grader        — Grader instructor dashboard (marimo run)
+    /assignments   — Assignment API (list, download, submit)
+    /workshop/...  — Workshop instructor dashboard
+    /keys.json     — Workshop released keys
+    /dashboard.html— Workshop dashboard
+    /mograder.toml — Client configuration
 
 Environment variables:
-    MOGRADER_COURSE_DIR       — course directory for grader (default: ".")
+    MOGRADER_COURSE_DIR       — course directory (default: ".")
     MOGRADER_WORKSHOP_DIR     — workshop export directory (optional)
     MOGRADER_WORKSHOP_SALT    — workshop encryption salt (optional)
     MOGRADER_WORKSHOP_SECRET  — workshop dashboard token (optional, auto-generated)
@@ -20,18 +30,28 @@ import marimo
 
 logger = logging.getLogger(__name__)
 
-# Formgrader marimo app
+course_dir = Path(os.environ.get("MOGRADER_COURSE_DIR", "."))
+
+# --- Grader marimo app at /grader ---
+
 grader_path = str(
     Path(__file__).parent / ".." / "src" / "mograder" / "grader" / "app.py"
 )
-server = marimo.create_asgi_app(include_code=True)
-server = server.with_app(path="/", root=grader_path)
+_grader_builder = marimo.create_asgi_app(include_code=True)
+_grader_builder = _grader_builder.with_app(path="/grader", root=grader_path)
+grader_app = _grader_builder.build()
 
-# Check if we should also serve the assignment API
-course_dir = Path(os.environ.get("MOGRADER_COURSE_DIR", "."))
+# --- Hub app at / ---
+
+os.environ["MOGRADER_HUB_DEV"] = "1"
+from mograder.hub.app import create_hub_app  # noqa: E402
+
+hub_app = create_hub_app(course_dir, dev=True, session_ttl=300)
+
+# --- Assignment API + workshop + routing ---
 
 if (course_dir / "release").is_dir():
-    from mograder.transport.https_server import create_starlette_routes
+    from mograder.transport.https_server import create_starlette_routes  # noqa: E402
 
     api_app = create_starlette_routes(
         course_dir,
@@ -40,7 +60,6 @@ if (course_dir / "release").is_dir():
         grades_dir=course_dir / ".mograder" / "server",
         secret=None,
     )
-    marimo_app = server.build()
 
     mograder_bin = str(Path(sys.executable).parent / "mograder")
 
@@ -86,7 +105,9 @@ if (course_dir / "release").is_dir():
         import json
         import secrets
 
-        from mograder.transport.workshop_server import create_workshop_starlette_routes
+        from mograder.transport.workshop_server import (  # noqa: E402
+            create_workshop_starlette_routes,
+        )
 
         _ws_dir = Path(workshop_dir)
         _ws_keys_all_path = _ws_dir / "keys_all.json"
@@ -99,7 +120,7 @@ if (course_dir / "release").is_dir():
             _ws_keys_path = _ws_dir / "keys.json"
 
             # Generate dashboard HTML
-            from mograder.transport.workshop import generate_dashboard_html
+            from mograder.transport.workshop import generate_dashboard_html  # noqa: E402
 
             (_ws_dir / "dashboard.html").write_text(
                 generate_dashboard_html(list(_ws_keys_all.keys()))
@@ -113,12 +134,17 @@ if (course_dir / "release").is_dir():
             )
             logger.info("Workshop dashboard secret: %s", _ws_secret)
 
-    from starlette.types import Receive, Scope, Send
+    from starlette.types import Receive, Scope, Send  # noqa: E402
 
     async def _router(scope: Scope, receive: Receive, send: Send):
-        """Route requests to API, workshop, or grader."""
+        """Route requests to grader, API, workshop, or hub."""
         path = scope.get("path", "")
         if scope["type"] in ("http", "websocket"):
+            # Grader (must check before hub since hub is catch-all at /)
+            if path.startswith("/grader"):
+                await grader_app(scope, receive, send)
+                return
+
             # Workshop routes
             if workshop_app and (
                 path.startswith("/workshop/")
@@ -154,7 +180,6 @@ if (course_dir / "release").is_dir():
             if path.startswith("/assignments") or path == "/register":
                 # Intercept submit responses to trigger autograde
                 if "/submit" in path and scope.get("method") == "POST":
-                    # Capture the response status
                     response_started = False
                     response_status = 0
 
@@ -166,10 +191,8 @@ if (course_dir / "release").is_dir():
                         await send(message)
 
                     await api_app(scope, receive, send_wrapper)
-                    # Trigger autograde in background if submit succeeded
                     if response_started and 200 <= response_status < 300:
                         parts = path.strip("/").split("/")
-                        # /assignments/<name>/submit?user=<u>
                         if len(parts) >= 3:
                             assignment = parts[1]
                             qs = scope.get("query_string", b"").decode()
@@ -185,9 +208,12 @@ if (course_dir / "release").is_dir():
                     return
                 await api_app(scope, receive, send)
                 return
-        await marimo_app(scope, receive, send)
+
+        # Everything else → hub (dashboard + edit sessions)
+        await hub_app(scope, receive, send)
 
     app = _router
 
 else:
-    app = server.build()
+    # No release dir — just serve hub
+    app = hub_app

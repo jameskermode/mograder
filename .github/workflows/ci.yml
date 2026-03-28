@@ -133,12 +133,11 @@ jobs:
             PYTHON=.venv/bin/python MOGRADER=.venv/bin/mograder bash demo/setup_grader_demo.sh
             # Export workshop
             .venv/bin/mograder workshop export demo/course/demo-workshop/files/demo-workshop.py -o demo/workshop-export --salt mograder
-            # Update module path after formgrader → grader rename
-            sudo sed -i 's/mograder\.formgrader_asgi/mograder.grader.asgi/g' /etc/systemd/system/mograder-demo.service
-            # Ensure workshop env vars in systemd service
-            sudo sed -i '/MOGRADER_WORKSHOP/d' /etc/systemd/system/mograder-demo.service
+            # Ensure env vars in systemd service
+            sudo sed -i '/MOGRADER_WORKSHOP\|MOGRADER_HUB/d' /etc/systemd/system/mograder-demo.service
             sudo sed -i '/ExecStart/i Environment=MOGRADER_WORKSHOP_DIR=/home/ubuntu/mograder/demo/workshop-export' /etc/systemd/system/mograder-demo.service
             sudo sed -i '/ExecStart/i Environment=MOGRADER_WORKSHOP_SECRET=mograder-demo-secret' /etc/systemd/system/mograder-demo.service
+            sudo sed -i '/ExecStart/i Environment=MOGRADER_HUB_DEV=1' /etc/systemd/system/mograder-demo.service
             sudo systemctl daemon-reload
             sudo systemctl restart mograder-demo
           SCRIPT
@@ -146,23 +145,25 @@ jobs:
       - name: Verify
         run: |
           sleep 8
-          ROOT=$(curl -s -o /dev/null -w "%{http_code}" https://mograder-demo.jrkermode.uk/)
+          HUB=$(curl -s -o /dev/null -w "%{http_code}" https://mograder-demo.jrkermode.uk/)
+          GRADER=$(curl -s -o /dev/null -w "%{http_code}" https://mograder-demo.jrkermode.uk/grader)
           API=$(curl -s -o /dev/null -w "%{http_code}" https://mograder-demo.jrkermode.uk/assignments)
           KEYS=$(curl -s -o /dev/null -w "%{http_code}" https://mograder-demo.jrkermode.uk/keys.json)
           DASH=$(curl -s -o /dev/null -w "%{http_code}" https://mograder-demo.jrkermode.uk/dashboard.html)
           TOML=$(curl -s -o /dev/null -w "%{http_code}" https://mograder-demo.jrkermode.uk/mograder.toml)
-          echo "Root: $ROOT, Assignments: $API, Keys: $KEYS, Dashboard: $DASH, TOML: $TOML"
-          [ "$ROOT" = "200" ] && [ "$API" = "200" ] && [ "$KEYS" = "200" ] && [ "$DASH" = "200" ] && [ "$TOML" = "200" ] || { echo "::error::Health check failed"; exit 1; }
+          echo "Hub: $HUB, Grader: $GRADER, Assignments: $API, Keys: $KEYS, Dashboard: $DASH, TOML: $TOML"
+          [ "$HUB" = "200" ] && [ "$GRADER" = "200" ] && [ "$API" = "200" ] && [ "$KEYS" = "200" ] && [ "$DASH" = "200" ] && [ "$TOML" = "200" ] || { echo "::error::Health check failed"; exit 1; }
 
       - name: Check for import errors
         run: |
-          # Trigger a page load so marimo executes the app cells
+          # Trigger page loads so marimo executes the app cells
           curl -s https://mograder-demo.jrkermode.uk/ > /dev/null
+          curl -s https://mograder-demo.jrkermode.uk/grader > /dev/null
           sleep 5
           ERRORS=$(ssh ubuntu@mograder-demo.jrkermode.uk "sudo journalctl -u mograder-demo --no-pager -n 30 --since '1 min ago' 2>/dev/null" | grep -c "ModuleNotFoundError" || true)
           if [ "$ERRORS" -gt 0 ]; then
             ssh ubuntu@mograder-demo.jrkermode.uk "sudo journalctl -u mograder-demo --no-pager -n 30 --since '1 min ago'" | grep "ModuleNotFoundError"
-            echo "::error::Formgrader has import errors ($ERRORS occurrences)"
+            echo "::error::Demo app has import errors ($ERRORS occurrences)"
             exit 1
           fi
           echo "No import errors detected"

@@ -42,6 +42,15 @@ mkdir -p "$COURSE/import"
 cat > "$COURSE/mograder.toml" << 'TOML'
 [defaults]
 no_edit = true
+
+[rlimits]
+cpu = 60
+nproc = 128
+nofile = 128
+as = 536870912
+
+[hub]
+session_ttl = 300
 TOML
 cp -r examples/source "$COURSE/"
 cp -r examples/release "$COURSE/"
@@ -79,6 +88,14 @@ for d in "$COURSE/release"/*/; do
         (cd "$d" && zip -q "$name.zip" *.py)
         echo "ZIP: $d$name.zip"
     fi
+done
+
+# Publish release notebooks for hub demo
+echo "=== Publishing hub assignments ==="
+for d in "$COURSE/release"/*/; do
+    name=$(basename "$d")
+    mkdir -p "$COURSE/hub-release/$name"
+    cp "$d"/*.py "$COURSE/hub-release/$name/" 2>/dev/null || true
 done
 
 echo "=== Done ==="
