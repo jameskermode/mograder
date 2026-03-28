@@ -1,7 +1,7 @@
-"""Combined ASGI app serving formgrader UI and assignment API.
+"""Combined ASGI app serving grader UI and assignment API.
 
 Environment variables:
-    MOGRADER_COURSE_DIR       — course directory for formgrader (default: ".")
+    MOGRADER_COURSE_DIR       — course directory for grader (default: ".")
     MOGRADER_WORKSHOP_DIR     — workshop export directory (optional)
     MOGRADER_WORKSHOP_SALT    — workshop encryption salt (optional)
     MOGRADER_WORKSHOP_SECRET  — workshop dashboard token (optional, auto-generated)
@@ -21,17 +21,17 @@ import marimo
 logger = logging.getLogger(__name__)
 
 # Formgrader marimo app
-formgrader_path = str(
-    Path(__file__).parent / ".." / "src" / "mograder" / "formgrader_app.py"
+grader_path = str(
+    Path(__file__).parent / ".." / "src" / "mograder" / "grader_app.py"
 )
 server = marimo.create_asgi_app(include_code=True)
-server = server.with_app(path="/", root=formgrader_path)
+server = server.with_app(path="/", root=grader_path)
 
 # Check if we should also serve the assignment API
 course_dir = Path(os.environ.get("MOGRADER_COURSE_DIR", "."))
 
 if (course_dir / "release").is_dir():
-    from mograder.https_server import create_starlette_routes
+    from mograder.transport.https_server import create_starlette_routes
 
     api_app = create_starlette_routes(
         course_dir,
@@ -86,7 +86,7 @@ if (course_dir / "release").is_dir():
         import json
         import secrets
 
-        from mograder.workshop_server import create_workshop_starlette_routes
+        from mograder.transport.workshop_server import create_workshop_starlette_routes
 
         _ws_dir = Path(workshop_dir)
         _ws_keys_all_path = _ws_dir / "keys_all.json"
@@ -99,7 +99,7 @@ if (course_dir / "release").is_dir():
             _ws_keys_path = _ws_dir / "keys.json"
 
             # Generate dashboard HTML
-            from mograder.workshop import generate_dashboard_html
+            from mograder.transport.workshop import generate_dashboard_html
 
             (_ws_dir / "dashboard.html").write_text(
                 generate_dashboard_html(list(_ws_keys_all.keys()))
@@ -116,7 +116,7 @@ if (course_dir / "release").is_dir():
     from starlette.types import Receive, Scope, Send
 
     async def _router(scope: Scope, receive: Receive, send: Send):
-        """Route requests to API, workshop, or formgrader."""
+        """Route requests to API, workshop, or grader."""
         path = scope.get("path", "")
         if scope["type"] in ("http", "websocket"):
             # Workshop routes

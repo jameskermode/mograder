@@ -1,8 +1,8 @@
-"""Tests for mograder.gradebook — SQLite gradebook."""
+"""Tests for mograder.grading.gradebook — SQLite gradebook."""
 
-from mograder.cells import inject_grading_cells
-from mograder.gradebook import Gradebook
-from mograder.models import CheckResult
+from mograder.grading.cells import inject_grading_cells
+from mograder.grading.gradebook import Gradebook
+from mograder.core.models import CheckResult
 
 
 def _minimal_notebook() -> str:

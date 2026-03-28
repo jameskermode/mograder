@@ -27,14 +27,14 @@ Two transports are currently available: [Moodle integration](usage/moodle.md) an
 
 ## How it works
 
-Instructors author source notebooks with solution blocks and automated checks. `mograder generate` strips solutions to create release versions. Students complete the notebooks and get instant formative feedback from `check()` calls. `mograder autograde` executes submissions in sandboxed subprocesses, parses results, and stores grades in an SQLite gradebook. Markers review and add manual marks via the formgrader dashboard. `mograder feedback` exports annotated HTML for students.
+Instructors author source notebooks with solution blocks and automated checks. `mograder generate` strips solutions to create release versions. Students complete the notebooks and get instant formative feedback from `check()` calls. `mograder autograde` executes submissions in sandboxed subprocesses, parses results, and stores grades in an SQLite gradebook. Markers review and add manual marks via the grader dashboard. `mograder feedback` exports annotated HTML for students.
 
 ## Try it
 
 A live demo is available with three components:
 
 1. **[Student Dashboard](https://jameskermode.github.io/mograder/dashboard/?server=https://mograder-demo.jrkermode.uk&wasm_base=notebooks)** — WASM app hosted on GitHub Pages. Lists assignments and links to self-hosted WASM notebooks for editing in the browser.
-2. **[Formgrader + Assignment Server](https://mograder-demo.jrkermode.uk)** — Combined ASGI app. The formgrader UI shows the full grading workflow (assignments, submissions, grading, students tabs) with pre-populated demo data. The same service also handles the assignment API at `/assignments`. No login required (for a real server, token-based authentication should be used).
+2. **[Formgrader + Assignment Server](https://mograder-demo.jrkermode.uk)** — Combined ASGI app. The grader UI shows the full grading workflow (assignments, submissions, grading, students tabs) with pre-populated demo data. The same service also handles the assignment API at `/assignments`. No login required (for a real server, token-based authentication should be used).
 3. **Notebook Editor** — Click "Edit in Browser" in the dashboard to open a notebook as a standalone WASM app with full edit mode or "Edit in Molab" to open a full editor. Each notebook has a submit cell to send your work back to the demonstration assignment server.
 
 There is also a **[Demo Workshop](https://jameskermode.github.io/mograder/dashboard/notebooks/demo-workshop.html)** which is a WASM notebook demonstrating hints and encrypted solutions for formative workshops. The **[Instructor Dashboard](https://mograder-demo.jrkermode.uk/dashboard.html#token=mograder-demo-secret)** controls which model solutions are visible to students. The workshop key for this demo is `mograder`.

@@ -2,7 +2,6 @@
 
 import json
 import os
-import re
 import shutil
 import sys
 import tempfile
@@ -10,18 +9,14 @@ from pathlib import Path
 
 import click
 
-from mograder import cells, feedback, integrity, markers, moodle, runner
-from mograder.gradebook import Gradebook
-
-_TIMESTAMP_RE = re.compile(r"_\d{8}T\d{6}$")
-
-
-def _rel(p: Path) -> str:
-    """Return a short relative path string for display."""
-    try:
-        return os.path.relpath(p)
-    except ValueError:
-        return str(p)
+from mograder.grading import cells
+from mograder.grading import feedback
+from mograder.grading import integrity
+from mograder.transport import moodle
+from mograder.grading import runner
+from mograder.core._utils import TIMESTAMP_RE as _TIMESTAMP_RE
+from mograder.core._utils import rel as _rel
+from mograder.grading.gradebook import Gradebook
 
 
 def _infer_output_dir(
@@ -179,7 +174,7 @@ def cli(ctx):
     """mograder — Semi-automated grading for Marimo notebooks."""
     import os
 
-    from mograder.config import load_config
+    from mograder.core.config import load_config
 
     if os.environ.get("MOGRADER_SKIP_UPDATE_CHECK") != "1":
         from mograder.version import check_for_update
@@ -227,7 +222,7 @@ def cli(ctx):
 @click.option(
     "--progress",
     is_flag=True,
-    help="Emit JSON progress events to stderr (for formgrader UI)",
+    help="Emit JSON progress events to stderr (for grader UI)",
 )
 @click.pass_context
 def generate(
@@ -253,7 +248,7 @@ def generate(
     if no_validate and not validate and not dry_run:
         click.echo("WARNING: skipping source validation (--no-validate)")
     elif not validate and not dry_run:
-        from .runner import create_shared_sandbox, run_notebook
+        from .grading.runner import create_shared_sandbox, run_notebook
 
         if progress:
             # Phase 1: validate source (N) + strip (1) + Phase 3: validate release (N)
@@ -359,7 +354,7 @@ def generate(
             if filepath.parent.name != "."
             else output_dir
         )
-        if not markers.process_file(
+        if not cells.process_file(
             filepath, dest_dir, dry_run, validate, submit_url=submit_url
         ):
             success = False
@@ -386,13 +381,13 @@ def generate(
         for src_dir in processed_dirs:
             rel_dir = output_dir / src_dir.name if src_dir.name != "." else output_dir
             if rel_dir.is_dir():
-                zip_path = markers.build_release_zip(rel_dir)
+                zip_path = cells.build_release_zip(rel_dir)
                 if zip_path:
                     click.echo(f"ZIP: {_rel(zip_path)}")
 
     # Phase 3: Validate release notebooks (no cell errors allowed)
     if not dry_run and not validate and not no_validate:
-        from .runner import create_shared_sandbox, run_notebook
+        from .grading.runner import create_shared_sandbox, run_notebook
 
         click.echo("\n--- Phase 3: Validating release notebooks ---")
         release_ok = True
@@ -463,7 +458,7 @@ def wasm_export(ctx, assignments, export_all, check_only, mode):
     """
     import subprocess as sp
 
-    from mograder.wasm_compat import check_wasm_compatible
+    from mograder.grading.wasm_compat import check_wasm_compatible
 
     config = ctx.obj["config"]
     source_dir = Path(config.source_dir)
@@ -611,12 +606,12 @@ def validate(ctx, assignments, timeout, fix, release_path):
     ASSIGNMENTS can be assignment names (e.g. "A3-BayesianLinearRegression")
     which are auto-expanded to source/<name>/<name>.py, or explicit file paths.
     """
-    from mograder.integrity import (
+    from mograder.grading.integrity import (
         fix_modified_cells,
         parse_assignment_name,
         validate_cell_hashes,
     )
-    from mograder.runner import create_shared_sandbox, run_notebook
+    from mograder.grading.runner import create_shared_sandbox, run_notebook
 
     config = ctx.obj["config"]
     files = _resolve_assignments(assignments, config.source_dir)
@@ -1232,7 +1227,7 @@ def feedback_cmd(
     ASSIGNMENTS can be assignment names (e.g. "hw1") which are auto-expanded
     to autograded/hw1/*.py, or explicit file paths.
     """
-    from mograder.penalties import (
+    from mograder.grading.penalties import (
         compute_penalty,
         load_fetch_metadata,
         resolve_submission_time,
@@ -1429,8 +1424,8 @@ def _get_course_id(cli_course_id, config):
 
 def _build_moodle_transport(ctx, course_id, url, token):
     """Build a MoodleTransport from CLI context and Moodle credentials."""
-    from mograder.moodle_api import MoodleAPIClient, resolve_credentials
-    from mograder.moodle_transport import MoodleTransport
+    from mograder.transport.moodle_api import MoodleAPIClient, resolve_credentials
+    from mograder.transport.moodle_transport import MoodleTransport
 
     config = ctx.obj["config"]
     url, token = resolve_credentials(url, token, config)
@@ -1577,7 +1572,7 @@ def moodle_export(
 @click.pass_context
 def moodle_fetch(ctx, assignment, list_assignments, course_id, url, token, output_dir):
     """Download assignment files from Moodle."""
-    from mograder.transport_commands import do_fetch
+    from mograder.transport.commands import do_fetch
 
     transport = _build_moodle_transport(ctx, course_id, url, token)
     do_fetch(transport, assignment, Path(output_dir), list_only=list_assignments)
@@ -1598,7 +1593,7 @@ def moodle_fetch(ctx, assignment, list_assignments, course_id, url, token, outpu
 @click.pass_context
 def moodle_submit(ctx, assignment, file, course_id, url, token, no_finalize, dry_run):
     """Upload a .py notebook as a Moodle assignment submission."""
-    from mograder.moodle_api import (
+    from mograder.transport.moodle_api import (
         MoodleAPIClient,
         find_assignment,
         resolve_credentials,
@@ -1650,7 +1645,7 @@ def moodle_submit(ctx, assignment, file, course_id, url, token, no_finalize, dry
 @click.pass_context
 def moodle_fetch_submissions(ctx, assignment, course_id, url, token, output_dir, force):
     """Bulk download all student submissions for an assignment (instructor)."""
-    from mograder.transport_commands import do_fetch_submissions
+    from mograder.transport.commands import do_fetch_submissions
 
     config = ctx.obj["config"]
     transport = _build_moodle_transport(ctx, course_id, url, token)
@@ -1694,7 +1689,7 @@ def moodle_upload_feedback(
     workflow_state,
 ):
     """Upload grades and feedback to Moodle via API (instructor)."""
-    from mograder.moodle_api import (
+    from mograder.transport.moodle_api import (
         MoodleAPIClient,
         find_assignment,
         resolve_credentials,
@@ -1820,7 +1815,7 @@ def moodle_upload(ctx, assignment, files, course_id, url, token, dry_run, open):
     import webbrowser
     import zipfile
 
-    from mograder.moodle_api import (
+    from mograder.transport.moodle_api import (
         MoodleAPIClient,
         find_assignment,
         resolve_credentials,
@@ -1886,7 +1881,7 @@ def moodle_upload(ctx, assignment, files, course_id, url, token, dry_run, open):
 @click.pass_context
 def moodle_feedback(ctx, assignment, course_id, url, token):
     """Check submission status and view grade/feedback for an assignment."""
-    from mograder.moodle_api import (
+    from mograder.transport.moodle_api import (
         MoodleAPIClient,
         find_assignment,
         resolve_credentials,
@@ -1942,7 +1937,7 @@ def moodle_sync(ctx, course_id, url, token, include_pattern, edit_links):
     """
     import tomllib
 
-    from mograder.moodle_api import (
+    from mograder.transport.moodle_api import (
         MoodleAPIClient,
         resolve_credentials,
         sync_assignments,
@@ -2006,7 +2001,7 @@ def moodle_sync(ctx, course_id, url, token, include_pattern, edit_links):
     toml_data["assignments"] = toml_assignments
 
     # Write back — tomllib is read-only, so we use a simple writer
-    from mograder.config import write_toml
+    from mograder.core.config import write_toml
 
     write_toml(toml_path, toml_data)
 
@@ -2023,8 +2018,11 @@ def moodle_sync(ctx, course_id, url, token, include_pattern, edit_links):
 
     # --edit-links: push edit links into Moodle assignment descriptions
     if edit_links and config.edit_links:
-        from mograder.edit_links import build_edit_link_html, inject_edit_links
-        from mograder.moodle_api import MoodleAPIError
+        from mograder.transport.edit_links import (
+            build_edit_link_html,
+            inject_edit_links,
+        )
+        from mograder.transport.moodle_api import MoodleAPIError
 
         # Build a map from cmid → existing intro from the API response
         intro_map = {a["cmid"]: a.get("intro", "") for a in all_assignments}
@@ -2131,8 +2129,8 @@ def moodle_sync_users(ctx, course_id, url, token, hub_url, hub_token, dry_run):
     username list to the hub's /sync-users endpoint.  If --hub-url is not
     provided, writes allowed_users.txt locally instead.
     """
-    from mograder.config import load_config
-    from mograder.moodle_api import MoodleAPIClient, resolve_credentials
+    from mograder.core.config import load_config
+    from mograder.transport.moodle_api import MoodleAPIClient, resolve_credentials
 
     config = ctx.obj.get("config") or load_config(Path("."))
     moodle_url, moodle_token = resolve_credentials(url, token, config)
@@ -2165,7 +2163,7 @@ def moodle_sync_users(ctx, course_id, url, token, hub_url, hub_token, dry_run):
             click.echo(f"  {u}" + (f"  ({_full})" if _full else ""))
         return
 
-    # Update gradebook with student names (for formgrader display)
+    # Update gradebook with student names (for grader display)
     name_mapping = {
         p["username"]: p["fullname"]
         for p in participants
@@ -2224,7 +2222,7 @@ def moodle_login(ctx, url, sso):
     """
     import webbrowser
 
-    from mograder.moodle_api import (
+    from mograder.transport.moodle_api import (
         MoodleAPIClient,
         MoodleAPIError,
         request_token,
@@ -2356,7 +2354,7 @@ def sync(ctx, autograded_dir, remote, remote_course_dir, remote_venv_dir):
         f"{cd_venv}"
         f'{python_cmd} -c "'
         f"import sys; sys.path.insert(0, '.'); "
-        f"from mograder.gradebook import Gradebook; "
+        f"from mograder.grading.gradebook import Gradebook; "
         f"gb = Gradebook('{remote_course_dir}/{config.gradebook}'); "
         f"gb.upsert_assignment('{assignment}'); "
         f"n = gb.import_from_py('{assignment}', "
@@ -2385,12 +2383,12 @@ def sync(ctx, autograded_dir, remote, remote_course_dir, remote_venv_dir):
 @click.option("-p", "--port", type=int, default=None, help="Port for marimo app")
 @click.option("--headless", is_flag=True, help="Don't open browser")
 @click.option("--base-url", default=None, help="Base URL path for reverse proxy")
-def formgrader(course_dir, port, headless, base_url):
-    """Launch the formgrader dashboard for managing grading."""
+def grader(course_dir, port, headless, base_url):
+    """Launch the grader dashboard for managing grading."""
     import os
     import subprocess as sp
 
-    app_path = Path(__file__).parent / "formgrader_app.py"
+    app_path = Path(__file__).parent / "grader" / "app.py"
     os.environ["MOGRADER_COURSE_DIR"] = str(course_dir.resolve())
 
     cmd = [sys.executable, "-m", "marimo", "run", str(app_path)]
@@ -2401,7 +2399,7 @@ def formgrader(course_dir, port, headless, base_url):
     if base_url:
         cmd.extend(["--base-url", base_url])
 
-    click.echo(f"Launching formgrader for: {course_dir.resolve()}")
+    click.echo(f"Launching grader for: {course_dir.resolve()}")
     try:
         proc = sp.run(cmd)
         sys.exit(proc.returncode)
@@ -2409,7 +2407,7 @@ def formgrader(course_dir, port, headless, base_url):
         pass
 
 
-@cli.command("formgrader-asgi")
+@cli.command("grader-asgi")
 @click.argument(
     "course_dir",
     type=click.Path(exists=True, path_type=Path),
@@ -2433,10 +2431,8 @@ def formgrader(course_dir, port, headless, base_url):
     is_flag=True,
     help="Auto-reload on source changes (for development)",
 )
-def formgrader_asgi(
-    course_dir, port, host, base_url, instructors, trusted_proxies, reload
-):
-    """Launch the formgrader as a persistent ASGI service.
+def grader_asgi(course_dir, port, host, base_url, instructors, trusted_proxies, reload):
+    """Launch the grader as a persistent ASGI service.
 
     Uses uvicorn with trusted-proxy authentication middleware.
     Intended for deployment behind a reverse proxy (e.g. on sciml).
@@ -2455,7 +2451,7 @@ def formgrader_asgi(
         sys.executable,
         "-m",
         "uvicorn",
-        "mograder.formgrader_asgi:app",
+        "mograder.grader.asgi:app",
         "--host",
         host,
         "--port",
@@ -2465,7 +2461,7 @@ def formgrader_asgi(
         src_dir = str(Path(__file__).parent)
         cmd.extend(["--reload", "--reload-dir", src_dir])
 
-    click.echo(f"Launching ASGI formgrader for: {course_dir.resolve()}")
+    click.echo(f"Launching ASGI grader for: {course_dir.resolve()}")
     click.echo(f"  base-url: {base_url}")
     click.echo(f"  bind: {host}:{port}")
     if trusted_proxies:
@@ -2565,7 +2561,7 @@ def student(course_dir_or_url, port, headless, no_token):
             sys.exit(1)
         _refresh_config(course)
 
-    app_path = Path(__file__).parent / "student_app.py"
+    app_path = Path(__file__).parent / "student" / "app.py"
     os.environ["MOGRADER_COURSE_DIR"] = str(course)
 
     cmd = [sys.executable, "-m", "marimo", "run", str(app_path)]
@@ -2606,7 +2602,7 @@ def _resolve_https_token(config, token_opt: str | None) -> str:
     env_tok = os.environ.get("MOGRADER_HTTPS_TOKEN", "")
     if env_tok:
         return env_tok
-    from mograder.auth import load_cached_https_token
+    from mograder.core.auth import load_cached_https_token
 
     url = config.https_url or ""
     if url:
@@ -2629,7 +2625,7 @@ def _user_from_token(token: str) -> str:
 @click.pass_context
 def https_login(ctx, token, url):
     """Cache an HTTPS authentication token."""
-    from mograder.auth import save_cached_https_token
+    from mograder.core.auth import save_cached_https_token
 
     config = ctx.obj["config"]
     url = url or config.https_url
@@ -2659,8 +2655,8 @@ def https_login(ctx, token, url):
 @click.pass_context
 def https_fetch(ctx, assignment, list_assignments, url, token, output_dir):
     """Download assignment files from an HTTPS server."""
-    from mograder.https_transport import HTTPSTransport
-    from mograder.transport_commands import do_fetch
+    from mograder.transport.https_transport import HTTPSTransport
+    from mograder.transport.commands import do_fetch
 
     config = ctx.obj["config"]
     url = url or config.https_url
@@ -2682,8 +2678,8 @@ def https_fetch(ctx, assignment, list_assignments, url, token, output_dir):
 @click.pass_context
 def https_submit(ctx, assignment, file, url, token, dry_run):
     """Submit a .py notebook to an HTTPS assignment server."""
-    from mograder.https_transport import HTTPSTransport
-    from mograder.transport_commands import do_submit
+    from mograder.transport.https_transport import HTTPSTransport
+    from mograder.transport.commands import do_submit
 
     config = ctx.obj["config"]
     url = url or config.https_url
@@ -2714,8 +2710,8 @@ def https_submit(ctx, assignment, file, url, token, dry_run):
 @click.pass_context
 def https_fetch_submissions(ctx, assignment, url, token, output_dir, force):
     """Download all submissions from an HTTPS server (instructor)."""
-    from mograder.https_transport import HTTPSTransport
-    from mograder.transport_commands import do_fetch_submissions
+    from mograder.transport.https_transport import HTTPSTransport
+    from mograder.transport.commands import do_fetch_submissions
 
     config = ctx.obj["config"]
     url = url or config.https_url
@@ -2746,8 +2742,8 @@ def https_upload_grades(ctx, assignment, url, token, grades_csv, dry_run):
     """Upload grades to an HTTPS assignment server."""
     import csv
 
-    from mograder.https_transport import HTTPSTransport
-    from mograder.transport_commands import do_upload_feedback
+    from mograder.transport.https_transport import HTTPSTransport
+    from mograder.transport.commands import do_upload_feedback
 
     config = ctx.obj["config"]
     url = url or config.https_url
@@ -2772,8 +2768,8 @@ def https_upload_grades(ctx, assignment, url, token, grades_csv, dry_run):
 @click.pass_context
 def https_feedback(ctx, assignment, url, token):
     """Check submission status and view grade/feedback."""
-    from mograder.https_transport import HTTPSTransport
-    from mograder.transport_commands import do_status
+    from mograder.transport.https_transport import HTTPSTransport
+    from mograder.transport.commands import do_status
 
     config = ctx.obj["config"]
     url = url or config.https_url
@@ -2853,8 +2849,8 @@ def serve(
 
     Serves assignments from DIRECTORY (default: current dir).
     """
-    from mograder.auth import INSTRUCTOR_USER, load_or_create_secret, make_token
-    from mograder.https_server import create_server
+    from mograder.core.auth import INSTRUCTOR_USER, load_or_create_secret, make_token
+    from mograder.transport.https_server import create_server
 
     secret = None
     if not no_auth:
@@ -2934,7 +2930,7 @@ def token(usernames, secret_file, secret_stdin, secret_value):
     With no flag, reads .mograder-secret from the current directory.
     Always appends an instructor token.
     """
-    from mograder.auth import INSTRUCTOR_USER, SECRET_FILENAME, make_token
+    from mograder.core.auth import INSTRUCTOR_USER, SECRET_FILENAME, make_token
 
     sources = sum([secret_file is not None, secret_stdin, secret_value is not None])
     if sources > 1:
@@ -3000,7 +2996,7 @@ def workshop_encrypt(sources, output_dir, salt, keys_url):
     """
     import secrets as _secrets
 
-    from mograder.workshop import process_workshop
+    from mograder.transport.workshop import process_workshop
 
     _salt = salt or _secrets.token_hex(8)
     for src in sources:
@@ -3032,7 +3028,11 @@ def workshop_export(sources, output_dir, salt, keys_url):
     """
     import subprocess
 
-    from mograder.workshop import parse_exercises_metadata, process_workshop, write_keys
+    from mograder.transport.workshop import (
+        parse_exercises_metadata,
+        process_workshop,
+        write_keys,
+    )
 
     output_dir = Path(output_dir)
     for src in sources:
@@ -3076,7 +3076,7 @@ def workshop_export(sources, output_dir, salt, keys_url):
         click.echo(f"WASM: {_rel(html_out)}")
 
         # Generate dashboard HTML
-        from mograder.workshop import generate_dashboard_html
+        from mograder.transport.workshop import generate_dashboard_html
 
         dashboard_path = output_dir / "dashboard.html"
         dashboard_path.write_text(generate_dashboard_html(exercise_keys))
@@ -3089,7 +3089,7 @@ def workshop_export(sources, output_dir, salt, keys_url):
 @click.option("--salt", required=True, help="The encryption salt used at generate time")
 def workshop_release_key(keys_file, exercise_id, salt):
     """Add one key to a keys.json for incremental release during a live workshop."""
-    from mograder.workshop import release_key
+    from mograder.transport.workshop import release_key
 
     release_key(keys_file, exercise_id, salt)
     click.echo(f"Released key for {exercise_id} in {_rel(keys_file)}")
@@ -3108,8 +3108,8 @@ def workshop_serve(export_dir, port, host, salt):
     """
     import secrets as _secrets
 
-    from mograder.workshop import generate_dashboard_html
-    from mograder.workshop_server import create_workshop_server
+    from mograder.transport.workshop import generate_dashboard_html
+    from mograder.transport.workshop_server import create_workshop_server
 
     export_dir = Path(export_dir)
     keys_path = export_dir / "keys.json"
@@ -3333,7 +3333,7 @@ def _start_hub_server(
 )
 def hub_check(course_dir):
     """Preflight check: verify hub requirements."""
-    from mograder.config import load_config
+    from mograder.core.config import load_config
 
     config = load_config(course_dir)
     issues = []
@@ -3444,7 +3444,7 @@ def hub_warm_cache(ctx, notebooks, warm_all, dry_run, url, hub_token):
     targets = list(notebooks)
     if warm_all:
         course_dir = ctx.obj.get("hub_course_dir", Path("."))
-        from mograder.config import load_config
+        from mograder.core.config import load_config
 
         config = load_config(course_dir)
         rel_dir = Path(course_dir) / config.hub_release_dir
@@ -3495,7 +3495,7 @@ def hub_warm_cache(ctx, notebooks, warm_all, dry_run, url, hub_token):
 )
 def hub_generate_token(username, role):
     """Generate an HMAC authentication token for a user."""
-    from mograder.auth import INSTRUCTOR_USER, make_token
+    from mograder.core.auth import INSTRUCTOR_USER, make_token
 
     secret = os.environ.get("MOGRADER_HUB_SECRET", "")
     if not secret:
@@ -3542,7 +3542,7 @@ def hub_publish(
     """
     import requests as req
 
-    from mograder.config import load_config
+    from mograder.core.config import load_config
 
     config = ctx.obj.get("config") or load_config(Path("."))
 
@@ -3591,7 +3591,7 @@ def hub_publish(
 
         import tempfile
 
-        from mograder.transport_commands import _find_remote_assignment
+        from mograder.transport.commands import _find_remote_assignment
 
         transport = _build_moodle_transport(ctx, None, None, None)
         assignments = transport.list_assignments()

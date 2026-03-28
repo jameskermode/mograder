@@ -1,4 +1,4 @@
-"""Tests for mograder.https_server — assignment HTTP server."""
+"""Tests for mograder.transport.https_server — assignment HTTP server."""
 
 import json
 import sys
@@ -6,8 +6,8 @@ import sys
 import pytest
 import requests
 
-from mograder.auth import INSTRUCTOR_USER, generate_secret, make_token
-from mograder.https_server import run_server_background
+from mograder.core.auth import INSTRUCTOR_USER, generate_secret, make_token
+from mograder.transport.https_server import run_server_background
 
 
 @pytest.fixture()
@@ -530,7 +530,7 @@ def reg_server(tmp_path):
 
 class TestRegistration:
     def test_register_success(self, reg_server):
-        from mograder.auth import verify_token
+        from mograder.core.auth import verify_token
 
         base_url, _, _, secret, enrollment_code = reg_server
         resp = requests.post(

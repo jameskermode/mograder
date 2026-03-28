@@ -1,10 +1,10 @@
-"""Tests for mograder.workshop — crypto, parsing, reveal, generation, server."""
+"""Tests for mograder.transport.workshop — crypto, parsing, reveal, generation, server."""
 
 import json
 import textwrap
 import threading
 
-from mograder.workshop import (
+from mograder.transport.workshop import (
     build_exercises_dict,
     build_solution_cell,
     extract_solution_for_key,
@@ -349,7 +349,7 @@ def test_generate_dashboard_html():
 
 def _make_workshop_server(tmp_path, secret="testsecret"):
     """Create a workshop server on a random port for testing."""
-    from mograder.workshop_server import create_workshop_server
+    from mograder.transport.workshop_server import create_workshop_server
 
     keys_all = {"Q1": "salt1", "Q2": "salt2", "Q3": "salt3"}
     keys_path = tmp_path / "keys.json"

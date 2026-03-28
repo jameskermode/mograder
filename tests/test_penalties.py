@@ -3,7 +3,7 @@
 import json
 from pathlib import Path
 
-from mograder.penalties import (
+from mograder.grading.penalties import (
     compute_penalty,
     load_fetch_metadata,
     resolve_submission_time,

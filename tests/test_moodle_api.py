@@ -1,4 +1,4 @@
-"""Tests for mograder.moodle_api — Moodle REST API client and CLI commands."""
+"""Tests for mograder.transport.moodle_api — Moodle REST API client and CLI commands."""
 
 from unittest.mock import MagicMock, patch
 
@@ -7,7 +7,7 @@ import pytest
 from click.testing import CliRunner
 
 from mograder.cli import cli
-from mograder.moodle_api import (
+from mograder.transport.moodle_api import (
     MoodleAPIClient,
     MoodleAPIError,
     build_sso_login_url,
@@ -259,7 +259,9 @@ class TestResolveCredentials:
     def test_missing_token_errors(self, monkeypatch):
         monkeypatch.delenv("MOGRADER_MOODLE_TOKEN", raising=False)
         config = MagicMock(moodle_url="https://example.com")
-        with patch("mograder.moodle_api.load_cached_token", return_value=None):
+        with patch(
+            "mograder.transport.moodle_api.load_cached_token", return_value=None
+        ):
             with pytest.raises(click.UsageError, match="token"):
                 resolve_credentials("https://example.com", None, config)
 
@@ -267,7 +269,9 @@ class TestResolveCredentials:
         monkeypatch.delenv("MOGRADER_MOODLE_TOKEN", raising=False)
         config = MagicMock(moodle_url="https://example.com")
         cached = {"url": "https://example.com", "token": "cached-tok", "fullname": "A"}
-        with patch("mograder.moodle_api.load_cached_token", return_value=cached):
+        with patch(
+            "mograder.transport.moodle_api.load_cached_token", return_value=cached
+        ):
             url, token = resolve_credentials("https://example.com", None, config)
         assert token == "cached-tok"
 
@@ -369,7 +373,7 @@ class TestMoodleFetchCLI:
             }
         ]
         with patch(
-            "mograder.moodle_api.MoodleAPIClient.get_assignments",
+            "mograder.transport.moodle_api.MoodleAPIClient.get_assignments",
             return_value=assignments,
         ):
             runner = CliRunner()
@@ -393,11 +397,11 @@ class TestMoodleFetchCLI:
         }
         with (
             patch(
-                "mograder.moodle_api.MoodleAPIClient.get_assignments",
+                "mograder.transport.moodle_api.MoodleAPIClient.get_assignments",
                 return_value=[assignment],
             ),
             patch(
-                "mograder.moodle_api.MoodleAPIClient.download_file",
+                "mograder.transport.moodle_api.MoodleAPIClient.download_file",
                 side_effect=lambda url, dest: dest.write_bytes(b"content") or dest,
             ),
         ):
@@ -450,11 +454,11 @@ class TestMoodleFetchCLI:
 
         with (
             patch(
-                "mograder.moodle_api.MoodleAPIClient.get_assignments",
+                "mograder.transport.moodle_api.MoodleAPIClient.get_assignments",
                 return_value=[assignment],
             ),
             patch(
-                "mograder.moodle_api.MoodleAPIClient.download_file",
+                "mograder.transport.moodle_api.MoodleAPIClient.download_file",
                 side_effect=fake_download,
             ),
         ):
@@ -476,16 +480,18 @@ class TestMoodleSubmitCLI:
         assignment = {"id": 10, "name": "Demo", "duedate": 0, "introattachments": []}
         with (
             patch(
-                "mograder.moodle_api.MoodleAPIClient.get_assignments",
+                "mograder.transport.moodle_api.MoodleAPIClient.get_assignments",
                 return_value=[assignment],
             ),
             patch(
-                "mograder.moodle_api.MoodleAPIClient.upload_file",
+                "mograder.transport.moodle_api.MoodleAPIClient.upload_file",
                 return_value=99999,
             ) as mock_upload,
-            patch("mograder.moodle_api.MoodleAPIClient.save_submission") as mock_save,
             patch(
-                "mograder.moodle_api.MoodleAPIClient.submit_for_grading"
+                "mograder.transport.moodle_api.MoodleAPIClient.save_submission"
+            ) as mock_save,
+            patch(
+                "mograder.transport.moodle_api.MoodleAPIClient.submit_for_grading"
             ) as mock_finalize,
         ):
             runner = CliRunner()
@@ -513,10 +519,12 @@ class TestMoodleSubmitCLI:
         assignment = {"id": 10, "name": "Demo", "duedate": 0, "introattachments": []}
         with (
             patch(
-                "mograder.moodle_api.MoodleAPIClient.get_assignments",
+                "mograder.transport.moodle_api.MoodleAPIClient.get_assignments",
                 return_value=[assignment],
             ),
-            patch("mograder.moodle_api.MoodleAPIClient.upload_file") as mock_upload,
+            patch(
+                "mograder.transport.moodle_api.MoodleAPIClient.upload_file"
+            ) as mock_upload,
         ):
             runner = CliRunner()
             result = runner.invoke(
@@ -543,16 +551,16 @@ class TestMoodleSubmitCLI:
         assignment = {"id": 10, "name": "Demo", "duedate": 0, "introattachments": []}
         with (
             patch(
-                "mograder.moodle_api.MoodleAPIClient.get_assignments",
+                "mograder.transport.moodle_api.MoodleAPIClient.get_assignments",
                 return_value=[assignment],
             ),
             patch(
-                "mograder.moodle_api.MoodleAPIClient.upload_file",
+                "mograder.transport.moodle_api.MoodleAPIClient.upload_file",
                 return_value=99999,
             ),
-            patch("mograder.moodle_api.MoodleAPIClient.save_submission"),
+            patch("mograder.transport.moodle_api.MoodleAPIClient.save_submission"),
             patch(
-                "mograder.moodle_api.MoodleAPIClient.submit_for_grading"
+                "mograder.transport.moodle_api.MoodleAPIClient.submit_for_grading"
             ) as mock_finalize,
         ):
             runner = CliRunner()
@@ -600,19 +608,19 @@ class TestMoodleFetchSubmissionsCLI:
         ]
         with (
             patch(
-                "mograder.moodle_api.MoodleAPIClient.get_assignments",
+                "mograder.transport.moodle_api.MoodleAPIClient.get_assignments",
                 return_value=[assignment],
             ),
             patch(
-                "mograder.moodle_api.MoodleAPIClient.list_participants",
+                "mograder.transport.moodle_api.MoodleAPIClient.list_participants",
                 return_value=participants,
             ),
             patch(
-                "mograder.moodle_api.MoodleAPIClient.get_submissions",
+                "mograder.transport.moodle_api.MoodleAPIClient.get_submissions",
                 return_value=submissions,
             ),
             patch(
-                "mograder.moodle_api.MoodleAPIClient.download_file",
+                "mograder.transport.moodle_api.MoodleAPIClient.download_file",
                 side_effect=lambda url, dest: dest.write_bytes(b"code") or dest,
             ),
         ):
@@ -646,14 +654,16 @@ class TestMoodleUploadFeedbackCLI:
 
         with (
             patch(
-                "mograder.moodle_api.MoodleAPIClient.get_assignments",
+                "mograder.transport.moodle_api.MoodleAPIClient.get_assignments",
                 return_value=[assignment],
             ),
             patch(
-                "mograder.moodle_api.MoodleAPIClient.list_participants",
+                "mograder.transport.moodle_api.MoodleAPIClient.list_participants",
                 return_value=participants,
             ),
-            patch("mograder.moodle_api.MoodleAPIClient.save_grades") as mock_grades,
+            patch(
+                "mograder.transport.moodle_api.MoodleAPIClient.save_grades"
+            ) as mock_grades,
         ):
             runner = CliRunner()
             result = runner.invoke(
@@ -804,7 +814,7 @@ class TestRequestToken:
 class TestTokenCache:
     def test_save_and_load(self, tmp_path, monkeypatch):
         cache_file = tmp_path / "token.json"
-        monkeypatch.setattr("mograder.moodle_api.TOKEN_CACHE", cache_file)
+        monkeypatch.setattr("mograder.transport.moodle_api.TOKEN_CACHE", cache_file)
 
         save_cached_token("https://moodle.example.com", "tok123", "Alice Smith")
 
@@ -816,7 +826,7 @@ class TestTokenCache:
 
     def test_load_wrong_url(self, tmp_path, monkeypatch):
         cache_file = tmp_path / "token.json"
-        monkeypatch.setattr("mograder.moodle_api.TOKEN_CACHE", cache_file)
+        monkeypatch.setattr("mograder.transport.moodle_api.TOKEN_CACHE", cache_file)
 
         save_cached_token("https://moodle.example.com", "tok123", "Alice")
         result = load_cached_token("https://other.example.com")
@@ -824,7 +834,7 @@ class TestTokenCache:
 
     def test_load_missing_file(self, tmp_path, monkeypatch):
         cache_file = tmp_path / "nonexistent" / "token.json"
-        monkeypatch.setattr("mograder.moodle_api.TOKEN_CACHE", cache_file)
+        monkeypatch.setattr("mograder.transport.moodle_api.TOKEN_CACHE", cache_file)
 
         result = load_cached_token("https://moodle.example.com")
         assert result is None
@@ -832,14 +842,14 @@ class TestTokenCache:
     def test_load_corrupt_file(self, tmp_path, monkeypatch):
         cache_file = tmp_path / "token.json"
         cache_file.write_text("not json!")
-        monkeypatch.setattr("mograder.moodle_api.TOKEN_CACHE", cache_file)
+        monkeypatch.setattr("mograder.transport.moodle_api.TOKEN_CACHE", cache_file)
 
         result = load_cached_token("https://moodle.example.com")
         assert result is None
 
     def test_clear(self, tmp_path, monkeypatch):
         cache_file = tmp_path / "token.json"
-        monkeypatch.setattr("mograder.moodle_api.TOKEN_CACHE", cache_file)
+        monkeypatch.setattr("mograder.transport.moodle_api.TOKEN_CACHE", cache_file)
 
         save_cached_token("https://moodle.example.com", "tok123", "Alice")
         assert cache_file.exists()
@@ -848,12 +858,12 @@ class TestTokenCache:
 
     def test_clear_missing_ok(self, tmp_path, monkeypatch):
         cache_file = tmp_path / "nonexistent.json"
-        monkeypatch.setattr("mograder.moodle_api.TOKEN_CACHE", cache_file)
+        monkeypatch.setattr("mograder.transport.moodle_api.TOKEN_CACHE", cache_file)
         clear_cached_token()  # Should not raise
 
     def test_url_trailing_slash(self, tmp_path, monkeypatch):
         cache_file = tmp_path / "token.json"
-        monkeypatch.setattr("mograder.moodle_api.TOKEN_CACHE", cache_file)
+        monkeypatch.setattr("mograder.transport.moodle_api.TOKEN_CACHE", cache_file)
 
         save_cached_token("https://moodle.example.com/", "tok123", "Alice")
         result = load_cached_token("https://moodle.example.com")
@@ -944,13 +954,13 @@ class TestMoodleFeedbackCLI:
         _mock_config(monkeypatch)
         with (
             patch(
-                "mograder.moodle_api.MoodleAPIClient.get_assignments",
+                "mograder.transport.moodle_api.MoodleAPIClient.get_assignments",
                 return_value=[
                     {"id": 10, "name": "HW1", "duedate": 0, "introattachments": []},
                 ],
             ),
             patch(
-                "mograder.moodle_api.MoodleAPIClient.get_submission_status",
+                "mograder.transport.moodle_api.MoodleAPIClient.get_submission_status",
                 return_value={
                     "status": "submitted",
                     "graded": True,
@@ -974,13 +984,13 @@ class TestMoodleFeedbackCLI:
         _mock_config(monkeypatch)
         with (
             patch(
-                "mograder.moodle_api.MoodleAPIClient.get_assignments",
+                "mograder.transport.moodle_api.MoodleAPIClient.get_assignments",
                 return_value=[
                     {"id": 10, "name": "HW1", "duedate": 0, "introattachments": []},
                 ],
             ),
             patch(
-                "mograder.moodle_api.MoodleAPIClient.get_submission_status",
+                "mograder.transport.moodle_api.MoodleAPIClient.get_submission_status",
                 return_value={
                     "status": "submitted",
                     "graded": False,
@@ -1183,7 +1193,7 @@ class TestMoodleUploadCLI:
             "introattachments": [],
         }
         with patch(
-            "mograder.moodle_api.MoodleAPIClient.get_assignments",
+            "mograder.transport.moodle_api.MoodleAPIClient.get_assignments",
             return_value=[assignment],
         ):
             runner = CliRunner()
@@ -1216,7 +1226,7 @@ class TestMoodleUploadCLI:
         }
         with (
             patch(
-                "mograder.moodle_api.MoodleAPIClient.get_assignments",
+                "mograder.transport.moodle_api.MoodleAPIClient.get_assignments",
                 return_value=[assignment],
             ),
             patch("webbrowser.open"),
@@ -1257,7 +1267,7 @@ class TestMoodleUploadCLI:
         }
         with (
             patch(
-                "mograder.moodle_api.MoodleAPIClient.get_assignments",
+                "mograder.transport.moodle_api.MoodleAPIClient.get_assignments",
                 return_value=[assignment],
             ),
             patch("webbrowser.open"),
@@ -1289,7 +1299,7 @@ class TestMoodleUploadCLI:
         }
         with (
             patch(
-                "mograder.moodle_api.MoodleAPIClient.get_assignments",
+                "mograder.transport.moodle_api.MoodleAPIClient.get_assignments",
                 return_value=[assignment],
             ),
             patch("webbrowser.open") as mock_open,
@@ -1317,7 +1327,7 @@ class TestMoodleUploadCLI:
             "introattachments": [],
         }
         with patch(
-            "mograder.moodle_api.MoodleAPIClient.get_assignments",
+            "mograder.transport.moodle_api.MoodleAPIClient.get_assignments",
             return_value=[assignment],
         ):
             runner = CliRunner()

@@ -2,7 +2,7 @@
 
 SQLite-backed gradebook for storing and querying grades.
 
-::: mograder.gradebook
+::: mograder.grading.gradebook
     options:
       show_source: true
       show_root_heading: true

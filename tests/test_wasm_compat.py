@@ -1,6 +1,6 @@
 """Tests for wasm_compat module."""
 
-from mograder.wasm_compat import (
+from mograder.grading.wasm_compat import (
     WASM_INCOMPATIBLE_DEPS,
     check_wasm_compatible,
     extract_dependencies,

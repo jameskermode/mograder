@@ -9,7 +9,7 @@ import pytest
 
 def test_load_student_config(tmp_path, monkeypatch):
     """load_student_config reads MOGRADER_COURSE_DIR and returns config + path."""
-    from mograder.student_common import load_student_config
+    from mograder.student.common import load_student_config
 
     # Write a minimal mograder.toml
     (tmp_path / "mograder.toml").write_text("[defaults]\nheadless_edit = true\n")
@@ -22,7 +22,7 @@ def test_load_student_config(tmp_path, monkeypatch):
 
 def test_load_student_config_default_cwd(tmp_path, monkeypatch):
     """load_student_config defaults to cwd when env var not set."""
-    from mograder.student_common import load_student_config
+    from mograder.student.common import load_student_config
 
     (tmp_path / "mograder.toml").write_text("")
     monkeypatch.delenv("MOGRADER_COURSE_DIR", raising=False)
@@ -34,7 +34,7 @@ def test_load_student_config_default_cwd(tmp_path, monkeypatch):
 
 def test_version_html_returns_string():
     """version_html returns an HTML string."""
-    from mograder.student_common import version_html
+    from mograder.student.common import version_html
 
     html = version_html()
     assert isinstance(html, str)
@@ -43,7 +43,7 @@ def test_version_html_returns_string():
 
 def test_brand_logo_html_returns_string():
     """brand_logo_html returns an SVG/HTML string."""
-    from mograder.student_common import brand_logo_html
+    from mograder.student.common import brand_logo_html
 
     html = brand_logo_html()
     assert isinstance(html, str)
@@ -54,7 +54,7 @@ def test_hub_actions_download():
     import httpx
     from unittest.mock import MagicMock
 
-    from mograder.student_common import hub_download
+    from mograder.student.common import hub_download
 
     # Mock httpx client
     mock_client = MagicMock(spec=httpx.Client)
@@ -79,7 +79,7 @@ def test_hub_actions_download_failure():
     import httpx
     from unittest.mock import MagicMock
 
-    from mograder.student_common import hub_download
+    from mograder.student.common import hub_download
 
     mock_client = MagicMock(spec=httpx.Client)
     release_resp = MagicMock()
@@ -96,7 +96,7 @@ def test_hub_actions_validate():
     import httpx
     from unittest.mock import MagicMock
 
-    from mograder.student_common import hub_validate
+    from mograder.student.common import hub_validate
 
     mock_client = MagicMock(spec=httpx.Client)
     resp = MagicMock()
@@ -116,7 +116,7 @@ def test_hub_actions_start_edit():
     import httpx
     from unittest.mock import MagicMock
 
-    from mograder.student_common import hub_start_edit
+    from mograder.student.common import hub_start_edit
 
     mock_client = MagicMock(spec=httpx.Client)
     resp = MagicMock()

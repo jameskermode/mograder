@@ -1,6 +1,6 @@
 import zipfile
 
-from mograder.markers import (
+from mograder.grading.cells import (
     SOLUTION_BEGIN,
     SOLUTION_END,
     SUBMIT_MARKER,

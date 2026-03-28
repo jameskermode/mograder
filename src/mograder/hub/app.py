@@ -18,8 +18,8 @@ from mograder.hub.auth import ALLOWED_USERS_FILE, RemoteUserMiddleware
 from mograder.hub.proxy import create_proxy_router
 from mograder.hub.spawner import SessionManager
 from mograder.hub.storage import StorageManager
-from mograder.runner import run_notebook
-from mograder.safety import check_safety
+from mograder.grading.runner import run_notebook
+from mograder.grading.safety import check_safety
 
 log = logging.getLogger("mograder.hub")
 
@@ -39,7 +39,7 @@ def create_hub_app(
     uv_cache_dir: str = "",
 ) -> FastAPI:
     """Create the hub FastAPI application."""
-    from mograder.config import load_config
+    from mograder.core.config import load_config
 
     config = load_config(course_dir)
 
@@ -175,7 +175,7 @@ def create_hub_app(
         integrity_level = "hash"
         warnings = []
         try:
-            from mograder.integrity import validate_cell_hashes
+            from mograder.grading.integrity import validate_cell_hashes
 
             text = nb.read_text()
             hash_warnings = validate_cell_hashes(text)
@@ -184,7 +184,7 @@ def create_hub_app(
             # Source reinjection if release available
             release = storage.release_path(assignment)
             if release:
-                from mograder.integrity import fix_modified_cells
+                from mograder.grading.integrity import fix_modified_cells
 
                 release_text = release.read_text()
                 result = fix_modified_cells(release_text, text)
@@ -467,9 +467,9 @@ def create_hub_app(
     os.environ["MOGRADER_HUB_MODE"] = "1"
     import marimo
 
-    from mograder.edit_sessions import MarimoOptimizeMiddleware
+    from mograder.core.edit_sessions import MarimoOptimizeMiddleware
 
-    _student_app_path = str(Path(__file__).parent.parent / "hub_student_app.py")
+    _student_app_path = str(Path(__file__).parent / "student_app.py")
     _builder = marimo.create_asgi_app(quiet=True, token="")
     _builder = _builder.with_app(
         path="/",

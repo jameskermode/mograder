@@ -18,7 +18,7 @@ from pathlib import Path
 
 import pytest
 
-from mograder.runner import _maybe_bwrap_cmd
+from mograder.grading.runner import _maybe_bwrap_cmd
 
 
 def _bwrap_works() -> bool:

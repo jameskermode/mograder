@@ -13,7 +13,7 @@ mograder moodle sync-users --hub-url HUB_URL --hub-token TOKEN
 This command:
 
 1. Fetches participants from the first Moodle assignment via the API
-2. Updates the local gradebook with student full names (for formgrader display)
+2. Updates the local gradebook with student full names (for grader display)
 3. Pushes the username list to the hub's `/sync-users` endpoint (if `--hub-url` provided)
 
 If `--hub-url` is omitted, writes `allowed_users.txt` locally instead of

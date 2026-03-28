@@ -39,7 +39,7 @@ course/
     - Parses check results from HTML
     - Injects verification summary + marker feedback cells
     - Stores results in `gradebook.db`
-6. **Markers grade** — [formgrader](formgrader.md) Grading tab or `marimo edit`
+6. **Markers grade** — [grader](grader.md) Grading tab or `marimo edit`
     - Marker sets manual mark and feedback per student
     - Grades saved to `gradebook.db`
 7. **[`mograder feedback`](feedback.md)** — `autograded/*.py` → `feedback/*.html`

@@ -13,7 +13,7 @@ echo "=== Installing dependencies ==="
 ssh $HOST "cd $REMOTE_DIR && \$HOME/.local/bin/uv sync --extra grader --extra asgi"
 
 echo "=== Rebuilding demo data ==="
-ssh $HOST "cd $REMOTE_DIR && PYTHON=.venv/bin/python MOGRADER=.venv/bin/mograder bash demo/setup_formgrader_demo.sh"
+ssh $HOST "cd $REMOTE_DIR && PYTHON=.venv/bin/python MOGRADER=.venv/bin/mograder bash demo/setup_grader_demo.sh"
 
 echo "=== Exporting workshop ==="
 WORKSHOP_DIR=$REMOTE_DIR/demo/workshop-export

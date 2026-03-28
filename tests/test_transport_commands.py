@@ -7,8 +7,8 @@ from unittest.mock import MagicMock
 import click
 import pytest
 
-from mograder.models import RemoteAssignment, RemoteStatus, RemoteSubmission
-from mograder.transport_commands import (
+from mograder.core.models import RemoteAssignment, RemoteStatus, RemoteSubmission
+from mograder.transport.commands import (
     do_fetch,
     do_fetch_submissions,
     do_status,

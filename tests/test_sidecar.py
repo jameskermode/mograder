@@ -8,8 +8,8 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from mograder.models import CheckResult
-from mograder.runner import _read_sidecar, run_notebook
+from mograder.core.models import CheckResult
+from mograder.grading.runner import _read_sidecar, run_notebook
 
 
 def test_write_sidecar_writes_jsonl(tmp_path):
@@ -121,7 +121,7 @@ def test_run_notebook_prefers_sidecar(tmp_path):
         result.stderr = ""
         return result
 
-    with patch("mograder.runner.subprocess.run", side_effect=mock_run):
+    with patch("mograder.grading.runner.subprocess.run", side_effect=mock_run):
         result = run_notebook(nb)
 
     assert len(result.checks) == 1
@@ -150,7 +150,7 @@ def test_run_notebook_falls_back_to_html(tmp_path):
         result.stderr = ""
         return result
 
-    with patch("mograder.runner.subprocess.run", side_effect=mock_run):
+    with patch("mograder.grading.runner.subprocess.run", side_effect=mock_run):
         result = run_notebook(nb)
 
     assert len(result.checks) == 1

@@ -12,7 +12,7 @@ mograder moodle export "HW1" --feedback-dir feedback/ -o export/
 mograder moodle export "HW1" --worksheet custom.csv -o export/
 ```
 
-The worksheet is auto-discovered at `import/<assignment>.csv` (matching formgrader convention). Grades are read from `gradebook.db` by default. The match column and name column can be configured in `mograder.toml` (see [Configuration](../configuration.md)). Student names are auto-imported into the gradebook when the moodle command runs.
+The worksheet is auto-discovered at `import/<assignment>.csv` (matching grader convention). Grades are read from `gradebook.db` by default. The match column and name column can be configured in `mograder.toml` (see [Configuration](../configuration.md)). Student names are auto-imported into the gradebook when the moodle command runs.
 
 ## Fetch assignment (student)
 

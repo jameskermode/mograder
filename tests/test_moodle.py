@@ -1,4 +1,4 @@
-"""Tests for mograder.moodle — Moodle CSV merging and feedback ZIP."""
+"""Tests for mograder.transport.moodle — Moodle CSV merging and feedback ZIP."""
 
 import csv
 import zipfile
@@ -7,7 +7,7 @@ from pathlib import Path
 from click.testing import CliRunner
 
 from mograder.cli import cli
-from mograder.moodle import (
+from mograder.transport.moodle import (
     build_feedback_zip,
     compute_statistics,
     extract_submissions,

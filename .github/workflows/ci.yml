@@ -130,7 +130,7 @@ jobs:
             git fetch origin
             git reset --hard origin/main
             $HOME/.local/bin/uv sync --extra hub
-            PYTHON=.venv/bin/python MOGRADER=.venv/bin/mograder bash demo/setup_formgrader_demo.sh
+            PYTHON=.venv/bin/python MOGRADER=.venv/bin/mograder bash demo/setup_grader_demo.sh
             # Export workshop
             .venv/bin/mograder workshop export demo/course/demo-workshop/files/demo-workshop.py -o demo/workshop-export --salt mograder
             # Ensure workshop env vars in systemd service

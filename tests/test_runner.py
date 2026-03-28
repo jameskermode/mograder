@@ -8,8 +8,8 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from mograder.models import CheckResult, NotebookResult
-from mograder.runner import (
+from mograder.core.models import CheckResult, NotebookResult
+from mograder.grading.runner import (
     _venv_python,
     build_zip,
     create_shared_sandbox,
@@ -45,7 +45,8 @@ def test_run_notebook_success(tmp_path):
     nb.write_text("# notebook")
 
     with patch(
-        "mograder.runner.subprocess.run", side_effect=_mock_subprocess_success(tmp_path)
+        "mograder.grading.runner.subprocess.run",
+        side_effect=_mock_subprocess_success(tmp_path),
     ):
         result = run_notebook(nb, timeout=60)
 
@@ -67,7 +68,7 @@ def test_run_notebook_export_failure(tmp_path):
         out_path.unlink(missing_ok=True)
         return result
 
-    with patch("mograder.runner.subprocess.run", side_effect=mock_run):
+    with patch("mograder.grading.runner.subprocess.run", side_effect=mock_run):
         result = run_notebook(nb, timeout=60)
 
     assert result.export_ok is False
@@ -79,7 +80,7 @@ def test_run_notebook_timeout(tmp_path):
     nb.write_text("# slow")
 
     with patch(
-        "mograder.runner.subprocess.run",
+        "mograder.grading.runner.subprocess.run",
         side_effect=subprocess.TimeoutExpired("cmd", 5),
     ):
         result = run_notebook(nb, timeout=5)
@@ -95,7 +96,8 @@ def test_run_notebook_saves_html(tmp_path):
     html_dir.mkdir()
 
     with patch(
-        "mograder.runner.subprocess.run", side_effect=_mock_subprocess_success(tmp_path)
+        "mograder.grading.runner.subprocess.run",
+        side_effect=_mock_subprocess_success(tmp_path),
     ):
         result = run_notebook(nb, timeout=60, html_dir=html_dir)
 
@@ -111,7 +113,8 @@ def test_run_batch(tmp_path):
         nbs.append(nb)
 
     with patch(
-        "mograder.runner.subprocess.run", side_effect=_mock_subprocess_success(tmp_path)
+        "mograder.grading.runner.subprocess.run",
+        side_effect=_mock_subprocess_success(tmp_path),
     ):
         results = run_batch(nbs, jobs=2, timeout=60)
 
@@ -222,7 +225,7 @@ def test_print_summary_with_marks(capsys):
     ]
     labels = ["Q1: Foo", "Q2: Bar"]
     marks = {"Q1": 10, "Q2": 20}
-    from mograder.runner import print_summary
+    from mograder.grading.runner import print_summary
 
     print_summary(results, labels, marks=marks)
     captured = capsys.readouterr()
@@ -243,7 +246,8 @@ def test_run_batch_on_progress_called(tmp_path):
         progress_calls.append((completed, total, path))
 
     with patch(
-        "mograder.runner.subprocess.run", side_effect=_mock_subprocess_success(tmp_path)
+        "mograder.grading.runner.subprocess.run",
+        side_effect=_mock_subprocess_success(tmp_path),
     ):
         results = run_batch(nbs, jobs=2, timeout=60, on_progress=on_progress)
 
@@ -287,7 +291,8 @@ def test_run_notebook_with_sandbox_dir(tmp_path):
     fake_python.touch()
 
     with patch(
-        "mograder.runner.subprocess.run", side_effect=_mock_subprocess_success(tmp_path)
+        "mograder.grading.runner.subprocess.run",
+        side_effect=_mock_subprocess_success(tmp_path),
     ) as mock_run:
         result = run_notebook(nb, timeout=60, sandbox_dir=sandbox_dir)
 
@@ -303,7 +308,8 @@ def test_run_notebook_without_sandbox_uses_sys_executable(tmp_path):
     nb.write_text("# notebook")
 
     with patch(
-        "mograder.runner.subprocess.run", side_effect=_mock_subprocess_success(tmp_path)
+        "mograder.grading.runner.subprocess.run",
+        side_effect=_mock_subprocess_success(tmp_path),
     ) as mock_run:
         run_notebook(nb, timeout=60)
 
@@ -325,7 +331,8 @@ def test_run_batch_passes_sandbox_dir(tmp_path):
     fake_python.parent.mkdir(parents=True)
 
     with patch(
-        "mograder.runner.subprocess.run", side_effect=_mock_subprocess_success(tmp_path)
+        "mograder.grading.runner.subprocess.run",
+        side_effect=_mock_subprocess_success(tmp_path),
     ) as mock_run:
         results = run_batch(nbs, jobs=2, timeout=60, sandbox_dir=sandbox_dir)
 
@@ -349,7 +356,7 @@ def test_create_shared_sandbox_returns_none_without_deps(tmp_path):
         result.stderr = "no script metadata"
         return result
 
-    with patch("mograder.runner.subprocess.run", side_effect=mock_run):
+    with patch("mograder.grading.runner.subprocess.run", side_effect=mock_run):
         result = create_shared_sandbox(nb)
 
     assert result is None
@@ -376,7 +383,7 @@ def test_create_shared_sandbox_reuses_existing_venv(tmp_path):
         result.stderr = ""
         return result
 
-    with patch("mograder.runner.subprocess.run", side_effect=mock_run):
+    with patch("mograder.grading.runner.subprocess.run", side_effect=mock_run):
         result = create_shared_sandbox(nb)
 
     assert result == venv_dir
@@ -449,7 +456,7 @@ def test_read_sidecar_with_weights(tmp_path):
     }
     sidecar.write_text(json.dumps(record) + "\n")
 
-    from mograder.runner import _read_sidecar
+    from mograder.grading.runner import _read_sidecar
 
     results = _read_sidecar(sidecar)
     assert len(results) == 1
@@ -465,7 +472,7 @@ def test_read_sidecar_backward_compat(tmp_path):
     record = {"label": "Q1: Foo", "status": "success", "details": []}
     sidecar.write_text(json.dumps(record) + "\n")
 
-    from mograder.runner import _read_sidecar
+    from mograder.grading.runner import _read_sidecar
 
     results = _read_sidecar(sidecar)
     assert len(results) == 1
@@ -475,7 +482,7 @@ def test_read_sidecar_backward_compat(tmp_path):
 
 def test_compute_auto_mark_fractional():
     """Fractional auto_mark from weighted checks."""
-    from mograder.runner import _compute_auto_mark
+    from mograder.grading.runner import _compute_auto_mark
 
     checks = [
         CheckResult("Q1: Foo", "partial", earned_weight=3.0, total_weight=5.0),
@@ -489,7 +496,7 @@ def test_compute_auto_mark_fractional():
 
 def test_compute_auto_mark_binary_fallback():
     """When total_weight=0, falls back to binary."""
-    from mograder.runner import _compute_auto_mark
+    from mograder.grading.runner import _compute_auto_mark
 
     checks = [
         CheckResult("Q1: Foo", "success"),  # tw=0 → binary
@@ -533,7 +540,7 @@ def test_run_notebook_isolate_cwd(tmp_path):
         result.stderr = ""
         return result
 
-    with patch("mograder.runner.subprocess.run", side_effect=mock_run):
+    with patch("mograder.grading.runner.subprocess.run", side_effect=mock_run):
         result = run_notebook(nb, timeout=60, isolate_cwd=True)
 
     assert result.export_ok is True
@@ -559,7 +566,7 @@ def test_run_notebook_isolate_cwd_cleanup_on_failure(tmp_path):
         Path(cmd[cmd.index("-o") + 1]).unlink(missing_ok=True)
         return result
 
-    with patch("mograder.runner.subprocess.run", side_effect=mock_run):
+    with patch("mograder.grading.runner.subprocess.run", side_effect=mock_run):
         result = run_notebook(nb, timeout=60, isolate_cwd=True)
 
     assert result.export_ok is False
@@ -569,7 +576,7 @@ def test_run_notebook_isolate_cwd_cleanup_on_failure(tmp_path):
 
 def test_maybe_bwrap_cmd_disabled():
     """With use_bwrap=False, command is returned unchanged."""
-    from mograder.runner import _maybe_bwrap_cmd
+    from mograder.grading.runner import _maybe_bwrap_cmd
 
     cmd = ["python", "-m", "marimo", "export", "html", "nb.py"]
     assert _maybe_bwrap_cmd(cmd, Path("/tmp"), False) is cmd
@@ -578,10 +585,10 @@ def test_maybe_bwrap_cmd_disabled():
 @pytest.mark.skipif(os.name == "nt", reason="bwrap is Unix-only")
 def test_maybe_bwrap_cmd_prepended():
     """With use_bwrap=True and bwrap available, command is wrapped."""
-    from mograder.runner import _maybe_bwrap_cmd
+    from mograder.grading.runner import _maybe_bwrap_cmd
 
     cmd = ["python", "-m", "marimo", "export", "html", "nb.py"]
-    with patch("mograder.runner.shutil.which", return_value="/usr/bin/bwrap"):
+    with patch("mograder.grading.runner.shutil.which", return_value="/usr/bin/bwrap"):
         wrapped = _maybe_bwrap_cmd(cmd, Path("/work"), True)
 
     assert wrapped[0] == "bwrap"
@@ -597,11 +604,11 @@ def test_maybe_bwrap_cmd_prepended():
 @pytest.mark.skipif(os.name == "nt", reason="bwrap is Unix-only")
 def test_maybe_bwrap_cmd_ro_bind_extra():
     """Extra paths are added as --ro-bind pairs."""
-    from mograder.runner import _maybe_bwrap_cmd
+    from mograder.grading.runner import _maybe_bwrap_cmd
 
     cmd = ["python", "nb.py"]
     extras = [Path("/opt/venv"), Path("/home/user/.local/bin")]
-    with patch("mograder.runner.shutil.which", return_value="/usr/bin/bwrap"):
+    with patch("mograder.grading.runner.shutil.which", return_value="/usr/bin/bwrap"):
         wrapped = _maybe_bwrap_cmd(cmd, Path("/work"), True, ro_bind_extra=extras)
 
     # Count --ro-bind occurrences: 1 for /, plus 2 extras = 3
@@ -614,10 +621,10 @@ def test_maybe_bwrap_cmd_ro_bind_extra():
 
 def test_maybe_bwrap_cmd_fallback_when_missing():
     """With use_bwrap=True but bwrap not found, returns original command."""
-    from mograder.runner import _maybe_bwrap_cmd
+    from mograder.grading.runner import _maybe_bwrap_cmd
 
     cmd = ["python", "-m", "marimo"]
-    with patch("mograder.runner.shutil.which", return_value=None):
+    with patch("mograder.grading.runner.shutil.which", return_value=None):
         result = _maybe_bwrap_cmd(cmd, Path("/tmp"), True)
 
     assert result == cmd

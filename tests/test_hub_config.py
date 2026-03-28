@@ -1,6 +1,6 @@
 """Tests for hub configuration and models (Phase 1)."""
 
-from mograder.config import MograderConfig, load_config
+from mograder.core.config import MograderConfig, load_config
 
 
 def test_hub_config_defaults():

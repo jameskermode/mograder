@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate spoof submissions for testing the formgrader UI.
+"""Generate spoof submissions for testing the grader UI.
 
 Creates submitted/ notebooks with various solution quality, then runs
 mograder autograde to produce autograded/ versions, simulates marker grading

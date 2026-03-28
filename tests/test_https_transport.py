@@ -2,10 +2,10 @@
 
 import pytest
 
-from mograder.auth import INSTRUCTOR_USER, generate_secret, make_token
-from mograder.https_server import run_server_background
-from mograder.https_transport import HTTPSTransport
-from mograder.models import RemoteAssignment, RemoteStatus, RemoteSubmission
+from mograder.core.auth import INSTRUCTOR_USER, generate_secret, make_token
+from mograder.transport.https_server import run_server_background
+from mograder.transport.https_transport import HTTPSTransport
+from mograder.core.models import RemoteAssignment, RemoteStatus, RemoteSubmission
 
 
 @pytest.fixture()

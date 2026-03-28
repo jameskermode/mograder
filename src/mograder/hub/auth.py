@@ -9,7 +9,7 @@ import http.cookies
 import time
 from pathlib import Path
 
-from mograder.auth import is_instructor, verify_token
+from mograder.core.auth import is_instructor, verify_token
 
 
 COOKIE_NAME = "mograder_session"

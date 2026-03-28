@@ -1,4 +1,4 @@
-from mograder.parser import count_cell_errors, parse_check_results
+from mograder.grading.parser import count_cell_errors, parse_check_results
 
 
 def test_parse_check_results(fixtures_dir):
@@ -58,3 +58,10 @@ def test_count_cell_errors(fixtures_dir):
 
 def test_count_cell_errors_none():
     assert count_cell_errors("<html>no errors</html>") == 0
+
+
+def test_kind_pattern_removed():
+    """KIND_PATTERN was dead code and should be removed."""
+    import mograder.grading.parser as parser_mod
+
+    assert not hasattr(parser_mod, "KIND_PATTERN")

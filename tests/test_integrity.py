@@ -1,13 +1,13 @@
 """Tests for integrity checking of check/marks cells."""
 
-from mograder.integrity import (
+from mograder.grading.integrity import (
     check_cell_integrity,
     check_integrity,
     parse_assignment_name,
     parse_cell_hashes,
     validate_cell_hashes,
 )
-from mograder.markers import _inject_cell_hashes
+from mograder.grading.cells import _inject_cell_hashes
 
 # -- Minimal notebook templates -----------------------------------------------
 

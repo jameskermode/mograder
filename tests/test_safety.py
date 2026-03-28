@@ -1,6 +1,6 @@
 """Tests for AST-based safety scanner."""
 
-from mograder.safety import check_safety
+from mograder.grading.safety import check_safety
 
 
 def test_safe_code():

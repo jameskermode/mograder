@@ -1,10 +1,10 @@
-"""Tests for mograder.student_api — read-only student assignment API."""
+"""Tests for mograder.student.api — read-only student assignment API."""
 
 import pytest
 from starlette.testclient import TestClient
 
-from mograder.config import MograderConfig
-from mograder.student_api import create_student_api
+from mograder.core.config import MograderConfig
+from mograder.student.api import create_student_api
 
 
 def _make_config(**kwargs) -> MograderConfig:

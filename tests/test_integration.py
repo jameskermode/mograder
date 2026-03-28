@@ -16,7 +16,7 @@ import pytest
 from click.testing import CliRunner
 
 from mograder.cli import cli
-from mograder.moodle import extract_submissions
+from mograder.transport.moodle import extract_submissions
 
 EXAMPLES = Path(__file__).parent.parent / "examples"
 IMPORT_TEST = EXAMPLES / "import-test"
@@ -94,8 +94,8 @@ def test_full_workflow(course, monkeypatch):
         _strip_script_header(f)
 
     # --- 3. Import students (directly via gradebook, replaces removed import-students CLI) ---
-    from mograder import moodle
-    from mograder.gradebook import Gradebook
+    from mograder.transport import moodle
+    from mograder.grading.gradebook import Gradebook
 
     fieldnames, rows = moodle.read_moodle_worksheet(csv_path)
     name_mapping = {r["Username"]: r["Full name"] for r in rows if r.get("Username")}

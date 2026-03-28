@@ -4,7 +4,7 @@ import pytest
 from click.testing import CliRunner
 
 from mograder.cli import cli
-from mograder.https_server import run_server_background
+from mograder.transport.https_server import run_server_background
 
 
 @pytest.fixture()

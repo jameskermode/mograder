@@ -1,8 +1,8 @@
-# Markers
+# Cells
 
-Solution stripping, marker validation, and notebook post-processing.
+Solution stripping, marker validation, grading cell injection, and notebook post-processing.
 
-::: mograder.markers
+::: mograder.grading.cells
     options:
       show_source: true
       show_root_heading: true

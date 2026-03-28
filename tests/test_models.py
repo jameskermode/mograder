@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from mograder.models import CheckResult, NotebookResult
+from mograder.core.models import CheckResult, NotebookResult
 
 
 def test_check_result_defaults():

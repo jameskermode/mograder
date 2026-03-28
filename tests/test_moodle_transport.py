@@ -2,9 +2,9 @@
 
 from unittest.mock import MagicMock, patch
 
-from mograder.models import RemoteAssignment, RemoteStatus, RemoteSubmission
-from mograder.moodle_api import MoodleAPIClient
-from mograder.moodle_transport import MoodleTransport
+from mograder.core.models import RemoteAssignment, RemoteStatus, RemoteSubmission
+from mograder.transport.moodle_api import MoodleAPIClient
+from mograder.transport.moodle_transport import MoodleTransport
 
 
 def _make_transport():
@@ -52,7 +52,7 @@ class TestSubmitFile:
         nb.write_text("code")
 
         with patch(
-            "mograder.moodle_transport.find_assignment",
+            "mograder.transport.moodle_transport.find_assignment",
             return_value={"id": 10, "name": "HW1"},
         ):
             client.upload_file.return_value = 99999
@@ -67,7 +67,7 @@ class TestGetSubmissions:
     def test_maps_submissions(self):
         transport, client = _make_transport()
         with patch(
-            "mograder.moodle_transport.find_assignment",
+            "mograder.transport.moodle_transport.find_assignment",
             return_value={"id": 10, "name": "HW1"},
         ):
             client.list_participants.return_value = [
@@ -95,7 +95,7 @@ class TestUploadGrades:
         transport, client = _make_transport()
         grades = [{"userid": 100, "grade": 85}]
         with patch(
-            "mograder.moodle_transport.find_assignment",
+            "mograder.transport.moodle_transport.find_assignment",
             return_value={"id": 10, "name": "HW1"},
         ):
             transport.upload_grades("HW1", grades, workflow_state="released")
@@ -108,7 +108,7 @@ class TestGetStatus:
     def test_maps_status(self):
         transport, client = _make_transport()
         with patch(
-            "mograder.moodle_transport.find_assignment",
+            "mograder.transport.moodle_transport.find_assignment",
             return_value={"id": 10, "name": "HW1"},
         ):
             client.get_submission_status.return_value = {

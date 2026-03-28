@@ -1,4 +1,4 @@
-from mograder.cells import (
+from mograder.grading.cells import (
     FEEDBACK_MARKER,
     MARKS_MARKER,
     VERIFICATION_MARKER,
@@ -9,7 +9,7 @@ from mograder.cells import (
     parse_marks_metadata,
     write_marker_feedback,
 )
-from mograder.models import CheckResult
+from mograder.core.models import CheckResult
 
 
 def _make_notebook_lines():

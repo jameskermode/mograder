@@ -9,7 +9,7 @@ import httpx
 from fastapi import APIRouter, Request, Response, WebSocket
 from fastapi.responses import RedirectResponse
 
-from mograder.edit_sessions import proxy_http_request, proxy_ws_relay
+from mograder.core.edit_sessions import proxy_http_request, proxy_ws_relay
 
 log = logging.getLogger("mograder.hub")
 

@@ -207,7 +207,7 @@ class TestRelease:
 class TestPublish:
     def test_requires_instructor(self, hub_dirs):
         """Non-dev mode: student cannot publish."""
-        from mograder.auth import make_token
+        from mograder.core.auth import make_token
 
         secret = "test-secret"
         app = create_hub_app(
@@ -230,7 +230,7 @@ class TestPublish:
         """Publish writes files to release dir."""
         import io
 
-        from mograder.auth import INSTRUCTOR_USER, make_token
+        from mograder.core.auth import INSTRUCTOR_USER, make_token
 
         secret = "test-secret"
         app = create_hub_app(
@@ -257,7 +257,7 @@ class TestPublish:
         """files.json is {"files": [...]} not a bare list, excluding dotfiles."""
         import io
 
-        from mograder.auth import INSTRUCTOR_USER, make_token
+        from mograder.core.auth import INSTRUCTOR_USER, make_token
 
         secret = "test-secret"
         app = create_hub_app(
@@ -299,7 +299,7 @@ class TestPublish:
         """Publish calls warm_notebook_cache for the assignment notebook."""
         import io
 
-        from mograder.auth import INSTRUCTOR_USER, make_token
+        from mograder.core.auth import INSTRUCTOR_USER, make_token
 
         secret = "test-secret"
         app = create_hub_app(
@@ -334,7 +334,7 @@ class TestPublish:
 class TestWarmCacheAPI:
     def test_warm_cache_requires_instructor(self, hub_dirs):
         """Non-instructor cannot call /warm-cache."""
-        from mograder.auth import make_token
+        from mograder.core.auth import make_token
 
         secret = "test-secret"
         app = create_hub_app(
@@ -354,7 +354,7 @@ class TestWarmCacheAPI:
 
     def test_warm_cache_calls_warm_logic(self, hub_dirs):
         """POST /warm-cache invokes warm_notebook_cache for each release notebook."""
-        from mograder.auth import INSTRUCTOR_USER, make_token
+        from mograder.core.auth import INSTRUCTOR_USER, make_token
 
         secret = "test-secret"
         app = create_hub_app(
@@ -388,7 +388,7 @@ class TestWarmCacheAPI:
 
     def test_warm_cache_empty_release(self, hub_dirs):
         """POST /warm-cache with no releases returns empty warmed list."""
-        from mograder.auth import INSTRUCTOR_USER, make_token
+        from mograder.core.auth import INSTRUCTOR_USER, make_token
 
         secret = "test-secret"
         app = create_hub_app(
@@ -456,7 +456,7 @@ class TestStartEdit:
 
     def test_start_edit_user_isolation(self, hub_dirs):
         """User A can't start user B's session."""
-        from mograder.auth import make_token
+        from mograder.core.auth import make_token
 
         secret = "test-secret"
         app = create_hub_app(

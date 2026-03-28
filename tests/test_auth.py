@@ -1,8 +1,8 @@
-"""Tests for mograder.auth — token generation and verification."""
+"""Tests for mograder.core.auth — token generation and verification."""
 
 from click.testing import CliRunner
 
-from mograder.auth import (
+from mograder.core.auth import (
     INSTRUCTOR_USER,
     clear_cached_https_token,
     generate_secret,
@@ -94,7 +94,7 @@ class TestIsInstructor:
 class TestHTTPSTokenCache:
     def test_save_and_load(self, tmp_path, monkeypatch):
         cache_path = tmp_path / "https_token.json"
-        monkeypatch.setattr("mograder.auth.HTTPS_TOKEN_CACHE", cache_path)
+        monkeypatch.setattr("mograder.core.auth.HTTPS_TOKEN_CACHE", cache_path)
 
         save_cached_https_token("http://example.com", "tok:abc", "alice")
         result = load_cached_https_token("http://example.com")
@@ -104,18 +104,20 @@ class TestHTTPSTokenCache:
 
     def test_load_wrong_url(self, tmp_path, monkeypatch):
         cache_path = tmp_path / "https_token.json"
-        monkeypatch.setattr("mograder.auth.HTTPS_TOKEN_CACHE", cache_path)
+        monkeypatch.setattr("mograder.core.auth.HTTPS_TOKEN_CACHE", cache_path)
 
         save_cached_https_token("http://example.com", "tok:abc", "alice")
         assert load_cached_https_token("http://other.com") is None
 
     def test_load_missing(self, tmp_path, monkeypatch):
-        monkeypatch.setattr("mograder.auth.HTTPS_TOKEN_CACHE", tmp_path / "nope.json")
+        monkeypatch.setattr(
+            "mograder.core.auth.HTTPS_TOKEN_CACHE", tmp_path / "nope.json"
+        )
         assert load_cached_https_token("http://x.com") is None
 
     def test_clear(self, tmp_path, monkeypatch):
         cache_path = tmp_path / "https_token.json"
-        monkeypatch.setattr("mograder.auth.HTTPS_TOKEN_CACHE", cache_path)
+        monkeypatch.setattr("mograder.core.auth.HTTPS_TOKEN_CACHE", cache_path)
 
         save_cached_https_token("http://example.com", "tok:abc", "alice")
         assert cache_path.is_file()
@@ -127,7 +129,7 @@ class TestHTTPSTokenCache:
         import sys
 
         cache_path = tmp_path / "https_token.json"
-        monkeypatch.setattr("mograder.auth.HTTPS_TOKEN_CACHE", cache_path)
+        monkeypatch.setattr("mograder.core.auth.HTTPS_TOKEN_CACHE", cache_path)
         save_cached_https_token("http://example.com", "tok:abc", "alice")
         if sys.platform != "win32":
             mode = os.stat(cache_path).st_mode & 0o777
@@ -135,7 +137,7 @@ class TestHTTPSTokenCache:
 
     def test_url_trailing_slash(self, tmp_path, monkeypatch):
         cache_path = tmp_path / "https_token.json"
-        monkeypatch.setattr("mograder.auth.HTTPS_TOKEN_CACHE", cache_path)
+        monkeypatch.setattr("mograder.core.auth.HTTPS_TOKEN_CACHE", cache_path)
 
         save_cached_https_token("http://example.com/", "tok:abc", "alice")
         assert load_cached_https_token("http://example.com") is not None

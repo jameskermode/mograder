@@ -137,7 +137,7 @@ class TestMiddleware:
 
     def test_bearer_token_accepted(self):
         """Valid Bearer token authenticates."""
-        from mograder.auth import make_token
+        from mograder.core.auth import make_token
 
         mw = _make_middleware()
         token = make_token(SECRET, "charlie")
@@ -269,7 +269,7 @@ class TestAllowlist:
 
     def test_instructor_bypasses_allowlist(self, tmp_path):
         """Instructor token always passes even if not in allowlist."""
-        from mograder.auth import INSTRUCTOR_USER, make_token
+        from mograder.core.auth import INSTRUCTOR_USER, make_token
 
         (tmp_path / "allowed_users.txt").write_text("alice\n")
         mw = RemoteUserMiddleware(

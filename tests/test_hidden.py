@@ -1,12 +1,12 @@
 """Tests for hidden test markers: stripping, extraction, reinjection, and scoring."""
 
-from mograder.markers import (
+from mograder.grading.cells import (
     count_hidden_markers,
     extract_hidden_tests,
     strip_hidden_tests,
     validate_markers,
 )
-from mograder.models import CheckResult
+from mograder.core.models import CheckResult
 
 
 class TestStripHiddenTests:

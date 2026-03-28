@@ -12,11 +12,11 @@ from mograder.cli import (
     _resolve_assignments,
     cli,
 )
-from mograder.markers import _inject_cell_hashes
-from mograder.models import CheckResult, NotebookResult
+from mograder.grading.cells import _inject_cell_hashes
+from mograder.core.models import CheckResult, NotebookResult
 
 
-@patch("mograder.markers.process_file")
+@patch("mograder.grading.cells.process_file")
 def test_generate_calls_process_file(mock_pf, tmp_path):
     nb = tmp_path / "staff.py"
     nb.write_text("# notebook")
@@ -28,7 +28,7 @@ def test_generate_calls_process_file(mock_pf, tmp_path):
     mock_pf.assert_called_once()
 
 
-@patch("mograder.markers.process_file")
+@patch("mograder.grading.cells.process_file")
 def test_generate_dry_run(mock_pf, tmp_path):
     nb = tmp_path / "staff.py"
     nb.write_text("# notebook")
@@ -41,7 +41,7 @@ def test_generate_dry_run(mock_pf, tmp_path):
     assert kwargs.get("dry_run") or args[2] is True
 
 
-@patch("mograder.markers.process_file")
+@patch("mograder.grading.cells.process_file")
 def test_generate_validate(mock_pf, tmp_path):
     nb = tmp_path / "staff.py"
     nb.write_text("# notebook")
@@ -54,7 +54,7 @@ def test_generate_validate(mock_pf, tmp_path):
     assert kwargs.get("validate_only") or args[3] is True
 
 
-@patch("mograder.markers.process_file")
+@patch("mograder.grading.cells.process_file")
 def test_generate_failure_exits_nonzero(mock_pf, tmp_path):
     nb = tmp_path / "bad.py"
     nb.write_text("# bad")
@@ -65,8 +65,8 @@ def test_generate_failure_exits_nonzero(mock_pf, tmp_path):
     assert result.exit_code != 0
 
 
-@patch("mograder.markers.build_release_zip")
-@patch("mograder.markers.process_file")
+@patch("mograder.grading.cells.build_release_zip")
+@patch("mograder.grading.cells.process_file")
 def test_generate_creates_zip(mock_pf, mock_zip, tmp_path):
     """generate calls build_release_zip for each processed directory."""
     src_dir = tmp_path / "source" / "hw1"
@@ -87,8 +87,8 @@ def test_generate_creates_zip(mock_pf, mock_zip, tmp_path):
     mock_zip.assert_called_once()
 
 
-@patch("mograder.markers.build_release_zip")
-@patch("mograder.markers.process_file")
+@patch("mograder.grading.cells.build_release_zip")
+@patch("mograder.grading.cells.process_file")
 def test_generate_dry_run_no_zip(mock_pf, mock_zip, tmp_path):
     """--dry-run should NOT call build_release_zip."""
     nb = tmp_path / "staff.py"
@@ -101,8 +101,8 @@ def test_generate_dry_run_no_zip(mock_pf, mock_zip, tmp_path):
     mock_zip.assert_not_called()
 
 
-@patch("mograder.markers.build_release_zip")
-@patch("mograder.markers.process_file")
+@patch("mograder.grading.cells.build_release_zip")
+@patch("mograder.grading.cells.process_file")
 def test_generate_validate_no_zip(mock_pf, mock_zip, tmp_path):
     """--validate should NOT call build_release_zip."""
     nb = tmp_path / "staff.py"
@@ -115,8 +115,8 @@ def test_generate_validate_no_zip(mock_pf, mock_zip, tmp_path):
     mock_zip.assert_not_called()
 
 
-@patch("mograder.cells.inject_grading_cells")
-@patch("mograder.runner.run_batch")
+@patch("mograder.grading.cells.inject_grading_cells")
+@patch("mograder.grading.runner.run_batch")
 def test_autograde_runs_and_injects(mock_batch, mock_inject, tmp_path):
     nb = tmp_path / "student.py"
     nb.write_text(
@@ -140,8 +140,8 @@ def test_autograde_runs_and_injects(mock_batch, mock_inject, tmp_path):
     mock_inject.assert_called_once()
 
 
-@patch("mograder.cells.inject_grading_cells")
-@patch("mograder.runner.run_batch")
+@patch("mograder.grading.cells.inject_grading_cells")
+@patch("mograder.grading.runner.run_batch")
 def test_autograde_max_memory_flag(mock_batch, mock_inject, tmp_path):
     """--max-memory converts MB to bytes and passes to run_batch as rlimit_as."""
     nb = tmp_path / "student.py"
@@ -168,8 +168,8 @@ def test_autograde_max_memory_flag(mock_batch, mock_inject, tmp_path):
     assert kwargs["isolate_cwd"] is True
 
 
-@patch("mograder.feedback.export_feedback_html")
-@patch("mograder.feedback.collect_grades")
+@patch("mograder.grading.feedback.export_feedback_html")
+@patch("mograder.grading.feedback.collect_grades")
 def test_feedback_collects_and_exports(mock_grades, mock_export, tmp_path):
     nb = tmp_path / "graded.py"
     nb.write_text("# graded notebook")
@@ -184,9 +184,9 @@ def test_feedback_collects_and_exports(mock_grades, mock_export, tmp_path):
     mock_export.assert_called_once()
 
 
-@patch("mograder.feedback.write_grades_csv")
-@patch("mograder.feedback.export_feedback_html")
-@patch("mograder.feedback.collect_grades")
+@patch("mograder.grading.feedback.write_grades_csv")
+@patch("mograder.grading.feedback.export_feedback_html")
+@patch("mograder.grading.feedback.collect_grades")
 def test_feedback_writes_grades_csv(mock_grades, mock_export, mock_csv, tmp_path):
     nb = tmp_path / "graded.py"
     nb.write_text("# graded")
@@ -250,41 +250,41 @@ def test_find_source_not_found(tmp_path):
 
 
 @patch("subprocess.run")
-def test_formgrader_launches_marimo(mock_run, tmp_path):
-    """formgrader sets env var and launches marimo run."""
+def test_grader_launches_marimo(mock_run, tmp_path):
+    """grader sets env var and launches marimo run."""
     mock_run.return_value = MagicMock(returncode=0)
-    CliRunner().invoke(cli, ["formgrader", str(tmp_path)])
+    CliRunner().invoke(cli, ["grader", str(tmp_path)])
     mock_run.assert_called_once()
     cmd = mock_run.call_args[0][0]
     assert "marimo" in " ".join(cmd)
     assert "run" in cmd
-    assert "formgrader_app.py" in cmd[-1]
+    assert cmd[-1].endswith("grader/app.py")
 
 
 @patch("subprocess.run")
-def test_formgrader_does_not_sandbox(mock_run, tmp_path):
-    """formgrader must not pass --sandbox; mograder would not be importable."""
+def test_grader_does_not_sandbox(mock_run, tmp_path):
+    """grader must not pass --sandbox; mograder would not be importable."""
     mock_run.return_value = MagicMock(returncode=0)
-    CliRunner().invoke(cli, ["formgrader", str(tmp_path)])
+    CliRunner().invoke(cli, ["grader", str(tmp_path)])
     cmd = mock_run.call_args[0][0]
     assert "--sandbox" not in cmd
 
 
-def test_formgrader_app_has_no_script_header():
+def test_grader_app_has_no_script_header():
     """The app file must not have a PEP 723 script header (/// script).
 
     If present, marimo prompts for sandbox install which blocks the app
     since mograder is a local package.
     """
-    app_path = Path(__file__).parent.parent / "src" / "mograder" / "formgrader_app.py"
+    app_path = Path(__file__).parent.parent / "src" / "mograder" / "grader" / "app.py"
     header = app_path.read_text(encoding="utf-8")[:200]
     assert "/// script" not in header
 
 
-@patch("mograder.runner.create_shared_sandbox", return_value=None)
-@patch("mograder.runner.run_notebook")
-@patch("mograder.cells.inject_grading_cells")
-@patch("mograder.runner.run_batch")
+@patch("mograder.grading.runner.create_shared_sandbox", return_value=None)
+@patch("mograder.grading.runner.run_notebook")
+@patch("mograder.grading.cells.inject_grading_cells")
+@patch("mograder.grading.runner.run_batch")
 def test_autograde_with_source(
     mock_batch, mock_inject, mock_run_nb, mock_sandbox, tmp_path
 ):
@@ -322,8 +322,8 @@ def test_autograde_with_source(
     assert "Running source notebook" in result.output
 
 
-@patch("mograder.cells.inject_grading_cells")
-@patch("mograder.runner.run_batch")
+@patch("mograder.grading.cells.inject_grading_cells")
+@patch("mograder.grading.runner.run_batch")
 def test_autograde_progress_flag(mock_batch, mock_inject, tmp_path):
     """--progress emits JSON start + progress events to stderr."""
     nb = tmp_path / "student.py"
@@ -367,10 +367,10 @@ def test_autograde_progress_flag(mock_batch, mock_inject, tmp_path):
     assert call_kwargs.get("on_progress") is not None
 
 
-@patch("mograder.runner.create_shared_sandbox")
-@patch("mograder.runner.run_notebook")
-@patch("mograder.cells.inject_grading_cells")
-@patch("mograder.runner.run_batch")
+@patch("mograder.grading.runner.create_shared_sandbox")
+@patch("mograder.grading.runner.run_notebook")
+@patch("mograder.grading.cells.inject_grading_cells")
+@patch("mograder.grading.runner.run_batch")
 def test_autograde_creates_shared_sandbox(
     mock_batch, mock_inject, mock_run_nb, mock_sandbox, tmp_path
 ):
@@ -421,10 +421,10 @@ def test_autograde_creates_shared_sandbox(
     assert sandbox_dir.exists()
 
 
-@patch("mograder.runner.create_shared_sandbox")
-@patch("mograder.runner.run_notebook")
-@patch("mograder.cells.inject_grading_cells")
-@patch("mograder.runner.run_batch")
+@patch("mograder.grading.runner.create_shared_sandbox")
+@patch("mograder.grading.runner.run_notebook")
+@patch("mograder.grading.cells.inject_grading_cells")
+@patch("mograder.grading.runner.run_batch")
 def test_autograde_progress_sandbox_events(
     mock_batch, mock_inject, mock_run_nb, mock_sandbox, tmp_path
 ):
@@ -496,8 +496,8 @@ def test_autograde_progress_sandbox_events(
     assert done_msg["created"] is True
 
 
-@patch("mograder.cells.inject_grading_cells")
-@patch("mograder.runner.run_batch")
+@patch("mograder.grading.cells.inject_grading_cells")
+@patch("mograder.grading.runner.run_batch")
 def test_autograde_progress_emits_results(mock_batch, mock_inject, tmp_path):
     """--progress emits a results event with labels and rows."""
     nb = tmp_path / "student.py"
@@ -612,7 +612,7 @@ def test_find_source_for_assignment_not_found(tmp_path):
 # -- Name-based CLI invocation ------------------------------------------------
 
 
-@patch("mograder.markers.process_file")
+@patch("mograder.grading.cells.process_file")
 def test_generate_assignment_name(mock_pf, tmp_path, monkeypatch):
     """generate accepts an assignment name instead of a file path."""
     monkeypatch.chdir(tmp_path)
@@ -627,7 +627,7 @@ def test_generate_assignment_name(mock_pf, tmp_path, monkeypatch):
     mock_pf.assert_called_once()
 
 
-@patch("mograder.markers.process_file")
+@patch("mograder.grading.cells.process_file")
 def test_generate_backward_compat(mock_pf, tmp_path):
     """generate still works with explicit file paths."""
     nb = tmp_path / "staff.py"
@@ -642,7 +642,7 @@ def test_generate_backward_compat(mock_pf, tmp_path):
     mock_pf.assert_called_once()
 
 
-@patch("mograder.markers.process_file")
+@patch("mograder.grading.cells.process_file")
 def test_generate_multiple_assignments(mock_pf, tmp_path, monkeypatch):
     """generate accepts multiple assignment names."""
     monkeypatch.chdir(tmp_path)
@@ -669,8 +669,8 @@ def test_generate_nonexistent_assignment_error(tmp_path, monkeypatch):
     assert "not found" in result.output
 
 
-@patch("mograder.cells.inject_grading_cells")
-@patch("mograder.runner.run_batch")
+@patch("mograder.grading.cells.inject_grading_cells")
+@patch("mograder.grading.runner.run_batch")
 def test_autograde_assignment_name(mock_batch, mock_inject, tmp_path, monkeypatch):
     """autograde accepts an assignment name and auto-discovers source."""
     monkeypatch.chdir(tmp_path)
@@ -703,8 +703,8 @@ def test_autograde_assignment_name(mock_batch, mock_inject, tmp_path, monkeypatc
     assert "Auto-discovered source" in result.output
 
 
-@patch("mograder.feedback.export_feedback_html")
-@patch("mograder.feedback.collect_grades")
+@patch("mograder.grading.feedback.export_feedback_html")
+@patch("mograder.grading.feedback.collect_grades")
 def test_feedback_assignment_name(mock_grades, mock_export, tmp_path, monkeypatch):
     """feedback accepts an assignment name."""
     monkeypatch.chdir(tmp_path)
@@ -759,8 +759,8 @@ if __name__ == "__main__":
 """
 
 
-@patch("mograder.runner.create_shared_sandbox", return_value=None)
-@patch("mograder.runner.run_notebook")
+@patch("mograder.grading.runner.create_shared_sandbox", return_value=None)
+@patch("mograder.grading.runner.run_notebook")
 def test_validate_warns_on_modified_cells(mock_run_nb, mock_sandbox, tmp_path):
     """validate prints warnings when non-solution cells are modified."""
     nb_text = _inject_cell_hashes(_VALIDATE_NB)
@@ -779,8 +779,8 @@ def test_validate_warns_on_modified_cells(mock_run_nb, mock_sandbox, tmp_path):
     assert "non-solution cell" in result.output.lower()
 
 
-@patch("mograder.runner.create_shared_sandbox", return_value=None)
-@patch("mograder.runner.run_notebook")
+@patch("mograder.grading.runner.create_shared_sandbox", return_value=None)
+@patch("mograder.grading.runner.run_notebook")
 def test_validate_no_warning_on_clean_notebook(mock_run_nb, mock_sandbox, tmp_path):
     """validate shows no warnings when cells are unmodified."""
     nb_text = _inject_cell_hashes(_VALIDATE_NB)
@@ -796,8 +796,8 @@ def test_validate_no_warning_on_clean_notebook(mock_run_nb, mock_sandbox, tmp_pa
     assert "WARNING" not in result.output
 
 
-@patch("mograder.runner.create_shared_sandbox", return_value=None)
-@patch("mograder.runner.run_notebook")
+@patch("mograder.grading.runner.create_shared_sandbox", return_value=None)
+@patch("mograder.grading.runner.run_notebook")
 def test_validate_fix_restores_cells(mock_run_nb, mock_sandbox, tmp_path):
     """validate --fix with --release restores modified cells."""
     nb_text = _inject_cell_hashes(_VALIDATE_NB)
@@ -824,8 +824,8 @@ def test_validate_fix_restores_cells(mock_run_nb, mock_sandbox, tmp_path):
     assert "x = 999" not in restored
 
 
-@patch("mograder.runner.create_shared_sandbox", return_value=None)
-@patch("mograder.runner.run_notebook")
+@patch("mograder.grading.runner.create_shared_sandbox", return_value=None)
+@patch("mograder.grading.runner.run_notebook")
 def test_validate_fix_no_release_shows_instructions(
     mock_run_nb, mock_sandbox, tmp_path
 ):

@@ -1,7 +1,7 @@
 """Tests for transport protocol data models and factory."""
 
-from mograder.models import RemoteAssignment, RemoteStatus, RemoteSubmission
-from mograder.transport import Transport
+from mograder.core.models import RemoteAssignment, RemoteStatus, RemoteSubmission
+from mograder.transport.transport import Transport
 
 
 class TestRemoteModels:
@@ -46,15 +46,15 @@ class TestRemoteModels:
 
 class TestTransportProtocol:
     def test_https_transport_is_transport(self):
-        from mograder.https_transport import HTTPSTransport
+        from mograder.transport.https_transport import HTTPSTransport
 
         assert isinstance(HTTPSTransport("http://localhost"), Transport)
 
     def test_moodle_transport_is_transport(self):
         from unittest.mock import MagicMock
 
-        from mograder.moodle_api import MoodleAPIClient
-        from mograder.moodle_transport import MoodleTransport
+        from mograder.transport.moodle_api import MoodleAPIClient
+        from mograder.transport.moodle_transport import MoodleTransport
 
         client = MagicMock(spec=MoodleAPIClient)
         assert isinstance(MoodleTransport(client, 1), Transport)
@@ -66,8 +66,8 @@ class TestMoodleTransportGetSubmissions:
     def test_get_submissions_includes_zip(self):
         from unittest.mock import MagicMock
 
-        from mograder.moodle_api import MoodleAPIClient
-        from mograder.moodle_transport import MoodleTransport
+        from mograder.transport.moodle_api import MoodleAPIClient
+        from mograder.transport.moodle_transport import MoodleTransport
 
         client = MagicMock(spec=MoodleAPIClient)
         client.get_assignments.return_value = [
@@ -100,8 +100,8 @@ class TestMoodleTransportGetSubmissions:
         """When both .py and .zip are submitted, prefer .py."""
         from unittest.mock import MagicMock
 
-        from mograder.moodle_api import MoodleAPIClient
-        from mograder.moodle_transport import MoodleTransport
+        from mograder.transport.moodle_api import MoodleAPIClient
+        from mograder.transport.moodle_transport import MoodleTransport
 
         client = MagicMock(spec=MoodleAPIClient)
         client.get_assignments.return_value = [

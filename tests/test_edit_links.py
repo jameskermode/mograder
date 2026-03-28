@@ -1,6 +1,6 @@
-"""Tests for mograder.edit_links — HTML generation and injection for Moodle."""
+"""Tests for mograder.transport.edit_links — HTML generation and injection for Moodle."""
 
-from mograder.edit_links import (
+from mograder.transport.edit_links import (
     build_edit_link_html,
     inject_edit_links,
     strip_edit_links,

@@ -234,10 +234,10 @@ Options:
 - `--max-memory 2048` — memory limit in MB
 - `--force` — re-grade all even if output is up to date
 
-## 8. Manual grading with the formgrader
+## 8. Manual grading with the grader
 
 ```bash
-mograder formgrader my-course/
+mograder grader my-course/
 ```
 
 This opens a marimo web app with four tabs:
@@ -250,7 +250,7 @@ This opens a marimo web app with four tabs:
 For a persistent server deployment:
 
 ```bash
-mograder formgrader-asgi my-course/ --host 0.0.0.0 --port 2718
+mograder grader-asgi my-course/ --host 0.0.0.0 --port 2718
 ```
 
 ## 9. Export feedback

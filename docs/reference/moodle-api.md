@@ -2,7 +2,7 @@
 
 REST API client for Moodle Web Services.
 
-::: mograder.moodle_api
+::: mograder.transport.moodle_api
     options:
       show_source: true
       show_root_heading: true

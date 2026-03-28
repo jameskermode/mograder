@@ -4,13 +4,13 @@ from pathlib import Path
 
 import pytest
 
-from mograder.check_cache import (
+from mograder.grading.check_cache import (
     format_check_summary,
     is_cache_stale,
     load_cached_results,
     save_cached_results,
 )
-from mograder.models import CheckResult, NotebookResult
+from mograder.core.models import CheckResult, NotebookResult
 
 
 @pytest.fixture

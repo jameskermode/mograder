@@ -1,0 +1,6 @@
+title = "mograder demo"
+transport = "https"
+config_url = "https://mograder-demo.jrkermode.uk/mograder.toml"
+
+[https]
+url = "https://mograder-demo.jrkermode.uk"

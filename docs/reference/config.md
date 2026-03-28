@@ -1,6 +1,6 @@
 # Configuration API
 
-::: mograder.config
+::: mograder.core.config
     options:
       show_source: true
       show_root_heading: true

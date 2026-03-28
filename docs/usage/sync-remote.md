@@ -1,6 +1,6 @@
 # Sync to Remote Server
 
-Sync autograded results to a remote server (e.g. a shared formgrader instance) via rsync + SSH:
+Sync autograded results to a remote server (e.g. a shared grader instance) via rsync + SSH:
 
 ```bash
 mograder sync autograded/hw1/ --remote sciml --course-dir /home/svc_user/courses/es98e
@@ -14,4 +14,4 @@ mograder sync autograded/hw1/ --remote sciml --course-dir /home/svc_user/courses
 
 All three flags can be set in `mograder.toml` (see [Configuration](../configuration.md)) so you can just run `mograder sync autograded/hw1/`.
 
-Autograded results can also be uploaded via the formgrader UI using the upload button in the Graded column of the Assignments table.
+Autograded results can also be uploaded via the grader UI using the upload button in the Graded column of the Assignments table.

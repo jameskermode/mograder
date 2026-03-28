@@ -4,7 +4,7 @@ Create `mograder.toml` in the course directory to customise settings:
 
 ```toml
 config_url = "https://raw.githubusercontent.com/user/course/main/mograder.toml"
-transport = "moodle"   # or "https" — selects the active transport for student/formgrader
+transport = "moodle"   # or "https" — selects the active transport for student/grader
 
 # Transport-agnostic assignment list (written by `moodle sync` or `https sync`)
 [[assignments]]
@@ -38,8 +38,8 @@ token = ""                         # cached auth token
 [defaults]
 jobs = 4
 timeout = 300
-no_edit = false                    # disable "Edit" buttons in formgrader
-no_actions = false                 # disable action buttons in formgrader
+no_edit = false                    # disable "Edit" buttons in grader
+no_actions = false                 # disable action buttons in grader
 headless_edit = false              # open marimo edit in headless mode
 
 [rlimits]                          # resource caps for notebook subprocesses
@@ -77,7 +77,7 @@ uv_cache_dir = ""
 
 ### `transport`
 
-Top-level string selecting the active transport: `"moodle"` or `"https"`. This determines which backend the student dashboard and formgrader use for fetching/submitting assignments.
+Top-level string selecting the active transport: `"moodle"` or `"https"`. This determines which backend the student dashboard and grader use for fetching/submitting assignments.
 
 ### `[dirs]`
 
@@ -93,7 +93,7 @@ HTTPS transport settings. The `url` is the base URL of the assignment server.
 
 ### `[defaults]`
 
-Default values for command-line flags: `jobs` (parallel workers), `timeout` (per-notebook), and formgrader UI options.
+Default values for command-line flags: `jobs` (parallel workers), `timeout` (per-notebook), and grader UI options.
 
 ### `[rlimits]`
 

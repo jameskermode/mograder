@@ -4,7 +4,7 @@ import json
 
 import pytest
 
-from mograder.https_server import run_server_background
+from mograder.transport.https_server import run_server_background
 from mograder.remote import fetch, status, submit
 
 

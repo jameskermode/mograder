@@ -13,7 +13,7 @@ import sys
 import time
 from pathlib import Path
 
-from mograder.edit_sessions import _kill_tree
+from mograder.core.edit_sessions import _kill_tree
 from mograder.hub.models import MarimoSession
 
 log = logging.getLogger("mograder.hub")
@@ -63,7 +63,7 @@ def warm_notebook_cache(nb_path: Path, dry_run: bool = False) -> list[str]:
     )
 
     # Create shared sandbox venv for fast edit-session startup
-    from mograder.runner import create_shared_sandbox
+    from mograder.grading.runner import create_shared_sandbox
 
     sandbox = create_shared_sandbox(nb_path)
     if sandbox:
@@ -135,7 +135,7 @@ class SessionManager:
             self._sandbox_dirs[assignment] = None
             return None
 
-        from mograder.runner import _venv_python
+        from mograder.grading.runner import _venv_python
 
         venv_dir = self.release_dir / assignment / ".venv"
         if _venv_python(venv_dir).exists():
@@ -163,7 +163,7 @@ class SessionManager:
         port: int,
     ) -> list[str]:
         """Build the marimo edit command, optionally wrapped in bwrap."""
-        from mograder.runner import _venv_python
+        from mograder.grading.runner import _venv_python
 
         base_url = f"/edit/{username}/{assignment}"
         sandbox_dir = self._get_sandbox_dir(assignment)

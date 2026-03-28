@@ -1,6 +1,6 @@
-"""Tests for mograder.config — TOML configuration loading."""
+"""Tests for mograder.core.config — TOML configuration loading."""
 
-from mograder.config import DEFAULT_CONFIG, MograderConfig, load_config
+from mograder.core.config import DEFAULT_CONFIG, MograderConfig, load_config
 
 
 def test_load_config_no_file(tmp_path):

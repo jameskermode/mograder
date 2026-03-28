@@ -18,7 +18,7 @@ Semi-automated grading for [Marimo](https://marimo.io) notebooks.
   <img src="assets/mograder-demo.gif" alt="mograder student demo" width="720">
 </p>
 
-**How it works:** Instructors author source notebooks with solution blocks and automated checks. `mograder generate` strips solutions to create release versions. Students complete the notebooks and get instant formative feedback from `check()` calls. `mograder autograde` executes submissions in sandboxed subprocesses, parses results, and stores grades in an SQLite gradebook. Markers review and add manual marks via the formgrader dashboard. `mograder feedback` exports annotated HTML for students.
+**How it works:** Instructors author source notebooks with solution blocks and automated checks. `mograder generate` strips solutions to create release versions. Students complete the notebooks and get instant formative feedback from `check()` calls. `mograder autograde` executes submissions in sandboxed subprocesses, parses results, and stores grades in an SQLite gradebook. Markers review and add manual marks via the grader dashboard. `mograder feedback` exports annotated HTML for students.
 
 ## Quick start
 
@@ -31,7 +31,7 @@ mograder feedback hw1         # export HTML → feedback/
 
 ## Live demo
 
-**[Try the student dashboard](https://jameskermode.github.io/mograder/dashboard/?server=https://mograder-demo.jrkermode.uk&wasm_base=notebooks)** — a WASM app running entirely in your browser. See also the **[formgrader](https://mograder-demo.jrkermode.uk)** with pre-populated demo data and a **[demo workshop](https://jameskermode.github.io/mograder/dashboard/notebooks/demo-workshop.html)** with encrypted solutions.
+**[Try the student dashboard](https://jameskermode.github.io/mograder/dashboard/?server=https://mograder-demo.jrkermode.uk&wasm_base=notebooks)** — a WASM app running entirely in your browser. See also the **[grader](https://mograder-demo.jrkermode.uk)** with pre-populated demo data and a **[demo workshop](https://jameskermode.github.io/mograder/dashboard/notebooks/demo-workshop.html)** with encrypted solutions.
 
 ## Documentation
 

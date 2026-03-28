@@ -3,14 +3,14 @@ import json
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-from mograder.cells import inject_grading_cells
-from mograder.feedback import (
+from mograder.grading.cells import inject_grading_cells
+from mograder.grading.feedback import (
     collect_grades,
     export_feedback_html,
     inject_feedback_html,
     write_grades_csv,
 )
-from mograder.models import CheckResult
+from mograder.core.models import CheckResult
 
 
 def _make_graded_notebook(mark, feedback_text):
@@ -51,7 +51,7 @@ def test_export_feedback_html(tmp_path):
         result.stderr = ""
         return result
 
-    with patch("mograder.feedback.subprocess.run", side_effect=mock_run):
+    with patch("mograder.grading.feedback.subprocess.run", side_effect=mock_run):
         html_path = export_feedback_html(nb, out_dir)
 
     assert html_path.exists()
@@ -71,7 +71,7 @@ def test_export_feedback_html_failure(tmp_path):
 
     import pytest
 
-    with patch("mograder.feedback.subprocess.run", side_effect=mock_run):
+    with patch("mograder.grading.feedback.subprocess.run", side_effect=mock_run):
         with pytest.raises(RuntimeError, match="Failed to export"):
             export_feedback_html(nb, out_dir)
 
@@ -316,7 +316,7 @@ def test_export_uses_injection_when_html_exists(tmp_path):
 
     out_dir = tmp_path / "feedback"
 
-    with patch("mograder.feedback.subprocess.run") as mock_run:
+    with patch("mograder.grading.feedback.subprocess.run") as mock_run:
         html_path = export_feedback_html(nb, out_dir)
         mock_run.assert_not_called()
 
@@ -342,7 +342,9 @@ def test_export_falls_back_when_no_html(tmp_path):
         result.stderr = ""
         return result
 
-    with patch("mograder.feedback.subprocess.run", side_effect=mock_run) as mock:
+    with patch(
+        "mograder.grading.feedback.subprocess.run", side_effect=mock_run
+    ) as mock:
         html_path = export_feedback_html(nb, out_dir)
         mock.assert_called_once()
 
