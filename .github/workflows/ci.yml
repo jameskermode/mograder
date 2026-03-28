@@ -133,6 +133,8 @@ jobs:
             PYTHON=.venv/bin/python MOGRADER=.venv/bin/mograder bash demo/setup_grader_demo.sh
             # Export workshop
             .venv/bin/mograder workshop export demo/course/demo-workshop/files/demo-workshop.py -o demo/workshop-export --salt mograder
+            # Update module path after formgrader → grader rename
+            sudo sed -i 's/mograder\.formgrader_asgi/mograder.grader.asgi/g' /etc/systemd/system/mograder-demo.service
             # Ensure workshop env vars in systemd service
             sudo sed -i '/MOGRADER_WORKSHOP/d' /etc/systemd/system/mograder-demo.service
             sudo sed -i '/ExecStart/i Environment=MOGRADER_WORKSHOP_DIR=/home/ubuntu/mograder/demo/workshop-export' /etc/systemd/system/mograder-demo.service
