@@ -15,8 +15,7 @@ def _():
 
     import marimo as mo
 
-    import matplotlib.pyplot as plt
-    import seaborn as sns
+    import altair as alt
 
     from mograder._brand import logo_html as brand_logo_html, version_html
     from mograder.core.config import load_config
@@ -144,11 +143,10 @@ def _():
         moodle_upload_url,
         get_user_display,
         is_instructor,
+        alt,
         io,
         mo,
         os,
-        plt,
-        sns,
         sp,
         sys,
         zipfile,
@@ -866,15 +864,14 @@ def _(
     DIR_NAMES,
     GRADEBOOK,
     MOGRADER_CONFIG,
+    alt,
     assignment_dropdown,
     get_data_version,
     get_selected,
     mo,
-    plt,
     refresh_btn,
     set_action_log,
     set_pending_action,
-    sns,
     sp,
     sys,
 ):
@@ -948,19 +945,23 @@ def _(
         _histogram = mo.md("")
         _any_data = _auto_marks or _manual_marks or _total_marks
         if _any_data:
-            _fig, _axes = plt.subplots(1, 3, figsize=(12, 3))
-            for _ax, _data, _label in zip(
-                _axes,
+            _charts = []
+            for _data, _label in zip(
                 [_auto_marks, _manual_marks, _total_marks],
                 ["Auto Mark", "Manual Mark", "Total"],
             ):
                 if _data:
-                    sns.histplot(_data, bins=8, ax=_ax, color="#4C78A8")
-                _ax.set_xlabel(_label)
-                _ax.set_ylabel("Count")
-            _fig.tight_layout()
-            _histogram = mo.as_html(_fig)
-            plt.close(_fig)
+                    _charts.append(
+                        alt.Chart(alt.Data(values=[{"value": v} for v in _data]))
+                        .mark_bar(color="#4C78A8")
+                        .encode(
+                            alt.X("value:Q", bin=alt.Bin(maxbins=8), title=_label),
+                            alt.Y("count()", title="Count"),
+                        )
+                        .properties(width=250, height=150)
+                    )
+            if _charts:
+                _histogram = mo.hstack(_charts)
 
         submissions_content = mo.vstack(
             [
@@ -1028,11 +1029,10 @@ def _(
     COURSE_DIR,
     DIR_NAMES,
     GRADEBOOK,
+    alt,
     assignments,
     mo,
-    plt,
     refresh_btn,
-    sns,
     students_controls,
     students_name_lookup,
 ):
@@ -1073,24 +1073,27 @@ def _(
 
     _histogram = mo.md("")
     if len(_averages) >= 2:
-        _fig, _ax = plt.subplots(figsize=(5, 2.5))
-        sns.histplot(_averages, bins=8, ax=_ax, color="#4C78A8")
-        _ax.set_xlabel("Average %")
-        _ax.set_ylabel("Count")
-        _fig.tight_layout()
         _mean = sum(_averages) / len(_averages)
         _var = sum((a - _mean) ** 2 for a in _averages) / len(_averages)
         _std = _var**0.5
+        _chart = (
+            alt.Chart(alt.Data(values=[{"value": v} for v in _averages]))
+            .mark_bar(color="#4C78A8")
+            .encode(
+                alt.X("value:Q", bin=alt.Bin(maxbins=8), title="Average %"),
+                alt.Y("count()", title="Count"),
+            )
+            .properties(width=300, height=150)
+        )
         _histogram = mo.vstack(
             [
-                mo.as_html(_fig),
+                _chart,
                 mo.md(
                     f"**Mean:** {_mean:.1f}% | **Std:** {_std:.1f} "
                     f"| **Min:** {min(_averages)}% | **Max:** {max(_averages)}%"
                 ),
             ]
         )
-        plt.close(_fig)
 
     students_content = mo.vstack([students_controls, _table, _histogram])
     return collect_student_marks, get_max_marks, students_content
