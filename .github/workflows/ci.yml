@@ -146,7 +146,7 @@ jobs:
         run: |
           sleep 8
           HUB=$(curl -s -o /dev/null -w "%{http_code}" https://mograder-demo.jrkermode.uk/)
-          GRADER=$(curl -s -o /dev/null -w "%{http_code}" https://mograder-demo.jrkermode.uk/grader)
+          GRADER=$(curl -s -o /dev/null -w "%{http_code}" -L https://mograder-demo.jrkermode.uk/grader)
           API=$(curl -s -o /dev/null -w "%{http_code}" https://mograder-demo.jrkermode.uk/assignments)
           KEYS=$(curl -s -o /dev/null -w "%{http_code}" https://mograder-demo.jrkermode.uk/keys.json)
           DASH=$(curl -s -o /dev/null -w "%{http_code}" https://mograder-demo.jrkermode.uk/dashboard.html)
