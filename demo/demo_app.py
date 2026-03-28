@@ -22,7 +22,7 @@ logger = logging.getLogger(__name__)
 
 # Formgrader marimo app
 grader_path = str(
-    Path(__file__).parent / ".." / "src" / "mograder" / "grader_app.py"
+    Path(__file__).parent / ".." / "src" / "mograder" / "grader" / "app.py"
 )
 server = marimo.create_asgi_app(include_code=True)
 server = server.with_app(path="/", root=grader_path)
