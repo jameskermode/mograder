@@ -199,7 +199,9 @@ SECRET=$(sudo cat /etc/mograder/hub-secret)
 sudo bash -c "cat > /etc/mograder/env << EOF
 MOGRADER_HUB_SECRET=$SECRET
 MOGRADER_COURSE_DIR=/srv/mograder/course
+UV_CACHE_DIR=/srv/mograder/.uv-cache
 EOF"
+sudo -u mograder mkdir -p /srv/mograder/.uv-cache
 sudo chmod 600 /etc/mograder/env
 
 # Write systemd unit
