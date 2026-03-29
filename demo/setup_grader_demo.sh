@@ -71,10 +71,12 @@ with Gradebook('$COURSE/gradebook.db') as gb:
 print(f'Imported {len(mapping)} students')
 "
 
-# Copy source and release notebooks from demo/course if available
+# Copy auxiliary notebooks from demo/course (skip workshop — it has its
+# own encrypted serving mechanism via MOGRADER_WORKSHOP_DIR)
 if [ -d demo/course ]; then
     for d in demo/course/*/; do
         name=$(basename "$d")
+        case "$name" in *workshop*) continue ;; esac
         mkdir -p "$COURSE/source/$name" "$COURSE/release/$name"
         cp "$d"/files/*.py "$COURSE/source/$name/" 2>/dev/null || true
         cp "$d"/files/*.py "$COURSE/release/$name/" 2>/dev/null || true
