@@ -2992,18 +2992,32 @@ def workshop_encrypt(sources, output_dir, salt, keys_url):
     """Encrypt solutions in workshop notebooks.
 
     Parses _exercises list, encrypts solution blocks, strips solutions,
-    and injects solution-reveal cells. Output: workshop-ready marimo notebook.
+    and injects solution-reveal cells. Writes keys.json (empty) and
+    keys_all.json alongside the encrypted notebook.
     """
     import secrets as _secrets
 
-    from mograder.transport.workshop import process_workshop
+    from mograder.transport.workshop import (
+        parse_exercises_metadata,
+        process_workshop,
+        write_keys,
+    )
 
     _salt = salt or _secrets.token_hex(8)
     for src in sources:
         source = Path(src)
         out = output_dir or _infer_output_dir(source, "source", "release", "release")
+
+        source_lines = source.read_text().splitlines(keepends=True)
+        exercise_keys = parse_exercises_metadata(source_lines)
+
         dest = process_workshop(source, out, salt=_salt, keys_url=keys_url)
         click.echo(f"OK: {_rel(source)} → {_rel(dest)}")
+
+        if exercise_keys:
+            write_keys(exercise_keys, _salt, out / "keys.json", which="empty")
+            write_keys(exercise_keys, _salt, out / "keys_all.json", which="all")
+
     click.echo(f"Workshop key (share with students verbally): {_salt}")
 
 

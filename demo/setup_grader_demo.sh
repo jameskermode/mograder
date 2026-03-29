@@ -99,6 +99,21 @@ for d in "$COURSE/release"/*/; do
     mkdir -p "$COURSE/hub-release/$name"
     cp "$d"/*.py "$COURSE/hub-release/$name/" 2>/dev/null || true
 done
+# Encrypt and publish workshop notebooks for hub
+echo "=== Publishing hub workshops ==="
+if [ -d demo/course ]; then
+    for d in demo/course/*/; do
+        name=$(basename "$d")
+        case "$name" in *workshop*)
+            src=$(ls "$d"/files/*.py 2>/dev/null | head -1)
+            if [ -n "$src" ]; then
+                $MOGRADER workshop encrypt "$src" -o "$COURSE/hub-release/$name" \
+                    --salt mograder --keys-url "/workshop/$name/keys.json"
+            fi
+        ;; esac
+    done
+fi
+
 echo "=== Warming hub cache ==="
 $MOGRADER hub -C "$COURSE" warm-cache --all
 
