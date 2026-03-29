@@ -90,13 +90,15 @@ for d in "$COURSE/release"/*/; do
     fi
 done
 
-# Publish release notebooks for hub demo
+# Publish release notebooks for hub demo and build shared venvs
 echo "=== Publishing hub assignments ==="
 for d in "$COURSE/release"/*/; do
     name=$(basename "$d")
     mkdir -p "$COURSE/hub-release/$name"
     cp "$d"/*.py "$COURSE/hub-release/$name/" 2>/dev/null || true
 done
+echo "=== Warming hub cache ==="
+$MOGRADER hub warm-cache --all -C "$COURSE"
 
 echo "=== Done ==="
 echo "Course directory: $COURSE"
