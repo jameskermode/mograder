@@ -134,7 +134,8 @@ jobs:
             # Export workshop
             .venv/bin/mograder workshop export demo/course/demo-workshop/files/demo-workshop.py -o demo/workshop-export --salt mograder
             # Ensure env vars in systemd service
-            sudo sed -i '/MOGRADER_WORKSHOP\|MOGRADER_HUB/d' /etc/systemd/system/mograder-demo.service
+            sudo sed -i '/MOGRADER_WORKSHOP\|MOGRADER_HUB\|MOGRADER_COURSE_DIR/d' /etc/systemd/system/mograder-demo.service
+            sudo sed -i '/ExecStart/i Environment=MOGRADER_COURSE_DIR=/home/ubuntu/mograder/demo/grader-course' /etc/systemd/system/mograder-demo.service
             sudo sed -i '/ExecStart/i Environment=MOGRADER_WORKSHOP_DIR=/home/ubuntu/mograder/demo/workshop-export' /etc/systemd/system/mograder-demo.service
             sudo sed -i '/ExecStart/i Environment=MOGRADER_WORKSHOP_SECRET=mograder-demo-secret' /etc/systemd/system/mograder-demo.service
             sudo sed -i '/ExecStart/i Environment=MOGRADER_HUB_DEV=1' /etc/systemd/system/mograder-demo.service

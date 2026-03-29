@@ -21,9 +21,12 @@ ssh $HOST "cd $REMOTE_DIR && .venv/bin/mograder workshop export demo/course/demo
 
 echo "=== Updating systemd service ==="
 WORKSHOP_SECRET=mograder-demo-secret
-ssh $HOST "sudo sed -i '/MOGRADER_WORKSHOP/d' /etc/systemd/system/mograder-demo.service && \
+COURSE_DIR=$REMOTE_DIR/demo/grader-course
+ssh $HOST "sudo sed -i '/MOGRADER_WORKSHOP\|MOGRADER_HUB\|MOGRADER_COURSE_DIR/d' /etc/systemd/system/mograder-demo.service && \
+  sudo sed -i '/ExecStart/i Environment=MOGRADER_COURSE_DIR=$COURSE_DIR' /etc/systemd/system/mograder-demo.service && \
   sudo sed -i '/ExecStart/i Environment=MOGRADER_WORKSHOP_DIR=$WORKSHOP_DIR' /etc/systemd/system/mograder-demo.service && \
   sudo sed -i '/ExecStart/i Environment=MOGRADER_WORKSHOP_SECRET=$WORKSHOP_SECRET' /etc/systemd/system/mograder-demo.service && \
+  sudo sed -i '/ExecStart/i Environment=MOGRADER_HUB_DEV=1' /etc/systemd/system/mograder-demo.service && \
   sudo systemctl daemon-reload"
 
 echo "=== Restarting service ==="
