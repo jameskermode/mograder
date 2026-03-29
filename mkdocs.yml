@@ -90,7 +90,7 @@ nav:
     - Models: reference/models.md
     - Transport: reference/transport.md
     - Gradebook: reference/gradebook.md
-    - Markers: reference/markers.md
+    - Cells: reference/markers.md
     - Moodle API: reference/moodle-api.md
   - Configuration: configuration.md
   - Security: security.md

@@ -13,7 +13,7 @@ uv add mograder
 ```bash
 git clone https://github.com/jameskermode/mograder.git
 cd mograder
-uv venv && uv pip install -e ".[dev]"
+uv sync --extra dev
 ```
 
 ## Optional extras
@@ -22,16 +22,19 @@ mograder has several optional dependency groups:
 
 | Extra | Purpose |
 |-------|---------|
-| `hub` | Hub multi-user server (`fastapi`, `starlette`, `uvicorn`, `lzstring`) |
-| `dev` | Testing and linting (includes `hub` deps + `pytest`, `ruff`, `markdown-it-py`) |
+| `asgi` | ASGI deployment (`starlette`, `uvicorn`) |
+| `grader` | Grader dashboard (includes `asgi` + `altair`) |
+| `hub` | Hub multi-user server (includes `grader` + `fastapi`, `lzstring`, `python-multipart`) |
+| `dev` | Testing and linting (includes `hub` + `pytest`, `ruff`, `markdown-it-py`) |
 | `editor` | Marimo sandbox support (`marimo[sandbox]`) |
 | `docs` | Documentation site building (`mkdocs-material`, `mkdocstrings`) |
 
 Install extras with:
 
 ```bash
-pip install "mograder[hub]"       # hub server
-pip install "mograder[dev]"       # development (includes hub)
+uv pip install "mograder[grader]" # grader dashboard
+uv pip install "mograder[hub]"    # hub server (includes grader)
+uv pip install "mograder[dev]"    # development (includes hub)
 # or with uv:
 uv sync --extra dev
 ```

@@ -22,5 +22,5 @@ The [CLI Reference](cli.md) documents all `mograder` commands and their options,
 | [Models](models.md) | `CheckResult`, `NotebookResult`, data classes |
 | [Transport](transport.md) | `Transport` protocol, `build_transport()` |
 | [Gradebook](gradebook.md) | `Gradebook` class (SQLite) |
-| [Markers](markers.md) | `process_file()`, `strip_solutions()` |
+| [Cells](markers.md) | `process_file()`, `strip_solutions()`, `inject_grading_cells()` |
 | [Moodle API](moodle-api.md) | `MoodleAPIClient` |

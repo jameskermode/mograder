@@ -1,4 +1,4 @@
-# Formgrader Dashboard
+# Grader Dashboard
 
 Launch an interactive grading management dashboard:
 
