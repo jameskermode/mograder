@@ -3149,6 +3149,109 @@ def workshop_serve(export_dir, port, host, salt):
         server.shutdown()
 
 
+@workshop_group.command("publish")
+@click.argument("source", type=click.Path(exists=True, path_type=Path))
+@click.option("--url", envvar="MOGRADER_HUB_URL", required=True, help="Hub base URL")
+@click.option(
+    "--token",
+    "hub_token",
+    envvar="MOGRADER_HUB_INSTRUCTOR_TOKEN",
+    required=True,
+    help="Instructor token for hub API",
+)
+@click.option(
+    "--salt", default=None, help="Encryption salt (auto-generated if omitted)"
+)
+@click.option("--no-warm", is_flag=True, help="Skip cache warming after publish")
+def workshop_publish(source, url, hub_token, salt, no_warm):
+    """Encrypt a workshop notebook and publish it to a hub.
+
+    SOURCE is the source workshop notebook (.py) containing _exercises marker
+    and ### BEGIN/END SOLUTION blocks.
+
+    The notebook is encrypted, then published to the hub along with keys.json
+    and keys_all.json for instructor solution release control.
+    """
+    import requests as req
+    import tempfile
+
+    from mograder.transport.workshop import (
+        parse_exercises_metadata,
+        process_workshop,
+        write_keys,
+    )
+
+    source = Path(source)
+    assignment_name = source.stem
+
+    # Parse exercises to get keys for key files
+    source_lines = source.read_text().splitlines(keepends=True)
+    exercise_keys = parse_exercises_metadata(source_lines)
+    if not exercise_keys:
+        raise click.ClickException(f"No exercises marker found in {source}")
+
+    # Encrypt to temp directory
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmpdir = Path(tmpdir)
+        keys_url = f"/workshop/{assignment_name}/keys.json"
+
+        if salt is None:
+            import secrets as _secrets
+
+            salt = _secrets.token_hex(8)
+
+        encrypted_path = process_workshop(source, tmpdir, salt=salt, keys_url=keys_url)
+
+        # Write key files alongside the encrypted notebook
+        write_keys(exercise_keys, salt, tmpdir / "keys.json", which="empty")
+        write_keys(exercise_keys, salt, tmpdir / "keys_all.json", which="all")
+
+        click.echo(f"Encrypted: {encrypted_path.name} (salt: {salt})")
+
+        # Collect files to publish
+        files_to_upload = []
+        for f in sorted(tmpdir.iterdir()):
+            if f.is_file():
+                files_to_upload.append(("files", (f.name, f.read_bytes())))
+                click.echo(f"  {f.name} ({f.stat().st_size:,} bytes)")
+
+        # Publish to hub
+        click.echo(f"Publishing to {url}/publish/{assignment_name}...")
+        resp = req.post(
+            f"{url.rstrip('/')}/publish/{assignment_name}",
+            files=files_to_upload,
+            headers={"Authorization": f"Bearer {hub_token}"},
+            timeout=120,
+        )
+        if resp.status_code != 200:
+            click.echo(f"Publish failed ({resp.status_code}): {resp.text}", err=True)
+            raise SystemExit(1)
+
+        data = resp.json()
+        click.echo(f"Published {len(data.get('files', []))} files to hub.")
+
+    # Warm cache
+    if no_warm:
+        click.echo("Skipping cache warm (--no-warm).")
+    else:
+        click.echo("Warming cache...")
+        warm_resp = req.post(
+            f"{url.rstrip('/')}/warm-cache",
+            headers={"Authorization": f"Bearer {hub_token}"},
+            timeout=300,
+        )
+        if warm_resp.status_code == 200:
+            warmed = warm_resp.json().get("warmed", [])
+            click.echo(f"Warmed: {', '.join(warmed) or '(none)'}")
+        else:
+            click.echo(f"Warning: warm failed ({warm_resp.status_code})", err=True)
+
+    click.echo(
+        f"\nWorkshop published. Instructor dashboard:\n"
+        f"  {url.rstrip('/')}/workshop/{assignment_name}/dashboard.html"
+    )
+
+
 @cli.command("wasm-edit-links")
 @click.argument("wasm_app", type=click.Path(exists=True, path_type=Path))
 @click.argument(

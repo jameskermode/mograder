@@ -478,6 +478,29 @@ def create_hub_app(
     async def marimo_status(request: Request):
         return {"status": "ok", "mode": "run", "sessions": 0}
 
+    # -- Mount workshop routes for workshop assignments --
+    # Workshop assignments are identified by having a keys_all.json file
+    if rel_dir.is_dir():
+        from mograder.transport.workshop_server import (
+            create_workshop_starlette_routes,
+        )
+
+        for _ws_dir in sorted(rel_dir.iterdir()):
+            _keys_all_path = _ws_dir / "keys_all.json"
+            if _ws_dir.is_dir() and _keys_all_path.is_file():
+                _keys_all = json.loads(_keys_all_path.read_text())
+                _keys_path = _ws_dir / "keys.json"
+                if not _keys_path.exists():
+                    _keys_path.write_text("{}")
+                _ws_app = create_workshop_starlette_routes(
+                    export_dir=_ws_dir,
+                    keys_path=_keys_path,
+                    keys_all=_keys_all,
+                    secret=secret,
+                )
+                app.mount(f"/workshop/{_ws_dir.name}", _ws_app)
+                log.info("Mounted workshop routes for %s", _ws_dir.name)
+
     # -- Mount student dashboard at / --
     # Explicit API routes above take priority over this catch-all mount.
     os.environ["MOGRADER_HUB_MODE"] = "1"
