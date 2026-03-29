@@ -196,7 +196,9 @@ def create_hub_app(
 
         # Run notebook
         try:
-            nb_result = await asyncio.to_thread(run_notebook, nb, timeout=120)
+            nb_result = await asyncio.to_thread(
+                run_notebook, nb, timeout=120, html_dir=nb.parent
+            )
             checks = [
                 {
                     "label": c.label,
@@ -205,11 +207,15 @@ def create_hub_app(
                 }
                 for c in nb_result.checks
             ]
+            html_available = (
+                nb_result.html_path is not None and nb_result.html_path.exists()
+            )
             return {
                 "checks": checks,
                 "cell_errors": nb_result.cell_errors,
                 "export_ok": nb_result.export_ok,
                 "export_error": nb_result.export_error,
+                "html_available": html_available,
                 "integrity_level": integrity_level,
                 "integrity_warnings": warnings,
             }
@@ -218,6 +224,16 @@ def create_hub_app(
                 status_code=500,
                 content={"detail": f"Validation failed: {e}"},
             )
+
+    # -- Validation report (HTML preview) --
+
+    @app.get("/validate-report/{username}/{assignment}")
+    async def validate_report(request: Request, username: str, assignment: str):
+        _check_owner(request, username)
+        html = storage.assignment_path(username, assignment).with_suffix(".html")
+        if not html.exists():
+            raise HTTPException(status_code=404, detail="No validation report")
+        return FileResponse(html, media_type="text/html")
 
     # -- Reset --
 

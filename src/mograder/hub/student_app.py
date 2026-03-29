@@ -233,6 +233,7 @@ def _(
     set_action_log,
     set_pending,
     set_refresh,
+    set_report_path,
 ):
     pending = get_pending()
     if pending is not None:
@@ -272,6 +273,8 @@ def _(
             ):
                 _result = hub_validate(_client, HUB_USER, _name, _hub_headers)
                 set_action_log(_result.message)
+                if _result.url:
+                    set_report_path(_result.url)
 
         elif _act == "hub_export":
             _name = pending["assignment"]
@@ -401,17 +404,27 @@ def _(Path, get_report_path, mo):
 
     _report = get_report_path()
     if _report:
-        _html_path = Path(_report)
-        if _html_path.exists():
-            _encoded = _b64.b64encode(_html_path.read_bytes()).decode("ascii")
+        if _report.startswith("/"):
+            # URL path — use directly as iframe src
             mo.output.replace(
                 mo.Html(
-                    f'<iframe src="data:text/html;base64,{_encoded}" '
+                    f'<iframe src="{_report}" '
                     f'style="width:100%; height:80vh; border:1px solid #ccc;"></iframe>'
                 )
             )
         else:
-            mo.output.replace(mo.md(""))
+            # Local file path — base64 encode
+            _html_path = Path(_report)
+            if _html_path.exists():
+                _encoded = _b64.b64encode(_html_path.read_bytes()).decode("ascii")
+                mo.output.replace(
+                    mo.Html(
+                        f'<iframe src="data:text/html;base64,{_encoded}" '
+                        f'style="width:100%; height:80vh; border:1px solid #ccc;"></iframe>'
+                    )
+                )
+            else:
+                mo.output.replace(mo.md(""))
     else:
         mo.output.replace(mo.md(""))
     return ()
