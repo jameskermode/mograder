@@ -98,7 +98,7 @@ for d in "$COURSE/release"/*/; do
     cp "$d"/*.py "$COURSE/hub-release/$name/" 2>/dev/null || true
 done
 echo "=== Warming hub cache ==="
-$MOGRADER hub warm-cache --all -C "$COURSE"
+$MOGRADER hub -C "$COURSE" warm-cache --all
 
 echo "=== Done ==="
 echo "Course directory: $COURSE"
