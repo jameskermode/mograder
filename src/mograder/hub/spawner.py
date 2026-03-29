@@ -153,6 +153,10 @@ class SessionManager:
         env["XDG_CONFIG_HOME"] = str(student_dir / ".config")
         env["XDG_DATA_HOME"] = str(student_dir / ".local" / "share")
         env["MOGRADER_DASHBOARD"] = "1"
+        # Ensure uv is on PATH for marimo --sandbox mode
+        uv_bin = Path.home() / ".local" / "bin"
+        if uv_bin.is_dir():
+            env["PATH"] = f"{uv_bin}:{os.environ.get('PATH', '/usr/bin:/bin')}"
         return env
 
     def _build_command(
