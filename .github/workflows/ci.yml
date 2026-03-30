@@ -139,6 +139,7 @@ jobs:
             sudo sed -i '/ExecStart/i Environment=MOGRADER_WORKSHOP_DIR=/home/ubuntu/mograder/demo/workshop-export' /etc/systemd/system/mograder-demo.service
             sudo sed -i '/ExecStart/i Environment=MOGRADER_WORKSHOP_SECRET=mograder-demo-secret' /etc/systemd/system/mograder-demo.service
             sudo sed -i '/ExecStart/i Environment=MOGRADER_HUB_DEV=1' /etc/systemd/system/mograder-demo.service
+            sudo sed -i '/ExecStart/i Environment=MOGRADER_HUB_SECRET=mograder-demo-secret' /etc/systemd/system/mograder-demo.service
             sudo systemctl daemon-reload
             sudo systemctl restart mograder-demo
           SCRIPT

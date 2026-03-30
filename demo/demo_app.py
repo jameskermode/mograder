@@ -46,7 +46,12 @@ grader_app = _grader_builder.build()
 os.environ["MOGRADER_HUB_DEV"] = "1"
 from mograder.hub.app import create_hub_app  # noqa: E402
 
-hub_app = create_hub_app(course_dir, dev=True, session_ttl=300)
+hub_app = create_hub_app(
+    course_dir,
+    dev=True,
+    session_ttl=300,
+    secret=os.environ.get("MOGRADER_HUB_SECRET", ""),
+)
 
 # --- Assignment API + workshop + routing ---
 

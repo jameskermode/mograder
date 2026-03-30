@@ -27,6 +27,7 @@ ssh $HOST "sudo sed -i '/MOGRADER_WORKSHOP\|MOGRADER_HUB\|MOGRADER_COURSE_DIR/d'
   sudo sed -i '/ExecStart/i Environment=MOGRADER_WORKSHOP_DIR=$WORKSHOP_DIR' /etc/systemd/system/mograder-demo.service && \
   sudo sed -i '/ExecStart/i Environment=MOGRADER_WORKSHOP_SECRET=$WORKSHOP_SECRET' /etc/systemd/system/mograder-demo.service && \
   sudo sed -i '/ExecStart/i Environment=MOGRADER_HUB_DEV=1' /etc/systemd/system/mograder-demo.service && \
+  sudo sed -i '/ExecStart/i Environment=MOGRADER_HUB_SECRET=$WORKSHOP_SECRET' /etc/systemd/system/mograder-demo.service && \
   sudo systemctl daemon-reload"
 
 echo "=== Restarting service ==="
