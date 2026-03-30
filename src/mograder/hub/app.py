@@ -481,6 +481,7 @@ def create_hub_app(
     # -- Mount workshop routes for workshop assignments --
     # Workshop assignments are identified by having a keys_all.json file
     if rel_dir.is_dir():
+        from mograder.transport.workshop import generate_dashboard_html
         from mograder.transport.workshop_server import (
             create_workshop_starlette_routes,
         )
@@ -492,6 +493,10 @@ def create_hub_app(
                 _keys_path = _ws_dir / "keys.json"
                 if not _keys_path.exists():
                     _keys_path.write_text("{}")
+                # Generate dashboard HTML for instructor control
+                (_ws_dir / "dashboard.html").write_text(
+                    generate_dashboard_html(list(_keys_all.keys()))
+                )
                 _ws_app = create_workshop_starlette_routes(
                     export_dir=_ws_dir,
                     keys_path=_keys_path,
