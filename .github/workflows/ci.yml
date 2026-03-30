@@ -83,6 +83,10 @@ jobs:
         run: node tests/test_pyodide_compat.js
 
   linkcheck:
+    # Run after deploy-demo so demo server links are reachable on main.
+    # On PRs deploy-demo is skipped — if: always() ensures we still run.
+    needs: [deploy-demo]
+    if: always()
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -100,6 +104,11 @@ jobs:
 
       - name: Remove 404 page (contains absolute nav links that only resolve when deployed)
         run: rm -f site/404.html
+
+      - name: Remove demo exclusion if deploy succeeded
+        if: needs.deploy-demo.result == 'success'
+        run: |
+          sed -i '/mograder-demo.jrkermode.uk/d' .lychee.toml
 
       - name: Check links in built site and README
         uses: lycheeverse/lychee-action@v2
