@@ -31,7 +31,7 @@ mograder feedback hw1         # export HTML → feedback/
 
 ## Live demo
 
-**[Try the student dashboard](https://jameskermode.github.io/mograder/dashboard/?server=https://mograder-demo.jrkermode.uk&wasm_base=notebooks)** — a WASM app running entirely in your browser. See also the **[hub](https://mograder-demo.jrkermode.uk)** (student notebook editing), the **[grader](https://mograder-demo.jrkermode.uk/grader)** (instructor view with pre-populated demo data), and a **[demo workshop](https://jameskermode.github.io/mograder/dashboard/notebooks/demo-workshop.html)** with encrypted solutions.
+**[Try the student dashboard](https://jameskermode.github.io/mograder/dashboard/?server=https://mograder-demo.jrkermode.uk&wasm_base=notebooks)** — a WASM app running entirely in your browser. See also the **[hub](https://mograder-demo.jrkermode.uk)** (student notebook editing), the **[grader](https://mograder-demo.jrkermode.uk/grader)** (instructor view with pre-populated demo data), and a **[demo workshop](https://jameskermode.github.io/mograder/dashboard/notebooks/demo-workshop.html)** with encrypted solutions (workshop key: `mograder`, [instructor dashboard](https://mograder-demo.jrkermode.uk/workshop/demo-workshop/dashboard.html#token=mograder-demo-secret)).
 
 ## Documentation
 
