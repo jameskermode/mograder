@@ -145,11 +145,14 @@ if (course_dir / "release").is_dir():
                 await grader_app(scope, receive, send)
                 return
 
-            # Workshop routes
+            # Standalone workshop routes (WASM export serving)
+            # /workshop/release, /workshop/release-all → standalone workshop server
+            # /keys.json, /dashboard.html → standalone workshop server
+            # /workshop/{assignment}/... → handled by hub (fall through)
             if workshop_app and (
-                path.startswith("/workshop/")
-                or path == "/keys.json"
-                or path == "/dashboard.html"
+                path in ("/keys.json", "/dashboard.html")
+                or path.startswith("/workshop/release")
+                or path.startswith("/workshop/exercises")
             ):
                 await workshop_app(scope, receive, send)
                 return
