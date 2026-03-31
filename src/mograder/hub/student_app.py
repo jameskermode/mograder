@@ -84,16 +84,32 @@ def _(
 
     _rel_dir = COURSE_DIR / CONFIG.hub_release_dir
     https_assignments = ()
+    hub_lectures = ()
     if _rel_dir.is_dir():
-        https_assignments = tuple(
-            {
-                "name": d.name,
-                "id": d.name,
-                "files": [{"name": f.name, "url": ""} for f in sorted(d.glob("*.py"))],
-            }
-            for d in sorted(_rel_dir.iterdir())
-            if d.is_dir() and (d / f"{d.name}.py").is_file()
-        )
+        import json as _json
+
+        for d in sorted(_rel_dir.iterdir()):
+            if not d.is_dir() or not (d / f"{d.name}.py").is_file():
+                continue
+            _manifest = d / "files.json"
+            _type = "assignment"
+            if _manifest.is_file():
+                try:
+                    _type = _json.loads(_manifest.read_text()).get("type", "assignment")
+                except Exception:
+                    pass
+            if _type == "lecture":
+                hub_lectures += ({"name": d.name},)
+            else:
+                https_assignments += (
+                    {
+                        "name": d.name,
+                        "id": d.name,
+                        "files": [
+                            {"name": f.name, "url": ""} for f in sorted(d.glob("*.py"))
+                        ],
+                    },
+                )
     mo.output.replace(
         mo.hstack(
             [_heading, mo.md(f"Logged in as **{HUB_USER}**")],
@@ -101,7 +117,7 @@ def _(
             align="center",
         )
     )
-    return (https_assignments,)
+    return (https_assignments, hub_lectures)
 
 
 # --- Assignments table ---
@@ -220,6 +236,35 @@ def _(
     return (buttons,)
 
 
+# --- Lectures table ---
+@app.cell
+def _(
+    hub_lectures,
+    mo,
+    set_pending,
+):
+    if not hub_lectures:
+        mo.output.replace(mo.md(""))
+    else:
+        _all_buttons = {}
+        _rows = []
+        for i, lec in enumerate(hub_lectures):
+            _name = lec["name"]
+            key = f"lec_{i}_run"
+            _all_buttons[key] = mo.ui.button(
+                label="Run",
+                on_change=lambda _, n=_name: set_pending(
+                    {"action": "hub_run_lecture", "lecture": n}
+                ),
+            )
+            _rows.append({"Lecture": _name, "Actions": _all_buttons[key]})
+
+        _lec_buttons = mo.ui.dictionary(_all_buttons)
+        _table = mo.ui.table(_rows, selection=None)
+        mo.output.replace(mo.vstack([mo.md("### Lectures"), _table]))
+    return ()
+
+
 # --- Execution cell: reads get_pending() and does the actual work ---
 @app.cell
 def _(
@@ -282,6 +327,29 @@ def _(
             set_action_log(
                 f'Export **{_name}**: <a href="{_url}" target="_blank">download</a>'
             )
+
+        elif _act == "hub_run_lecture":
+            _name = pending["lecture"]
+            with mo.status.spinner(
+                title=f"Starting {_name}...",
+                remove_on_exit=True,
+            ):
+                try:
+                    _resp = _client.post(
+                        f"/start-run/{_name}",
+                        headers=_hub_headers,
+                        timeout=120,
+                    )
+                    if _resp.status_code == 200:
+                        _url = _resp.json().get("url", "")
+                        set_action_log(
+                            f"Viewing **{_name}** — "
+                            f'<a href="{_url}" target="_blank">open lecture</a>'
+                        )
+                    else:
+                        set_action_log(f"Failed to start lecture: {_resp.text}")
+                except Exception as _exc:
+                    set_action_log(f"Failed to start lecture: {_exc}")
 
         elif _act == "hub_stop_edit":
             _name = pending["assignment"]
