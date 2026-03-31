@@ -265,6 +265,7 @@ class SessionManager:
             "-m",
             "marimo",
             "run",
+            "--no-sandbox" if sandbox_dir else "--sandbox",
             "--include-code",
             "--headless",
             "--host",
