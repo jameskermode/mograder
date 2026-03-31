@@ -330,6 +330,112 @@ class TestPublish:
         call_path = mock_warm.call_args[0][0]
         assert call_path.name == "hw1.py"
 
+    def test_publish_lecture_sets_type(self, hub_dirs):
+        """Publish with ?type=lecture stores type in manifest."""
+        import io
+
+        from mograder.core.auth import INSTRUCTOR_USER, make_token
+
+        secret = "test-secret"
+        app = create_hub_app(
+            hub_dirs["course_dir"],
+            dev=False,
+            notebooks_dir=hub_dirs["notebooks"],
+            release_dir=hub_dirs["release"],
+            secret=secret,
+        )
+        token = make_token(secret, INSTRUCTOR_USER)
+        client = TestClient(app, raise_server_exceptions=False)
+
+        with patch("mograder.hub.spawner.warm_notebook_cache"):
+            resp = client.post(
+                "/publish/L01?type=lecture",
+                headers={"Authorization": f"Bearer {token}"},
+                files={
+                    "files": (
+                        "L01.py",
+                        io.BytesIO(b"# lecture"),
+                        "text/x-python",
+                    )
+                },
+            )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["type"] == "lecture"
+
+        manifest = json.loads((hub_dirs["release"] / "L01" / "files.json").read_text())
+        assert manifest["type"] == "lecture"
+
+    def test_publish_lecture_skips_warm(self, hub_dirs):
+        """Publish with ?type=lecture does not warm cache."""
+        import io
+
+        from mograder.core.auth import INSTRUCTOR_USER, make_token
+
+        secret = "test-secret"
+        app = create_hub_app(
+            hub_dirs["course_dir"],
+            dev=False,
+            notebooks_dir=hub_dirs["notebooks"],
+            release_dir=hub_dirs["release"],
+            secret=secret,
+        )
+        token = make_token(secret, INSTRUCTOR_USER)
+        client = TestClient(app, raise_server_exceptions=False)
+
+        with patch("mograder.hub.spawner.warm_notebook_cache") as mock_warm:
+            resp = client.post(
+                "/publish/L01?type=lecture",
+                headers={"Authorization": f"Bearer {token}"},
+                files={
+                    "files": (
+                        "L01.py",
+                        io.BytesIO(b"# lecture"),
+                        "text/x-python",
+                    )
+                },
+            )
+        assert resp.status_code == 200
+        mock_warm.assert_not_called()
+
+
+class TestListAssignmentsAPI:
+    def test_assignments_include_lectures(self, hub_dirs):
+        """/assignments returns both assignments and lectures."""
+        from mograder.core.auth import make_token
+
+        secret = "test-secret"
+        app = create_hub_app(
+            hub_dirs["course_dir"],
+            dev=False,
+            notebooks_dir=hub_dirs["notebooks"],
+            release_dir=hub_dirs["release"],
+            secret=secret,
+        )
+        token = make_token(secret, "student1")
+        client = TestClient(app, raise_server_exceptions=False)
+
+        # Create an assignment
+        (hub_dirs["release"] / "hw1").mkdir()
+        (hub_dirs["release"] / "hw1" / "hw1.py").write_text("# hw1")
+
+        # Create a lecture with manifest
+        (hub_dirs["release"] / "L01").mkdir()
+        (hub_dirs["release"] / "L01" / "L01.py").write_text("# lecture")
+        (hub_dirs["release"] / "L01" / "files.json").write_text(
+            json.dumps({"files": ["L01.py"], "type": "lecture"})
+        )
+
+        resp = client.get(
+            "/assignments",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        names = {item["name"]: item["type"] for item in data}
+        assert names["hw1"] == "assignment"
+        assert names["L01"] == "lecture"
+
 
 class TestWarmCacheAPI:
     def test_warm_cache_requires_instructor(self, hub_dirs):

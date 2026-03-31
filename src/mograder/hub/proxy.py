@@ -107,4 +107,79 @@ def create_proxy_router(session_manager) -> APIRouter:
         await websocket.accept()
         await proxy_ws_relay(websocket, target)
 
+    # -- Lecture run proxy (shared read-only sessions) --
+
+    def _get_lecture_session(lecture: str):
+        """Get active lecture run session or None."""
+        key = ("__lecture__", lecture)
+        session = session_manager.sessions.get(key)
+        if session is None:
+            return None
+        if session.process and session.process.returncode is not None:
+            session_manager.sessions.pop(key, None)
+            return None
+        return session
+
+    @router.get("/run/{lecture}")
+    async def run_redirect(lecture: str):
+        return RedirectResponse(f"/run/{lecture}/")
+
+    @router.api_route(
+        "/run/{lecture}/",
+        methods=["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"],
+    )
+    async def run_proxy_http_root(request: Request, lecture: str):
+        return await run_proxy_http(request, lecture, path="")
+
+    @router.websocket("/run/{lecture}/")
+    async def run_proxy_ws_root(websocket: WebSocket, lecture: str):
+        return await run_proxy_ws(websocket, lecture, path="")
+
+    @router.api_route(
+        "/run/{lecture}/{path:path}",
+        methods=["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"],
+    )
+    async def run_proxy_http(request: Request, lecture: str, path: str):
+        # Any authenticated user can view lectures
+        user = request.scope.get("user", {})
+        if not user.get("username"):
+            return Response("403 Forbidden", status_code=403)
+
+        session = _get_lecture_session(lecture)
+        if session is None:
+            return Response("No active lecture session", status_code=404)
+
+        session.last_seen = time.time()
+
+        target_path = request.url.path
+        target_url = f"http://127.0.0.1:{session.port}{target_path}"
+        if request.url.query:
+            target_url += f"?{request.url.query}"
+
+        try:
+            return await proxy_http_request(_get_client(), request, target_url)
+        except httpx.ConnectError:
+            return Response("Lecture session unavailable", status_code=502)
+
+    @router.websocket("/run/{lecture}/{path:path}")
+    async def run_proxy_ws(websocket: WebSocket, lecture: str, path: str):
+        user = websocket.scope.get("user", {})
+        if not user.get("username"):
+            await websocket.close(code=1008)
+            return
+
+        session = _get_lecture_session(lecture)
+        if session is None:
+            await websocket.close(code=1008)
+            return
+
+        session.last_seen = time.time()
+
+        target = f"ws://127.0.0.1:{session.port}{websocket.url.path}"
+        if websocket.url.query:
+            target += f"?{websocket.url.query}"
+
+        await websocket.accept()
+        await proxy_ws_relay(websocket, target)
+
     return router

@@ -325,21 +325,59 @@ def create_hub_app(
         if not user.get("username"):
             raise HTTPException(status_code=403, detail="Authentication required")
         username = user["username"]
-        assignments = storage.list_assignments()
+
         result = []
-        for name in assignments:
+        # Assignments
+        for name in storage.list_assignments():
             status = storage.assignment_status(username, name)
             has_release = storage.has_release(name)
             session_active = (username, name) in session_mgr.sessions
             result.append(
                 {
                     "name": name,
+                    "type": "assignment",
                     "file_status": status,
                     "has_release": has_release,
                     "session_active": session_active,
                 }
             )
+        # Lectures
+        for name in storage.list_lectures():
+            session_active = ("__lecture__", name) in session_mgr.sessions
+            result.append(
+                {
+                    "name": name,
+                    "type": "lecture",
+                    "file_status": "n/a",
+                    "has_release": True,
+                    "session_active": session_active,
+                }
+            )
         return result
+
+    # -- Start lecture run session --
+
+    @app.post("/start-run/{lecture}")
+    async def start_run(request: Request, lecture: str):
+        """Start a shared ``marimo run`` session for a lecture."""
+        user = request.scope.get("user", {})
+        if not user.get("username"):
+            raise HTTPException(status_code=403, detail="Authentication required")
+
+        if storage.item_type(lecture) != "lecture":
+            raise HTTPException(status_code=400, detail="Not a lecture")
+
+        try:
+            session = await session_mgr.get_or_spawn_run(lecture)
+            return {
+                "status": "ok",
+                "url": f"/run/{lecture}/",
+                "port": session.port,
+            }
+        except FileNotFoundError:
+            raise HTTPException(status_code=404, detail="Lecture not found")
+        except TimeoutError as e:
+            raise HTTPException(status_code=504, detail=str(e))
 
     # -- Mark exported --
 
@@ -386,6 +424,9 @@ def create_hub_app(
         if not user.get("is_instructor"):
             raise HTTPException(status_code=403, detail="Instructor access required")
 
+        # Read item type from query params (default: "assignment")
+        item_type = request.query_params.get("type", "assignment")
+
         assignment_dir = rel_dir / assignment
         assignment_dir.mkdir(parents=True, exist_ok=True)
 
@@ -393,6 +434,7 @@ def create_hub_app(
             content = await f.read()
             if f.filename:
                 target = assignment_dir / f.filename
+                target.parent.mkdir(parents=True, exist_ok=True)
                 target.write_bytes(content)
 
         # Build manifest from directory (excluding files.json and dotfiles)
@@ -401,13 +443,12 @@ def create_hub_app(
             for p in assignment_dir.iterdir()
             if p.is_file() and not p.name.startswith(".") and p.name != "files.json"
         )
-        (assignment_dir / "files.json").write_text(
-            json.dumps({"files": all_files}, indent=2)
-        )
+        manifest = {"files": all_files, "type": item_type}
+        (assignment_dir / "files.json").write_text(json.dumps(manifest, indent=2))
 
-        # Auto-warm cache for the published notebook
+        # Auto-warm cache for the published notebook (skip for lectures without deps)
         nb = assignment_dir / f"{assignment}.py"
-        if nb.exists():
+        if nb.exists() and item_type != "lecture":
             from mograder.hub.spawner import warm_notebook_cache
 
             try:
@@ -415,7 +456,7 @@ def create_hub_app(
             except Exception as e:
                 log.warning("warm-cache failed for %s: %s", assignment, e)
 
-        return {"status": "ok", "files": all_files}
+        return {"status": "ok", "files": all_files, "type": item_type}
 
     # -- Warm cache --
 

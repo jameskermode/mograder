@@ -242,6 +242,40 @@ class SessionManager:
         args.extend(cmd)
         return args
 
+    def _build_run_command(
+        self,
+        lecture: str,
+        notebook_path: Path,
+        port: int,
+    ) -> list[str]:
+        """Build a ``marimo run --include-code`` command for a lecture."""
+        sandbox_dir = self._get_sandbox_dir(lecture)
+
+        if sandbox_dir is not None:
+            from mograder.grading.runner import _venv_python
+
+            python_exe = str(_venv_python(sandbox_dir))
+        else:
+            python_exe = sys.executable
+
+        base_url = f"/run/{lecture}"
+        cmd = [
+            python_exe,
+            "-m",
+            "marimo",
+            "run",
+            "--include-code",
+            "--host",
+            "127.0.0.1",
+            "--port",
+            str(port),
+            "--base-url",
+            base_url,
+            "--no-token",
+            str(notebook_path),
+        ]
+        return cmd
+
     async def _spawn_process(
         self, username: str, assignment: str, notebook_path: Path, port: int
     ) -> tuple:
@@ -312,6 +346,75 @@ class SessionManager:
                 username=username,
                 assignment=assignment,
                 port=actual_port,
+                process=proc,
+                notebook_path=str(nb),
+                last_seen=time.time(),
+            )
+            self.sessions[key] = session
+            return session
+
+    async def get_or_spawn_run(self, lecture: str) -> MarimoSession:
+        """Get or spawn a shared ``marimo run`` session for a lecture.
+
+        Unlike ``get_or_spawn``, this reads the notebook from ``release_dir``
+        and uses a single shared session (key ``("__lecture__", lecture)``).
+        """
+        key = ("__lecture__", lecture)
+
+        existing = self.sessions.get(key)
+        if existing and existing.process and existing.process.returncode is None:
+            existing.last_seen = time.time()
+            return existing
+
+        lock = self._get_lock(key)
+        async with lock:
+            existing = self.sessions.get(key)
+            if existing and existing.process and existing.process.returncode is None:
+                existing.last_seen = time.time()
+                return existing
+
+            if not self.release_dir:
+                raise FileNotFoundError("No release directory configured")
+            nb = self.release_dir / lecture / f"{lecture}.py"
+            if not nb.is_file():
+                raise FileNotFoundError(f"Lecture notebook not found: {nb}")
+
+            port = self._allocate_port()
+            cmd = self._build_run_command(lecture, nb, port)
+            env = {**os.environ}
+            uv_bin = Path.home() / ".local" / "bin"
+            if uv_bin.is_dir():
+                env["PATH"] = f"{uv_bin}:{os.environ.get('PATH', '/usr/bin:/bin')}"
+
+            proc = await asyncio.create_subprocess_exec(
+                *cmd,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.STDOUT,
+                env=env,
+                cwd=str(nb.parent),
+            )
+            polls = self.spawn_timeout * 2
+            for _ in range(polls):
+                await asyncio.sleep(0.5)
+                with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                    try:
+                        s.connect(("127.0.0.1", port))
+                        break
+                    except OSError:
+                        if proc.returncode is not None:
+                            raise RuntimeError(
+                                f"marimo run exited with code {proc.returncode}"
+                            )
+            else:
+                proc.kill()
+                raise TimeoutError(
+                    f"marimo run did not start on port {port} within {self.spawn_timeout}s"
+                )
+
+            session = MarimoSession(
+                username="__lecture__",
+                assignment=lecture,
+                port=port,
                 process=proc,
                 notebook_path=str(nb),
                 last_seen=time.time(),

@@ -3717,9 +3717,22 @@ def hub_generate_token(username, role):
 @click.option("--force", is_flag=True, help="Skip Moodle verification")
 @click.option("--dry-run", is_flag=True, help="Verify only, don't publish")
 @click.option("--no-warm", is_flag=True, help="Skip cache warming after publish")
+@click.option(
+    "--lecture",
+    is_flag=True,
+    help="Publish as lecture (implies --force, skips Moodle verification)",
+)
 @click.pass_context
 def hub_publish(
-    ctx, assignment, moodle_assignment, url, hub_token, force, dry_run, no_warm
+    ctx,
+    assignment,
+    moodle_assignment,
+    url,
+    hub_token,
+    force,
+    dry_run,
+    no_warm,
+    lecture,
 ):
     """Publish a release assignment to the hub.
 
@@ -3728,6 +3741,10 @@ def hub_publish(
 
     By default, verifies the release files match what's on Moodle before
     publishing. Use --force to skip this check.
+
+    With --lecture, publishes as a lecture (implies --force). The type is
+    also auto-detected from mograder-type metadata in the notebook's
+    PEP 723 block.
     """
     import requests as req
 
@@ -3771,7 +3788,21 @@ def hub_publish(
         click.echo(f"No files found in {assignment_dir}", err=True)
         raise SystemExit(1)
 
-    click.echo(f"Assignment: {assignment_name}")
+    # Auto-detect lecture from PEP 723 metadata
+    if not lecture:
+        from mograder.grading.cells import read_notebook_type
+
+        nb_file = assignment_dir / f"{assignment_name}.py"
+        if nb_file.is_file() and read_notebook_type(nb_file.read_text()) == "lecture":
+            lecture = True
+            click.echo("Auto-detected lecture from mograder-type metadata.")
+
+    if lecture:
+        force = True  # lectures are not on Moodle
+
+    item_type = "lecture" if lecture else "assignment"
+
+    click.echo(f"{'Lecture' if lecture else 'Assignment'}: {assignment_name}")
     click.echo(f"Local files: {', '.join(sorted(local_files))}")
 
     # Moodle verification (unless --force)
@@ -3831,8 +3862,12 @@ def hub_publish(
     for name, path in sorted(local_files.items()):
         multipart_files.append(("files", (name, path.read_bytes())))
 
+    publish_url = f"{url.rstrip('/')}/publish/{assignment_name}"
+    if item_type != "assignment":
+        publish_url += f"?type={item_type}"
+
     resp = req.post(
-        f"{url.rstrip('/')}/publish/{assignment_name}",
+        publish_url,
         files=multipart_files,
         headers={"Authorization": f"Bearer {hub_token}"},
         timeout=120,

@@ -191,3 +191,65 @@ class TestListAssignments:
     def test_list_assignments_no_release(self, sm_no_release):
         """No release_dir → empty list."""
         assert sm_no_release.list_assignments() == []
+
+    def test_list_assignments_excludes_lectures(self, sm):
+        """list_assignments filters out items with type=lecture in manifest."""
+        import json
+
+        (sm.release_dir / "hw1").mkdir()
+        (sm.release_dir / "hw1" / "hw1.py").write_text("# hw1")
+        (sm.release_dir / "L01").mkdir()
+        (sm.release_dir / "L01" / "L01.py").write_text("# lecture")
+        (sm.release_dir / "L01" / "files.json").write_text(
+            json.dumps({"files": ["L01.py"], "type": "lecture"})
+        )
+        assert sm.list_assignments() == ["hw1"]
+
+
+class TestLectures:
+    def test_item_type_from_manifest(self, sm):
+        """item_type reads type from files.json manifest."""
+        import json
+
+        d = sm.release_dir / "L01"
+        d.mkdir()
+        (d / "L01.py").write_text("# lecture")
+        (d / "files.json").write_text(
+            json.dumps({"files": ["L01.py"], "type": "lecture"})
+        )
+        assert sm.item_type("L01") == "lecture"
+
+    def test_item_type_from_pep723(self, sm):
+        """item_type falls back to PEP 723 mograder-type metadata."""
+        d = sm.release_dir / "L01"
+        d.mkdir()
+        (d / "L01.py").write_text(
+            'import marimo\n\n# /// script\n# mograder-type = "lecture"\n# ///\n\napp = marimo.App()\n'
+        )
+        assert sm.item_type("L01") == "lecture"
+
+    def test_item_type_default_assignment(self, sm):
+        """item_type defaults to 'assignment' when no metadata."""
+        d = sm.release_dir / "hw1"
+        d.mkdir()
+        (d / "hw1.py").write_text("import marimo\napp = marimo.App()\n")
+        assert sm.item_type("hw1") == "assignment"
+
+    def test_list_lectures(self, sm):
+        """list_lectures returns only items with type=lecture."""
+        import json
+
+        (sm.release_dir / "hw1").mkdir()
+        (sm.release_dir / "hw1" / "hw1.py").write_text("# hw1")
+        (sm.release_dir / "L01").mkdir()
+        (sm.release_dir / "L01" / "L01.py").write_text("# lecture")
+        (sm.release_dir / "L01" / "files.json").write_text(
+            json.dumps({"files": ["L01.py"], "type": "lecture"})
+        )
+        assert sm.list_lectures() == ["L01"]
+
+    def test_list_lectures_empty(self, sm):
+        """list_lectures returns empty when no lectures."""
+        (sm.release_dir / "hw1").mkdir()
+        (sm.release_dir / "hw1" / "hw1.py").write_text("# hw1")
+        assert sm.list_lectures() == []

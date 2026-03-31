@@ -118,8 +118,38 @@ class StorageManager:
 
     # -- listing --
 
-    def list_assignments(self) -> list[str]:
-        """List available assignments from release_dir."""
+    def _read_manifest(self, name: str) -> dict:
+        """Read ``files.json`` manifest for a release item."""
+        if self.release_dir is None:
+            return {}
+        manifest = self.release_dir / name / "files.json"
+        if manifest.is_file():
+            import json
+
+            return json.loads(manifest.read_text())
+        return {}
+
+    def item_type(self, name: str) -> str:
+        """Return ``'lecture'`` or ``'assignment'`` for a release item.
+
+        Reads from the ``files.json`` manifest first, then falls back to
+        ``mograder-type`` in the notebook's PEP 723 block.
+        """
+        manifest = self._read_manifest(name)
+        t = manifest.get("type")
+        if t:
+            return t
+        # Fallback: read from notebook metadata
+        if self.release_dir:
+            nb = self.release_dir / name / f"{name}.py"
+            if nb.is_file():
+                from mograder.grading.cells import read_notebook_type
+
+                return read_notebook_type(nb.read_text())
+        return "assignment"
+
+    def _list_all_items(self) -> list[str]:
+        """List all dirs in release_dir that contain a matching .py file."""
         if self.release_dir is None or not self.release_dir.is_dir():
             return []
         return sorted(
@@ -127,3 +157,15 @@ class StorageManager:
             for d in self.release_dir.iterdir()
             if d.is_dir() and (d / f"{d.name}.py").is_file()
         )
+
+    def list_assignments(self) -> list[str]:
+        """List available assignments (excluding lectures) from release_dir."""
+        return [
+            name for name in self._list_all_items() if self.item_type(name) != "lecture"
+        ]
+
+    def list_lectures(self) -> list[str]:
+        """List available lectures from release_dir."""
+        return [
+            name for name in self._list_all_items() if self.item_type(name) == "lecture"
+        ]
