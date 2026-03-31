@@ -28,6 +28,17 @@ from mograder.grading.cells import (
 )
 
 EXERCISES_MARKER = "# === MOGRADER: EXERCISES ==="
+
+
+def _safe_varname(key: str) -> str:
+    """Convert an exercise ID to a valid Python identifier.
+
+    Replaces non-alphanumeric characters with underscores and strips
+    leading/trailing underscores.
+    """
+    return re.sub(r"[^a-zA-Z0-9_]", "_", key).strip("_")
+
+
 _WORKSHOP_SOLUTION_PREFIX = "# === MOGRADER: WORKSHOP SOLUTION"
 
 # Reuse pattern from integrity.py
@@ -257,7 +268,7 @@ def build_exercises_dict(
 def build_solution_cell(key: str) -> str:
     """Return marimo cell that auto-reveals the solution when check() passes."""
     safe_key = key.replace('"', '\\"')
-    var_name = f"check_passed_{key}"
+    var_name = f"check_passed_{_safe_varname(key)}"
     return f'''
 @app.cell(hide_code=True)
 def _(mo, EXERCISES, SALT_HASH, released_keys, reveal_solution, workshop_key, {var_name}):
@@ -464,7 +475,7 @@ def _add_check_pass_returns(lines: list[str], exercise_keys: list[str]) -> list[
             if not initialized and stripped.startswith("def "):
                 output.append(line)
                 indent = "    "
-                var = f"check_passed_{current_cell_key}"
+                var = f"check_passed_{_safe_varname(current_cell_key)}"
                 output.append(f"{indent}{var} = False\n")
                 initialized = True
                 continue
@@ -477,7 +488,7 @@ def _add_check_pass_returns(lines: list[str], exercise_keys: list[str]) -> list[
             # Replace bare "return" with result extraction + display + return
             if stripped == "return" and captured:
                 indent = line[: len(line) - len(line.lstrip())]
-                var = f"check_passed_{current_cell_key}"
+                var = f"check_passed_{_safe_varname(current_cell_key)}"
                 output.append(
                     f'{indent}{var} = "success" in getattr(_result, "text", "")\n'
                 )
@@ -504,7 +515,7 @@ def _inject_solution_cells(lines: list[str], exercise_keys: list[str]) -> list[s
         end = cell_starts[ci + 1] if ci + 1 < len(cell_starts) else len(lines)
         cell_text = "".join(lines[start:end])
         for key in exercise_keys:
-            if f"check_passed_{key}" in cell_text:
+            if f"check_passed_{_safe_varname(key)}" in cell_text:
                 insert_points.append((end, key))
                 break
 
