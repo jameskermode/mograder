@@ -255,6 +255,7 @@ def generate(
         from .grading.cells import (
             _inject_type_metadata,
             build_release_zip,
+            rewrite_notebook_links,
             strip_layout_metadata,
         )
 
@@ -268,9 +269,10 @@ def generate(
             dest_dir = (output_dir or Path(config.release_dir)) / stem
             dest_dir.mkdir(parents=True, exist_ok=True)
 
-            # Strip layout metadata and inject type
+            # Strip layout metadata, rewrite links, inject type
             lines = filepath.read_text().splitlines(keepends=True)
             lines = strip_layout_metadata(lines)
+            lines = rewrite_notebook_links(lines)
             lines = _inject_type_metadata(lines, "lecture")
 
             dest = dest_dir / filepath.name

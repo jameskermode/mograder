@@ -9,6 +9,7 @@ from mograder.grading.cells import (
     parse_marker_feedback,
     parse_marks_metadata,
     read_notebook_type,
+    rewrite_notebook_links,
     strip_layout_metadata,
     write_marker_feedback,
 )
@@ -598,3 +599,57 @@ def test_read_notebook_type_assignment():
         read_notebook_type('# /// script\n# mograder-type = "assignment"\n# ///')
         == "assignment"
     )
+
+
+# ---------------------------------------------------------------------------
+# Link rewriting
+# ---------------------------------------------------------------------------
+
+
+def test_rewrite_lecture_links():
+    """Lecture links become /run/ URLs."""
+    lines = [
+        "| 3 | [L02: Sensitivity](../L02-Sensitivity/L02-Sensitivity.py) |\n",
+    ]
+    result = rewrite_notebook_links(lines)
+    text = "".join(result)
+    assert "[L02: Sensitivity](/run/L02-Sensitivity/)" in text
+    assert ".py" not in text
+
+
+def test_rewrite_assignment_links_stripped():
+    """Assignment links become plain text."""
+    lines = [
+        "| [A2: Sensitivity](../A2-Sensitivity/A2-Sensitivity.py) |\n",
+    ]
+    result = rewrite_notebook_links(lines)
+    text = "".join(result)
+    assert "A2: Sensitivity" in text
+    assert "(" not in text
+    assert ".py" not in text
+
+
+def test_rewrite_preserves_external_links():
+    """External URLs are not touched."""
+    lines = [
+        "[SpringerLink](https://springer.com/book/123) and [marimo](https://marimo.io/)\n",
+    ]
+    result = rewrite_notebook_links(lines)
+    text = "".join(result)
+    assert "https://springer.com/book/123" in text
+    assert "https://marimo.io/" in text
+
+
+def test_rewrite_mixed_links():
+    """Lecture, assignment, and external links in same text."""
+    lines = [
+        "See [L01: Intro](../L01-Intro/L01-Intro.py), "
+        "[A1: Setup](../A1-Setup/A1-Setup.py), "
+        "and [docs](https://example.com).\n",
+    ]
+    result = rewrite_notebook_links(lines)
+    text = "".join(result)
+    assert "[L01: Intro](/run/L01-Intro/)" in text
+    assert "A1: Setup" in text
+    assert "A1-Setup.py" not in text
+    assert "https://example.com" in text

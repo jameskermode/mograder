@@ -538,6 +538,33 @@ def strip_layout_metadata(lines: list[str]) -> list[str]:
     return text.splitlines(keepends=True)
 
 
+def rewrite_notebook_links(lines: list[str]) -> list[str]:
+    """Rewrite inter-notebook links for hub deployment.
+
+    - Lecture links ``[text](../Name/Name.py)`` where Name starts with
+      ``L`` become ``[text](/run/Name/)``
+    - Assignment links ``[text](../Name/Name.py)`` where Name starts with
+      ``A`` are stripped to plain text: just ``text``
+    """
+    text = "".join(lines)
+
+    # Lecture links: ../L-Name/L-Name.py → /run/L-Name/
+    text = re.sub(
+        r"\[([^\]]+)\]\(\.\./((L[^/]+)/\3\.py)\)",
+        r"[\1](/run/\3/)",
+        text,
+    )
+
+    # Assignment links: ../A-Name/A-Name.py → plain text (strip link)
+    text = re.sub(
+        r"\[([^\]]+)\]\(\.\./((A[^/]+)/\3\.py)\)",
+        r"\1",
+        text,
+    )
+
+    return text.splitlines(keepends=True)
+
+
 def _hash_cell(code: str) -> str:
     """Return first 8 hex chars of SHA-256 of the stripped cell code."""
     return hashlib.sha256(code.strip().encode()).hexdigest()[:8]
