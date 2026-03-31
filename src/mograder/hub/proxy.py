@@ -107,45 +107,42 @@ def create_proxy_router(session_manager) -> APIRouter:
         await websocket.accept()
         await proxy_ws_relay(websocket, target)
 
-    # -- Lecture run proxy (shared read-only sessions) --
-
-    def _get_lecture_session(lecture: str):
-        """Get active lecture run session or None."""
-        key = ("__lecture__", lecture)
-        session = session_manager.sessions.get(key)
-        if session is None:
-            return None
-        if session.process and session.process.returncode is not None:
-            session_manager.sessions.pop(key, None)
-            return None
-        return session
+    # -- Lecture run proxy (per-user read-only sessions) --
+    # /run/{lecture} redirects to /run/{username}/{lecture}/ using the
+    # authenticated user, so generated links like /run/L01-Intro/ work.
 
     @router.get("/run/{lecture}")
-    async def run_redirect(lecture: str):
-        return RedirectResponse(f"/run/{lecture}/")
-
-    @router.api_route(
-        "/run/{lecture}/",
-        methods=["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"],
-    )
-    async def run_proxy_http_root(request: Request, lecture: str):
-        return await run_proxy_http(request, lecture, path="")
-
-    @router.websocket("/run/{lecture}/")
-    async def run_proxy_ws_root(websocket: WebSocket, lecture: str):
-        return await run_proxy_ws(websocket, lecture, path="")
-
-    @router.api_route(
-        "/run/{lecture}/{path:path}",
-        methods=["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"],
-    )
-    async def run_proxy_http(request: Request, lecture: str, path: str):
-        # Any authenticated user can view lectures
+    async def run_lecture_redirect(request: Request, lecture: str):
         user = request.scope.get("user", {})
-        if not user.get("username"):
+        username = user.get("username", "")
+        if not username:
+            return Response("403 Forbidden", status_code=403)
+        return RedirectResponse(f"/run/{username}/{lecture}/")
+
+    @router.get("/run/{username}/{lecture}")
+    async def run_redirect(username: str, lecture: str):
+        return RedirectResponse(f"/run/{username}/{lecture}/")
+
+    @router.api_route(
+        "/run/{username}/{lecture}/",
+        methods=["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"],
+    )
+    async def run_proxy_http_root(request: Request, username: str, lecture: str):
+        return await run_proxy_http(request, username, lecture, path="")
+
+    @router.websocket("/run/{username}/{lecture}/")
+    async def run_proxy_ws_root(websocket: WebSocket, username: str, lecture: str):
+        return await run_proxy_ws(websocket, username, lecture, path="")
+
+    @router.api_route(
+        "/run/{username}/{lecture}/{path:path}",
+        methods=["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"],
+    )
+    async def run_proxy_http(request: Request, username: str, lecture: str, path: str):
+        if not _check_access(request.scope, username):
             return Response("403 Forbidden", status_code=403)
 
-        session = _get_lecture_session(lecture)
+        session = _get_session(username, lecture)
         if session is None:
             return Response("No active lecture session", status_code=404)
 
@@ -161,14 +158,16 @@ def create_proxy_router(session_manager) -> APIRouter:
         except httpx.ConnectError:
             return Response("Lecture session unavailable", status_code=502)
 
-    @router.websocket("/run/{lecture}/{path:path}")
-    async def run_proxy_ws(websocket: WebSocket, lecture: str, path: str):
+    @router.websocket("/run/{username}/{lecture}/{path:path}")
+    async def run_proxy_ws(
+        websocket: WebSocket, username: str, lecture: str, path: str
+    ):
         user = websocket.scope.get("user", {})
-        if not user.get("username"):
+        if not user.get("is_instructor") and user.get("username") != username:
             await websocket.close(code=1008)
             return
 
-        session = _get_lecture_session(lecture)
+        session = _get_session(username, lecture)
         if session is None:
             await websocket.close(code=1008)
             return

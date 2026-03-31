@@ -244,6 +244,7 @@ class SessionManager:
 
     def _build_run_command(
         self,
+        username: str,
         lecture: str,
         notebook_path: Path,
         port: int,
@@ -258,7 +259,7 @@ class SessionManager:
         else:
             python_exe = sys.executable
 
-        base_url = f"/run/{lecture}"
+        base_url = f"/run/{username}/{lecture}"
         cmd = [
             python_exe,
             "-m",
@@ -353,13 +354,15 @@ class SessionManager:
             self.sessions[key] = session
             return session
 
-    async def get_or_spawn_run(self, lecture: str) -> MarimoSession:
-        """Get or spawn a shared ``marimo run`` session for a lecture.
+    async def get_or_spawn_run(self, username: str, lecture: str) -> MarimoSession:
+        """Get or spawn a per-user ``marimo run`` session for a lecture.
 
-        Unlike ``get_or_spawn``, this reads the notebook from ``release_dir``
-        and uses a single shared session (key ``("__lecture__", lecture)``).
+        Like ``get_or_spawn`` but reads the notebook from ``release_dir``
+        (not the student's workspace) and uses ``marimo run --include-code``
+        instead of ``marimo edit``.  Each user gets their own process so
+        runtime state (widgets, cell execution) is isolated.
         """
-        key = ("__lecture__", lecture)
+        key = (username, lecture)
 
         existing = self.sessions.get(key)
         if existing and existing.process and existing.process.returncode is None:
@@ -380,7 +383,7 @@ class SessionManager:
                 raise FileNotFoundError(f"Lecture notebook not found: {nb}")
 
             port = self._allocate_port()
-            cmd = self._build_run_command(lecture, nb, port)
+            cmd = self._build_run_command(username, lecture, nb, port)
             env = {**os.environ}
             uv_bin = Path.home() / ".local" / "bin"
             if uv_bin.is_dir():
@@ -412,7 +415,7 @@ class SessionManager:
                 )
 
             session = MarimoSession(
-                username="__lecture__",
+                username=username,
                 assignment=lecture,
                 port=port,
                 process=proc,

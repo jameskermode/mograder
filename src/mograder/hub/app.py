@@ -343,7 +343,7 @@ def create_hub_app(
             )
         # Lectures
         for name in storage.list_lectures():
-            session_active = ("__lecture__", name) in session_mgr.sessions
+            session_active = (username, name) in session_mgr.sessions
             result.append(
                 {
                     "name": name,
@@ -359,19 +359,20 @@ def create_hub_app(
 
     @app.post("/start-run/{lecture}")
     async def start_run(request: Request, lecture: str):
-        """Start a shared ``marimo run`` session for a lecture."""
+        """Start a per-user ``marimo run`` session for a lecture."""
         user = request.scope.get("user", {})
-        if not user.get("username"):
+        username = user.get("username", "")
+        if not username:
             raise HTTPException(status_code=403, detail="Authentication required")
 
         if storage.item_type(lecture) != "lecture":
             raise HTTPException(status_code=400, detail="Not a lecture")
 
         try:
-            session = await session_mgr.get_or_spawn_run(lecture)
+            session = await session_mgr.get_or_spawn_run(username, lecture)
             return {
                 "status": "ok",
-                "url": f"/run/{lecture}/",
+                "url": f"/run/{username}/{lecture}/",
                 "port": session.port,
             }
         except FileNotFoundError:
