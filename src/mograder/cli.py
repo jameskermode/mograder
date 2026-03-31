@@ -289,8 +289,6 @@ def generate(
                     for f in src_dir.iterdir():
                         if f.is_dir() or f == filepath or f.name.startswith("."):
                             continue
-                        if f.suffix == ".py":
-                            continue  # skip other notebooks
                         aux_dest = dest_dir / f.name
                         if (
                             not aux_dest.exists()

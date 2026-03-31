@@ -366,8 +366,8 @@ class TestPublish:
         manifest = json.loads((hub_dirs["release"] / "L01" / "files.json").read_text())
         assert manifest["type"] == "lecture"
 
-    def test_publish_lecture_skips_warm(self, hub_dirs):
-        """Publish with ?type=lecture does not warm cache."""
+    def test_publish_lecture_warms_cache(self, hub_dirs):
+        """Publish with ?type=lecture still warms cache (lectures have deps too)."""
         import io
 
         from mograder.core.auth import INSTRUCTOR_USER, make_token
@@ -396,7 +396,7 @@ class TestPublish:
                 },
             )
         assert resp.status_code == 200
-        mock_warm.assert_not_called()
+        mock_warm.assert_called_once()
 
 
 class TestListAssignmentsAPI:

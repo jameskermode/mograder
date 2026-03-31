@@ -446,9 +446,9 @@ def create_hub_app(
         manifest = {"files": all_files, "type": item_type}
         (assignment_dir / "files.json").write_text(json.dumps(manifest, indent=2))
 
-        # Auto-warm cache for the published notebook (skip for lectures without deps)
+        # Auto-warm cache for the published notebook
         nb = assignment_dir / f"{assignment}.py"
-        if nb.exists() and item_type != "lecture":
+        if nb.exists():
             from mograder.hub.spawner import warm_notebook_cache
 
             try:
