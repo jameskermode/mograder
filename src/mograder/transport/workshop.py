@@ -42,7 +42,7 @@ def _safe_varname(key: str) -> str:
 _WORKSHOP_SOLUTION_PREFIX = "# === MOGRADER: WORKSHOP SOLUTION"
 
 # Reuse pattern from integrity.py
-_CHECK_CALL_RE = re.compile(r"""check\(\s*["']([^"']+)""")
+_CHECK_CALL_RE = re.compile(r"""check\(\s*["']([^"':]+)""")
 
 
 # ---------------------------------------------------------------------------
