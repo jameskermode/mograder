@@ -3597,10 +3597,11 @@ def hub_check(course_dir):
 )
 @click.pass_context
 def hub_warm_cache(ctx, notebooks, warm_all, dry_run, url, hub_token):
-    """Warm the uv cache for notebook dependencies.
+    """Warm the uv cache and create shared venvs for notebook dependencies.
 
-    Parses PEP 723 inline script metadata to find dependencies,
-    then runs ``uv run --with <deps> python -c pass`` to populate the cache.
+    Parses PEP 723 inline script metadata to find dependencies, populates
+    the uv download cache, and creates a shared ``.venv`` in each notebook's
+    directory for fast session startup.
 
     With --url, sends a POST to the hub's /warm-cache endpoint instead.
     """
@@ -3628,7 +3629,7 @@ def hub_warm_cache(ctx, notebooks, warm_all, dry_run, url, hub_token):
         click.echo(f"Warmed {len(warmed)} notebooks: {', '.join(warmed) or '(none)'}")
         return
 
-    from mograder.hub.spawner import parse_pep723_deps
+    from mograder.hub.spawner import parse_pep723_deps, warm_notebook_cache
 
     targets = list(notebooks)
     if warm_all:
@@ -3648,30 +3649,21 @@ def hub_warm_cache(ctx, notebooks, warm_all, dry_run, url, hub_token):
         return
 
     for nb_path in targets:
-        source = Path(nb_path).read_text()
-        deps = parse_pep723_deps(source)
+        nb_path = Path(nb_path)
+        deps = parse_pep723_deps(nb_path.read_text())
         if not deps:
-            click.echo(f"  {_rel(Path(nb_path))}: no PEP 723 deps")
+            click.echo(f"  {_rel(nb_path)}: no PEP 723 deps")
             continue
 
-        click.echo(f"  {_rel(Path(nb_path))}: {', '.join(deps)}")
+        click.echo(f"  {_rel(nb_path)}: {', '.join(deps)}")
         if dry_run:
             continue
 
-        import subprocess as sp
-
-        dep_args = []
-        for d in deps:
-            dep_args.extend(["--with", d])
-        cmd = ["uv", "run"] + dep_args + ["python", "-c", "pass"]
         try:
-            sp.run(cmd, check=True, capture_output=True, timeout=120)
-            click.echo("    cached ok")
-        except sp.CalledProcessError as e:
-            click.echo(f"    cache failed: {e.stderr.decode()[:200]}")
-        except FileNotFoundError:
-            click.echo("    uv not found on PATH")
-            break
+            warm_notebook_cache(nb_path)
+            click.echo("    ok")
+        except Exception as e:
+            click.echo(f"    failed: {e}")
 
 
 @hub.command("generate-token")
