@@ -114,6 +114,31 @@ if [ -d demo/course ]; then
     done
 fi
 
+echo "=== Publishing hub lectures ==="
+if [ -d demo/course ]; then
+    for d in demo/course/*/; do
+        name=$(basename "$d")
+        case "$name" in *lecture*)
+            src=$(ls "$d"/files/*.py 2>/dev/null | head -1)
+            if [ -n "$src" ]; then
+                $MOGRADER generate --lecture "$src" -o "$COURSE/release"
+                # Copy release to hub-release
+                mkdir -p "$COURSE/hub-release/$name"
+                cp "$COURSE/release/$name"/* "$COURSE/hub-release/$name/" 2>/dev/null || true
+                # Create manifest with lecture type
+                $PYTHON -c "
+import json
+from pathlib import Path
+d = Path('$COURSE/hub-release/$name')
+files = sorted(f.name for f in d.iterdir() if f.is_file() and not f.name.startswith('.') and f.name != 'files.json')
+(d / 'files.json').write_text(json.dumps({'files': files, 'type': 'lecture'}, indent=2))
+print(f'  Published lecture: $name ({len(files)} files)')
+"
+            fi
+        ;; esac
+    done
+fi
+
 echo "=== Warming hub cache ==="
 $MOGRADER hub -C "$COURSE" warm-cache --all
 
