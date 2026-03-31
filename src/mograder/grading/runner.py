@@ -68,11 +68,9 @@ def create_shared_sandbox(notebook_path: Path) -> Path | None:
 
     Returns the venv directory, or None if the notebook has no inline deps.
     """
-    # Ensure ~/.local/bin is on PATH so we can find uv (e.g. under systemd).
-    env = os.environ.copy()
-    local_bin = str(Path.home() / ".local" / "bin")
-    if local_bin not in env.get("PATH", "").split(os.pathsep):
-        env["PATH"] = local_bin + os.pathsep + env.get("PATH", "")
+    from mograder.hub.spawner import _uv_env
+
+    env = _uv_env()
 
     # Extract requirements from PEP 723 metadata
     try:

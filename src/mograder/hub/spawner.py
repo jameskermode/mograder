@@ -19,6 +19,15 @@ from mograder.hub.models import MarimoSession
 log = logging.getLogger("mograder.hub")
 
 
+def _uv_env() -> dict[str, str]:
+    """Return an env dict with ``~/.local/bin`` on PATH so ``uv`` is found."""
+    env = os.environ.copy()
+    local_bin = str(Path.home() / ".local" / "bin")
+    if local_bin not in env.get("PATH", "").split(os.pathsep):
+        env["PATH"] = local_bin + os.pathsep + env.get("PATH", "")
+    return env
+
+
 def parse_pep723_deps(source: str) -> list[str]:
     """Extract dependencies from PEP 723 inline script metadata."""
     m = re.search(
@@ -60,6 +69,7 @@ def warm_notebook_cache(nb_path: Path, dry_run: bool = False) -> list[str]:
         check=True,
         capture_output=True,
         timeout=120,
+        env=_uv_env(),
     )
 
     # Create shared sandbox venv for fast edit-session startup
