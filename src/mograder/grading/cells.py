@@ -453,6 +453,91 @@ def _inject_assignment_metadata(lines: list[str], assignment_name: str) -> list[
     return lines[:close_idx] + [new_line] + lines[close_idx:]
 
 
+def _inject_type_metadata(lines: list[str], notebook_type: str) -> list[str]:
+    """Insert ``mograder-type`` into a PEP 723 script block.
+
+    If no PEP 723 block exists, one is created after the first line
+    (``import marimo``).
+    """
+    close_idx = None
+    in_block = False
+    for i, line in enumerate(lines):
+        stripped = line.strip()
+        if stripped == "# /// script":
+            in_block = True
+        elif in_block and stripped == "# ///":
+            close_idx = i
+            break
+
+    new_line = f'# mograder-type = "{notebook_type}"\n'
+
+    if close_idx is not None:
+        return lines[:close_idx] + [new_line] + lines[close_idx:]
+
+    # No PEP 723 block — create a minimal one after ``import marimo``
+    insert_after = 0
+    for i, line in enumerate(lines):
+        if line.strip().startswith("import marimo"):
+            insert_after = i + 1
+            break
+
+    block = [
+        "\n",
+        "# /// script\n",
+        new_line,
+        "# ///\n",
+        "\n",
+    ]
+    return lines[:insert_after] + block + lines[insert_after:]
+
+
+def read_notebook_type(text: str) -> str:
+    """Read ``mograder-type`` from a PEP 723 script block.
+
+    Returns ``"lecture"``, ``"assignment"``, etc.  Defaults to
+    ``"assignment"`` when no metadata is found.
+    """
+    m = re.search(r'^# mograder-type\s*=\s*"([^"]+)"', text, re.MULTILINE)
+    return m.group(1) if m else "assignment"
+
+
+def strip_layout_metadata(lines: list[str]) -> list[str]:
+    """Remove ``layout_file`` and ``html_head_file`` kwargs from ``marimo.App(...)``.
+
+    Handles both single-line and multi-line ``App()`` calls.  Preserves
+    other keyword arguments (``width``, ``app_title``, etc.).
+    """
+    text = "".join(lines)
+
+    # Match the full marimo.App(...) call (may span multiple lines)
+    m = re.search(r"(marimo\.App\()([^)]*)\)", text, re.DOTALL)
+    if m is None:
+        return lines
+
+    prefix = m.group(1)  # "marimo.App("
+    args_str = m.group(2)
+
+    # Remove layout_file=... and html_head_file=... kwargs
+    cleaned = re.sub(
+        r"""\s*(?:layout_file|html_head_file)\s*=\s*(?:"[^"]*"|'[^']*'),?""",
+        "",
+        args_str,
+    )
+    # Clean up: remove leading/trailing commas and whitespace
+    cleaned = re.sub(r",\s*$", "", cleaned.strip())
+    cleaned = re.sub(r"^\s*,", "", cleaned.strip())
+
+    if cleaned.strip():
+        # Other kwargs remain — reconstruct with them
+        replacement = f"{prefix}{cleaned})"
+    else:
+        # No kwargs left
+        replacement = f"{prefix})"
+
+    text = text[: m.start()] + replacement + text[m.end() :]
+    return text.splitlines(keepends=True)
+
+
 def _hash_cell(code: str) -> str:
     """Return first 8 hex chars of SHA-256 of the stripped cell code."""
     return hashlib.sha256(code.strip().encode()).hexdigest()[:8]

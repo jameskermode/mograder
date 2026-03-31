@@ -2,11 +2,14 @@ from mograder.grading.cells import (
     FEEDBACK_MARKER,
     MARKS_MARKER,
     VERIFICATION_MARKER,
+    _inject_type_metadata,
     has_grading_cells,
     inject_grading_cells,
     parse_auto_marks,
     parse_marker_feedback,
     parse_marks_metadata,
+    read_notebook_type,
+    strip_layout_metadata,
     write_marker_feedback,
 )
 from mograder.core.models import CheckResult
@@ -489,3 +492,109 @@ def test_inject_without_source_check_keys_falls_back_to_student_checks():
     text = "".join(result)
     # Both Q1 and Q2 are in student checks, so auto total = 25
     assert "Auto marks: 10/25" in text
+
+
+# ---------------------------------------------------------------------------
+# Lecture metadata helpers
+# ---------------------------------------------------------------------------
+
+
+def test_strip_layout_metadata_multiline():
+    """Strip layout_file and html_head_file from multiline App() call."""
+    lines = [
+        "import marimo\n",
+        "\n",
+        "app = marimo.App(\n",
+        '    layout_file="layouts/L01.slides.json",\n',
+        '    html_head_file="fragment-slides.html"\n',
+        ")\n",
+    ]
+    result = strip_layout_metadata(lines)
+    text = "".join(result)
+    assert "layout_file" not in text
+    assert "html_head_file" not in text
+    assert "marimo.App()" in text
+
+
+def test_strip_layout_metadata_trailing_comma():
+    """Strip layout kwargs even with trailing comma on last arg."""
+    lines = [
+        "app = marimo.App(\n",
+        '    layout_file="layouts/foo.json",\n',
+        '    html_head_file="fragment-slides.html",\n',
+        ")\n",
+    ]
+    result = strip_layout_metadata(lines)
+    text = "".join(result)
+    assert "marimo.App()" in text
+
+
+def test_strip_layout_metadata_preserves_other_kwargs():
+    """Other kwargs like width and app_title are preserved."""
+    lines = [
+        "app = marimo.App(\n",
+        '    width="medium",\n',
+        '    layout_file="layouts/foo.json",\n',
+        '    html_head_file="fragment-slides.html"\n',
+        ")\n",
+    ]
+    result = strip_layout_metadata(lines)
+    text = "".join(result)
+    assert "layout_file" not in text
+    assert "html_head_file" not in text
+    assert 'width="medium"' in text
+
+
+def test_strip_layout_metadata_no_layout():
+    """No-op when App() has no layout args."""
+    lines = ["app = marimo.App()\n"]
+    result = strip_layout_metadata(lines)
+    assert "".join(result) == "app = marimo.App()\n"
+
+
+def test_inject_type_metadata_existing_block():
+    """Inject mograder-type into an existing PEP 723 block."""
+    lines = [
+        "import marimo\n",
+        "\n",
+        "# /// script\n",
+        '# requires-python = ">=3.12"\n',
+        "# ///\n",
+    ]
+    result = _inject_type_metadata(lines, "lecture")
+    text = "".join(result)
+    assert '# mograder-type = "lecture"' in text
+    assert '# requires-python = ">=3.12"' in text
+    assert text.index("mograder-type") < text.index("# ///\n")
+
+
+def test_inject_type_metadata_creates_block():
+    """Create a PEP 723 block when none exists."""
+    lines = [
+        "import marimo\n",
+        "\n",
+        "app = marimo.App()\n",
+    ]
+    result = _inject_type_metadata(lines, "lecture")
+    text = "".join(result)
+    assert "# /// script\n" in text
+    assert '# mograder-type = "lecture"' in text
+    assert "# ///\n" in text
+
+
+def test_read_notebook_type_lecture():
+    assert (
+        read_notebook_type('# /// script\n# mograder-type = "lecture"\n# ///')
+        == "lecture"
+    )
+
+
+def test_read_notebook_type_default():
+    assert read_notebook_type("import marimo\napp = marimo.App()\n") == "assignment"
+
+
+def test_read_notebook_type_assignment():
+    assert (
+        read_notebook_type('# /// script\n# mograder-type = "assignment"\n# ///')
+        == "assignment"
+    )

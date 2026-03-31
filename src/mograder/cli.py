@@ -224,16 +224,88 @@ def cli(ctx):
     is_flag=True,
     help="Emit JSON progress events to stderr (for grader UI)",
 )
+@click.option(
+    "--lecture",
+    is_flag=True,
+    help="Generate lecture release (strip slide layout, inject mograder-type, no solution stripping)",
+)
 @click.pass_context
 def generate(
-    ctx, assignments, output_dir, dry_run, validate, no_validate, submit_url, progress
+    ctx,
+    assignments,
+    output_dir,
+    dry_run,
+    validate,
+    no_validate,
+    submit_url,
+    progress,
+    lecture,
 ):
     """Strip solutions from source notebooks to produce release versions.
 
     ASSIGNMENTS can be assignment names (e.g. "demo-assignment") which are
     auto-expanded to source/demo-assignment/*.py, or explicit file paths.
+
+    With --lecture, accepts lecture .py files directly and strips slide
+    layout metadata instead of solutions.
     """
     config = ctx.obj["config"]
+
+    if lecture:
+        from .grading.cells import (
+            _inject_type_metadata,
+            build_release_zip,
+            strip_layout_metadata,
+        )
+
+        for arg in assignments:
+            filepath = Path(arg)
+            if not filepath.is_file():
+                click.echo(f"ERROR: file not found: {filepath}", err=True)
+                sys.exit(1)
+
+            stem = filepath.stem
+            dest_dir = (output_dir or Path(config.release_dir)) / stem
+            dest_dir.mkdir(parents=True, exist_ok=True)
+
+            # Strip layout metadata and inject type
+            lines = filepath.read_text().splitlines(keepends=True)
+            lines = strip_layout_metadata(lines)
+            lines = _inject_type_metadata(lines, "lecture")
+
+            dest = dest_dir / filepath.name
+            if dry_run:
+                click.echo(f"DRY-RUN: {_rel(filepath)} → {_rel(dest)} (lecture)")
+            else:
+                dest.write_text("".join(lines))
+                click.echo(f"OK: {_rel(filepath)} → {_rel(dest)} (lecture)")
+
+                # Copy auxiliary files only if the notebook lives in its own
+                # subdirectory (like assignments in source/name/).  Lectures
+                # typically live in the repo root alongside many unrelated
+                # files, so we skip the aux copy for those.
+                src_dir = filepath.parent
+                if src_dir.name == stem:
+                    for f in src_dir.iterdir():
+                        if f.is_dir() or f == filepath or f.name.startswith("."):
+                            continue
+                        if f.suffix == ".py":
+                            continue  # skip other notebooks
+                        aux_dest = dest_dir / f.name
+                        if (
+                            not aux_dest.exists()
+                            or f.stat().st_mtime > aux_dest.stat().st_mtime
+                        ):
+                            shutil.copy2(f, aux_dest)
+                            click.echo(f"COPY: {_rel(f)} → {_rel(aux_dest)}")
+
+                # Build zip if multiple files
+                zip_path = build_release_zip(dest_dir)
+                if zip_path:
+                    click.echo(f"ZIP: {_rel(zip_path)}")
+
+        return
+
     files = _resolve_assignments(assignments, config.source_dir)
     if output_dir is None:
         # Infer the base release dir — the loop below adds assignment subdirs

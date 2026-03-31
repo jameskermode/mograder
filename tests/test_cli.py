@@ -670,6 +670,66 @@ def test_generate_nonexistent_assignment_error(tmp_path, monkeypatch):
     assert "not found" in result.output
 
 
+def test_generate_lecture(tmp_path):
+    """generate --lecture strips layout metadata and injects mograder-type."""
+    nb = tmp_path / "L01-Intro.py"
+    nb.write_text(
+        "import marimo\n"
+        "\n"
+        '__generated_with = "0.19.2"\n'
+        "app = marimo.App(\n"
+        '    layout_file="layouts/L01-Intro.slides.json",\n'
+        '    html_head_file="fragment-slides.html"\n'
+        ")\n"
+        "\n"
+        "@app.cell\n"
+        "def _():\n"
+        "    import marimo as mo\n"
+        "    return (mo,)\n"
+        "\n"
+        'if __name__ == "__main__":\n'
+        "    app.run()\n"
+    )
+
+    out = tmp_path / "release"
+    runner = CliRunner()
+    result = runner.invoke(cli, ["generate", "--lecture", str(nb), "-o", str(out)])
+    assert result.exit_code == 0, result.output
+    assert "lecture" in result.output
+
+    dest = out / "L01-Intro" / "L01-Intro.py"
+    assert dest.is_file()
+
+    text = dest.read_text()
+    assert "layout_file" not in text
+    assert "html_head_file" not in text
+    assert "marimo.App()" in text
+    assert '# mograder-type = "lecture"' in text
+
+
+def test_generate_lecture_dry_run(tmp_path):
+    """generate --lecture --dry-run does not write files."""
+    nb = tmp_path / "L01.py"
+    nb.write_text("import marimo\napp = marimo.App()\n")
+
+    out = tmp_path / "release"
+    runner = CliRunner()
+    result = runner.invoke(
+        cli, ["generate", "--lecture", "--dry-run", str(nb), "-o", str(out)]
+    )
+    assert result.exit_code == 0
+    assert "DRY-RUN" in result.output
+    assert not (out / "L01" / "L01.py").exists()
+
+
+def test_generate_lecture_nonexistent_file(tmp_path):
+    """generate --lecture errors on missing file."""
+    runner = CliRunner()
+    result = runner.invoke(cli, ["generate", "--lecture", str(tmp_path / "nope.py")])
+    assert result.exit_code != 0
+    assert "not found" in result.output
+
+
 @patch("mograder.grading.cells.inject_grading_cells")
 @patch("mograder.grading.runner.run_batch")
 def test_autograde_assignment_name(mock_batch, mock_inject, tmp_path, monkeypatch):
