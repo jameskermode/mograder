@@ -32,9 +32,15 @@ def _():
 
     HUB_USER = _hub_username()
 
+    # External hub URL for browser links. On localhost the hub port is
+    # sufficient; behind a reverse proxy the X-Forwarded-Host header or
+    # an explicit config value would be needed instead.
+    HUB_BASE_URL = f"http://localhost:{CONFIG.hub_port}"
+
     return (
         COURSE_DIR,
         CONFIG,
+        HUB_BASE_URL,
         HUB_USER,
         Path,
         brand_logo_html,
@@ -147,91 +153,91 @@ def _(
         # Hub mode: status from hub notebooks dir, hub-specific actions
         _nb_dir = Path(COURSE_DIR / CONFIG.hub_notebooks_dir)
 
-        all_buttons = {}
-        rows = []
+        _all_buttons = {}
+        _rows = []
 
-        for i, a in enumerate(assignments_cfg):
-            _slug = a.get("dir") or a["name"]
-            _display = a.get("name", _slug)
+        for _i, _a in enumerate(assignments_cfg):
+            _slug = _a.get("dir") or _a["name"]
+            _display = _a.get("name", _slug)
             _nb_path = _nb_dir / HUB_USER / _slug / f"{_slug}.py"
             _has_file = _nb_path.exists()
 
             if not _has_file:
-                status = "not started"
+                _status = "not started"
             else:
                 _uploaded_marker = _nb_path.parent / ".uploaded"
                 if _uploaded_marker.exists():
                     if _nb_path.stat().st_mtime > _uploaded_marker.stat().st_mtime:
-                        status = "edited"
+                        _status = "edited"
                     else:
-                        status = "downloaded"
+                        _status = "downloaded"
                 else:
-                    status = "downloaded"
-            check_summary = "---"
+                    _status = "downloaded"
+            _check_summary = "---"
 
-            btn_keys = []
+            _btn_keys = []
 
             if not _has_file:
-                key = f"{i}_download"
-                all_buttons[key] = mo.ui.button(
+                _key = f"{_i}_download"
+                _all_buttons[_key] = mo.ui.button(
                     label="Download",
                     on_change=lambda _, n=_slug: set_pending(
                         {"action": "hub_download", "assignment": n}
                     ),
                 )
-                btn_keys.append(key)
+                _btn_keys.append(_key)
 
             if _has_file:
-                key = f"{i}_edit"
-                all_buttons[key] = mo.ui.button(
+                _key = f"{_i}_edit"
+                _all_buttons[_key] = mo.ui.button(
                     label="Edit",
                     on_change=lambda _, n=_slug: set_pending(
                         {"action": "hub_edit", "assignment": n}
                     ),
                 )
-                btn_keys.append(key)
+                _btn_keys.append(_key)
 
-                key = f"{i}_validate"
-                all_buttons[key] = mo.ui.button(
+                _key = f"{_i}_validate"
+                _all_buttons[_key] = mo.ui.button(
                     label="Validate",
                     on_change=lambda _, n=_slug: set_pending(
                         {"action": "hub_validate", "assignment": n}
                     ),
                 )
-                btn_keys.append(key)
+                _btn_keys.append(_key)
 
-                key = f"{i}_export"
-                all_buttons[key] = mo.ui.button(
+                _key = f"{_i}_export"
+                _all_buttons[_key] = mo.ui.button(
                     label="Export",
                     on_change=lambda _, n=_slug: set_pending(
                         {"action": "hub_export", "assignment": n}
                     ),
                 )
-                btn_keys.append(key)
+                _btn_keys.append(_key)
 
-            rows.append(
+            _rows.append(
                 {
                     "Assignment": _display,
-                    "Status": status,
-                    "Checks": check_summary,
-                    "btn_keys": btn_keys,
+                    "Status": _status,
+                    "Checks": _check_summary,
+                    "btn_keys": _btn_keys,
                 }
             )
 
-        buttons = mo.ui.dictionary(all_buttons)
+        buttons = mo.ui.dictionary(_all_buttons)
 
-        display_rows = []
-        for row in rows:
-            keys = row.pop("btn_keys")
-            btns = [buttons[k] for k in keys]
-            row["Actions"] = (
-                mo.hstack(btns, gap=0.5, justify="center") if btns else mo.md("")
+        _display_rows = []
+        for _row in _rows:
+            _keys = _row.pop("btn_keys")
+            _btns = [buttons[k] for k in _keys]
+            _row["Actions"] = (
+                mo.hstack(_btns, gap=0.5, justify="center") if _btns else mo.md("")
             )
-            display_rows.append(row)
+            _display_rows.append(_row)
 
-        if display_rows:
-            table = mo.ui.table(display_rows, selection=None)
-            mo.output.replace(mo.vstack([mo.md("### Assignments"), table]))
+        if _display_rows:
+            _table = mo.ui.table(_display_rows, selection=None)
+            mo.output.replace(mo.vstack([mo.md("### Assignments"), _table]))
 
     return (buttons,)
 
@@ -248,16 +254,16 @@ def _(
     else:
         _all_buttons = {}
         _rows = []
-        for i, lec in enumerate(hub_lectures):
-            _name = lec["name"]
-            key = f"lec_{i}_run"
-            _all_buttons[key] = mo.ui.button(
+        for _i, _lec in enumerate(hub_lectures):
+            _name = _lec["name"]
+            _key = f"lec_{_i}_run"
+            _all_buttons[_key] = mo.ui.button(
                 label="Run",
                 on_change=lambda _, n=_name: set_pending(
                     {"action": "hub_run_lecture", "lecture": n}
                 ),
             )
-            _rows.append({"Lecture": _name, "Actions": _all_buttons[key]})
+            _rows.append({"Lecture": _name, "Actions": _all_buttons[_key]})
 
         _lec_buttons = mo.ui.dictionary(_all_buttons)
         _table = mo.ui.table(_rows, selection=None)
@@ -269,6 +275,7 @@ def _(
 @app.cell
 def _(
     CONFIG,
+    HUB_BASE_URL,
     HUB_USER,
     get_pending,
     hub_download,
@@ -303,9 +310,10 @@ def _(
             ):
                 _result = hub_start_edit(_client, HUB_USER, _name, _hub_headers)
                 if _result.success and _result.url:
+                    _abs_url = f"{HUB_BASE_URL}{_result.url}"
                     set_action_log(
                         f"Editing **{_name}** — "
-                        f'<a href="{_result.url}" target="_blank">open editor</a>'
+                        f'<a href="{_abs_url}" target="_blank">open editor</a>'
                     )
                 else:
                     set_action_log(_result.message)
@@ -342,9 +350,10 @@ def _(
                     )
                     if _resp.status_code == 200:
                         _url = _resp.json().get("url", "")
+                        _abs_url = f"{HUB_BASE_URL}{_url}"
                         set_action_log(
                             f"Viewing **{_name}** — "
-                            f'<a href="{_url}" target="_blank">open lecture</a>'
+                            f'<a href="{_abs_url}" target="_blank">open lecture</a>'
                         )
                     else:
                         set_action_log(f"Failed to start lecture: {_resp.text}")
@@ -384,6 +393,7 @@ def _(mo, set_action_log, set_report_path):
 @app.cell
 def _(
     CONFIG,
+    HUB_BASE_URL,
     HUB_USER,
     get_refresh,
     mo,
@@ -424,7 +434,7 @@ def _(
                 mo.hstack(
                     [
                         mo.md(
-                            f'**{_name}** — <a href="{_url}" target="_blank">open</a>'
+                            f'**{_name}** — <a href="{HUB_BASE_URL}/{_url}" target="_blank">open</a>'
                         ),
                         _stop_btn,
                     ],

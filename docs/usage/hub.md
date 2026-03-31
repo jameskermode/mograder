@@ -19,6 +19,8 @@ mograder hub -C /path/to/course --dev --headless
 
 Students access the hub via a browser (no local install required):
 
+### Assignments
+
 1. Navigate to the hub URL provided by your instructor
 2. Log in via university SSO (automatic via reverse proxy)
 3. Click **Download** to fetch an assignment
@@ -34,6 +36,17 @@ Active edit sessions appear in an **Active editors** panel with links to reopen 
 !!! note
     The hub does not submit to Moodle directly. Students must export their
     notebook and upload to Moodle for grading.
+
+### Lectures
+
+If the instructor has published lectures to the hub, they appear in a **Lectures** table below the assignments:
+
+1. Click **Run** to open the lecture in a new tab
+2. The lecture runs in read-only mode with code visible (`marimo run --include-code`)
+3. Each student gets their own isolated session (widget state is not shared)
+4. Cross-notebook links within lectures navigate directly to other published lectures
+
+Lecture sessions are per-user and subject to the same idle timeout as assignment edit sessions.
 
 ## Commands
 
@@ -69,10 +82,10 @@ Checks:
 
 ### `mograder hub publish`
 
-Publish a release assignment to the hub:
+Publish a release assignment or lecture to the hub:
 
 ```bash
-# Publish (verifies files match Moodle first)
+# Publish assignment (verifies files match Moodle first)
 mograder hub publish A1 --url $HUB_URL --token $TOKEN
 
 # Skip Moodle verification
@@ -83,11 +96,22 @@ mograder hub publish A1 --force --dry-run
 
 # Explicit Moodle assignment name (if different from directory name)
 mograder hub publish A1 --moodle-assignment "A1. Introduction" --url $HUB_URL --token $TOKEN
+
+# Publish a lecture (auto-detected from mograder-type metadata, or use --lecture)
+mograder hub publish L01-Intro --url $HUB_URL --token $TOKEN
+mograder hub publish L01-Intro --lecture --url $HUB_URL --token $TOKEN
 ```
 
-The `ASSIGNMENT` argument is an assignment name (e.g. `A1-Intro-to-SciML` or prefix `A1`) resolved from the `release/` directory, or an explicit directory path.
+The `ASSIGNMENT` argument is a name (e.g. `A1-Intro-to-SciML` or prefix `A1`) resolved from the `release/` directory, or an explicit directory path.
 
-By default, files are verified against Moodle before publishing — Moodle is the authoritative source for assignment content.
+For **assignments**, files are verified against Moodle before publishing by default — Moodle is the authoritative source for assignment content.
+
+For **lectures**, Moodle verification is skipped automatically (lectures aren't posted to Moodle). The lecture type is auto-detected from `mograder-type = "lecture"` in the notebook's PEP 723 block (injected by `mograder generate --lecture`), or can be forced with `--lecture`.
+
+Publishing a lecture:
+1. Uploads the notebook and auxiliary files to the hub
+2. Stores `"type": "lecture"` in the `files.json` manifest
+3. Warms the uv cache / creates a shared `.venv` from PEP 723 dependencies
 
 | Option | Env var | Description |
 |--------|---------|-------------|
@@ -95,6 +119,7 @@ By default, files are verified against Moodle before publishing — Moodle is th
 | `--token` | `MOGRADER_HUB_INSTRUCTOR_TOKEN` | Instructor token |
 | `--moodle-assignment` | | Moodle assignment name (default: same as ASSIGNMENT) |
 | `--force` | | Skip Moodle verification |
+| `--lecture` | | Publish as lecture (implies `--force`) |
 | `--dry-run` | | Preview only, don't publish |
 
 ### `mograder hub warm-cache`
@@ -150,10 +175,18 @@ uv_cache_dir = ""  # empty = default ~/.cache/uv
 
 ## Instructor Workflow
 
+### Assignments
+
 1. Generate release notebooks: `mograder generate A1`
 2. Upload to Moodle: `mograder moodle upload A1`
 3. Publish to hub: `mograder hub publish A1 --url $HUB_URL --token $TOKEN`
-4. Warm the dependency cache: `mograder hub warm-cache --all`
+
+### Lectures
+
+1. Generate lecture release: `mograder generate --lecture source/L01-Intro/L01-Intro.py`
+2. Publish to hub: `mograder hub publish L01-Intro --url $HUB_URL --token $TOKEN`
+
+The lecture type is auto-detected from PEP 723 metadata — no `--lecture` flag needed on publish if `generate --lecture` was used. Cache warming happens automatically during publish.
 
 ## Environment Variables
 
@@ -165,6 +198,8 @@ uv_cache_dir = ""  # empty = default ~/.cache/uv
 
 ## API Endpoints
 
+### Assignments
+
 | Method | Path | Description |
 |--------|------|-------------|
 | POST | `/upload/{user}/{assignment}` | Upload a notebook |
@@ -173,14 +208,27 @@ uv_cache_dir = ""  # empty = default ~/.cache/uv
 | POST | `/reset/{user}/{assignment}` | Reset to release version |
 | GET | `/status/{user}/{assignment}` | Get assignment status |
 | POST | `/mark-exported/{user}/{assignment}` | Mark as exported |
-| GET | `/assignments` | List assignments with status |
-| GET | `/sessions` | List active edit sessions |
-| GET | `/release/{assignment}/{filename}` | Download release file |
-| POST | `/publish/{assignment}` | Publish release (instructor) |
-| POST | `/warm-cache` | Warm uv cache (instructor) |
 | POST | `/start-edit/{user}/{assignment}` | Start marimo edit session |
 | POST | `/stop-edit/{user}/{assignment}` | Stop marimo edit session |
 | `*` | `/edit/{user}/{assignment}/...` | Proxy to marimo editor |
+
+### Lectures
+
+| Method | Path | Description |
+|--------|------|-------------|
+| POST | `/start-run/{lecture}` | Start per-user marimo run session |
+| GET | `/run/{lecture}/` | Redirect to per-user session (auto-starts if needed) |
+| `*` | `/run/~{user}/{lecture}/...` | Proxy to marimo run session |
+
+### Shared
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/assignments` | List assignments and lectures (with `type` field) |
+| GET | `/sessions` | List active sessions (with `type` field) |
+| GET | `/release/{name}/{filename}` | Download release file |
+| POST | `/publish/{name}` | Publish release (instructor); `?type=lecture` for lectures |
+| POST | `/warm-cache` | Warm uv cache (instructor) |
 
 ## Authentication
 

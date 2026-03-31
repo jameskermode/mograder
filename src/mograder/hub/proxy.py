@@ -108,34 +108,52 @@ def create_proxy_router(session_manager) -> APIRouter:
         await proxy_ws_relay(websocket, target)
 
     # -- Lecture run proxy (per-user read-only sessions) --
-    # /run/{lecture} redirects to /run/{username}/{lecture}/ using the
-    # authenticated user, so generated links like /run/L01-Intro/ work.
+    # Generated inter-lecture links use /run/{lecture}/ which redirects to
+    # /run/~{username}/{lecture}/ using the authenticated user.  The ~
+    # prefix disambiguates the per-user route from the lecture-only route.
 
     @router.get("/run/{lecture}")
+    async def run_lecture_redirect_no_slash(request: Request, lecture: str):
+        user = request.scope.get("user", {})
+        username = user.get("username", "")
+        if not username:
+            return Response("403 Forbidden", status_code=403)
+        return RedirectResponse(f"/run/~{username}/{lecture}/")
+
+    @router.api_route(
+        "/run/{lecture}/",
+        methods=["GET"],
+    )
     async def run_lecture_redirect(request: Request, lecture: str):
         user = request.scope.get("user", {})
         username = user.get("username", "")
         if not username:
             return Response("403 Forbidden", status_code=403)
-        return RedirectResponse(f"/run/{username}/{lecture}/")
+        # Auto-start session if not already running
+        if _get_session(username, lecture) is None:
+            try:
+                await session_manager.get_or_spawn_run(username, lecture)
+            except Exception:
+                return Response("Failed to start lecture session", status_code=502)
+        return RedirectResponse(f"/run/~{username}/{lecture}/")
 
-    @router.get("/run/{username}/{lecture}")
+    @router.get("/run/~{username}/{lecture}")
     async def run_redirect(username: str, lecture: str):
-        return RedirectResponse(f"/run/{username}/{lecture}/")
+        return RedirectResponse(f"/run/~{username}/{lecture}/")
 
     @router.api_route(
-        "/run/{username}/{lecture}/",
+        "/run/~{username}/{lecture}/",
         methods=["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"],
     )
     async def run_proxy_http_root(request: Request, username: str, lecture: str):
         return await run_proxy_http(request, username, lecture, path="")
 
-    @router.websocket("/run/{username}/{lecture}/")
+    @router.websocket("/run/~{username}/{lecture}/")
     async def run_proxy_ws_root(websocket: WebSocket, username: str, lecture: str):
         return await run_proxy_ws(websocket, username, lecture, path="")
 
     @router.api_route(
-        "/run/{username}/{lecture}/{path:path}",
+        "/run/~{username}/{lecture}/{path:path}",
         methods=["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"],
     )
     async def run_proxy_http(request: Request, username: str, lecture: str, path: str):
@@ -158,7 +176,7 @@ def create_proxy_router(session_manager) -> APIRouter:
         except httpx.ConnectError:
             return Response("Lecture session unavailable", status_code=502)
 
-    @router.websocket("/run/{username}/{lecture}/{path:path}")
+    @router.websocket("/run/~{username}/{lecture}/{path:path}")
     async def run_proxy_ws(
         websocket: WebSocket, username: str, lecture: str, path: str
     ):

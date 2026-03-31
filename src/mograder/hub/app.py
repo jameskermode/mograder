@@ -306,12 +306,16 @@ def create_hub_app(
             alive = s.process is not None and s.process.returncode is None
             if not alive:
                 continue
+            # Determine URL based on whether this is a lecture or assignment
+            is_lecture = storage.item_type(a) == "lecture"
+            session_url = f"run/~{u}/{a}/" if is_lecture else f"edit/{u}/{a}/"
             result.append(
                 {
                     "username": u,
                     "assignment": a,
                     "port": s.port,
-                    "url": f"edit/{u}/{a}/",
+                    "url": session_url,
+                    "type": "lecture" if is_lecture else "assignment",
                     "last_seen": s.last_seen,
                 }
             )
@@ -372,7 +376,7 @@ def create_hub_app(
             session = await session_mgr.get_or_spawn_run(username, lecture)
             return {
                 "status": "ok",
-                "url": f"/run/{username}/{lecture}/",
+                "url": f"/run/~{username}/{lecture}/",
                 "port": session.port,
             }
         except FileNotFoundError:

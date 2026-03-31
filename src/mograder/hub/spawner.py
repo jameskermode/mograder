@@ -259,13 +259,14 @@ class SessionManager:
         else:
             python_exe = sys.executable
 
-        base_url = f"/run/{username}/{lecture}"
+        base_url = f"/run/~{username}/{lecture}"
         cmd = [
             python_exe,
             "-m",
             "marimo",
             "run",
             "--include-code",
+            "--headless",
             "--host",
             "127.0.0.1",
             "--port",
