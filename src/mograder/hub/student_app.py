@@ -32,15 +32,9 @@ def _():
 
     HUB_USER = _hub_username()
 
-    # External hub URL for browser links. On localhost the hub port is
-    # sufficient; behind a reverse proxy the X-Forwarded-Host header or
-    # an explicit config value would be needed instead.
-    HUB_BASE_URL = f"http://localhost:{CONFIG.hub_port}"
-
     return (
         COURSE_DIR,
         CONFIG,
-        HUB_BASE_URL,
         HUB_USER,
         Path,
         brand_logo_html,
@@ -275,7 +269,6 @@ def _(
 @app.cell
 def _(
     CONFIG,
-    HUB_BASE_URL,
     HUB_USER,
     get_pending,
     hub_download,
@@ -310,10 +303,9 @@ def _(
             ):
                 _result = hub_start_edit(_client, HUB_USER, _name, _hub_headers)
                 if _result.success and _result.url:
-                    _abs_url = f"{HUB_BASE_URL}{_result.url}"
                     set_action_log(
                         f"Editing **{_name}** — "
-                        f'<a href="{_abs_url}" target="_blank">open editor</a>'
+                        f'<a href="{_result.url}" target="_blank">open editor</a>'
                     )
                 else:
                     set_action_log(_result.message)
@@ -350,10 +342,9 @@ def _(
                     )
                     if _resp.status_code == 200:
                         _url = _resp.json().get("url", "")
-                        _abs_url = f"{HUB_BASE_URL}{_url}"
                         set_action_log(
                             f"Viewing **{_name}** — "
-                            f'<a href="{_abs_url}" target="_blank">open lecture</a>'
+                            f'<a href="{_url}" target="_blank">open lecture</a>'
                         )
                     else:
                         set_action_log(f"Failed to start lecture: {_resp.text}")
@@ -393,7 +384,6 @@ def _(mo, set_action_log, set_report_path):
 @app.cell
 def _(
     CONFIG,
-    HUB_BASE_URL,
     HUB_USER,
     get_refresh,
     mo,
@@ -434,7 +424,7 @@ def _(
                 mo.hstack(
                     [
                         mo.md(
-                            f'**{_name}** — <a href="{HUB_BASE_URL}/{_url}" target="_blank">open</a>'
+                            f'**{_name}** — <a href="/{_url}" target="_blank">open</a>'
                         ),
                         _stop_btn,
                     ],
