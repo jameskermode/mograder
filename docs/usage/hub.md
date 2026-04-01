@@ -48,6 +48,32 @@ If the instructor has published lectures to the hub, they appear in a **Lectures
 
 Lecture sessions are per-user and subject to the same idle timeout as assignment edit sessions.
 
+### Deep Links
+
+Both assignments and lectures support **shareable deep links** that can be embedded in lectures, Moodle pages, or shared directly:
+
+| Type | Deep link URL | What it does |
+|------|--------------|--------------|
+| Assignment | `/edit/{assignment}` | Auto-downloads release (if needed), starts editor |
+| Lecture | `/run/{lecture}` | Starts read-only run session |
+
+Deep links show a spinner page while the session starts, then redirect to the per-user editor or viewer. If the student already has a copy of the assignment, their edits are preserved — the release is not re-downloaded.
+
+**Examples:**
+
+```
+https://hub.example.com/edit/A1-Intro-to-SciML
+https://hub.example.com/run/L01-Introduction
+```
+
+These can be used in:
+
+- **Lecture notebooks** — `mograder generate --lecture` automatically rewrites inter-notebook links to `/run/{lecture}/` format
+- **Moodle** — paste the deep link as an activity URL or in assignment instructions
+- **Direct sharing** — students can bookmark or share the link
+
+If a session is already running for the current user, the deep link reconnects to it rather than starting a new one.
+
 ## Commands
 
 ### `mograder hub`
@@ -198,27 +224,34 @@ The lecture type is auto-detected from PEP 723 metadata — no `--lecture` flag 
 
 ## API Endpoints
 
-### Assignments
+### Deep Links (shareable)
 
 | Method | Path | Description |
 |--------|------|-------------|
+| GET | `/edit/{assignment}` | Spinner → auto-download + start edit session |
+| GET | `/run/{lecture}` | Spinner → start run session |
+
+### Assignments (per-user)
+
+| Method | Path | Description |
+|--------|------|-------------|
+| POST | `/start-edit-deep/{assignment}` | Auto-download release + start edit (used by spinner) |
+| POST | `/start-edit/{user}/{assignment}` | Start edit session (notebook must exist) |
+| POST | `/stop-edit/{user}/{assignment}` | Stop edit session |
 | POST | `/upload/{user}/{assignment}` | Upload a notebook |
 | GET | `/export/{user}/{assignment}` | Download a notebook |
 | POST | `/validate/{user}/{assignment}` | Run validation checks |
 | POST | `/reset/{user}/{assignment}` | Reset to release version |
 | GET | `/status/{user}/{assignment}` | Get assignment status |
 | POST | `/mark-exported/{user}/{assignment}` | Mark as exported |
-| POST | `/start-edit/{user}/{assignment}` | Start marimo edit session |
-| POST | `/stop-edit/{user}/{assignment}` | Stop marimo edit session |
-| `*` | `/edit/{user}/{assignment}/...` | Proxy to marimo editor |
+| `*` | `/edit/user/{user}/{assignment}/...` | Proxy to marimo editor |
 
-### Lectures
+### Lectures (per-user)
 
 | Method | Path | Description |
 |--------|------|-------------|
 | POST | `/start-run/{lecture}` | Start per-user marimo run session |
-| GET | `/run/{lecture}/` | Redirect to per-user session (auto-starts if needed) |
-| `*` | `/run/~{user}/{lecture}/...` | Proxy to marimo run session |
+| `*` | `/run/user/{user}/{lecture}/...` | Proxy to marimo run session |
 
 ### Shared
 
