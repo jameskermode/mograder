@@ -252,6 +252,12 @@ class AssignmentHandler(BaseHTTPRequestHandler):
                 if not self._require_instructor():
                     return
                 self._handle_list_submissions(parts[2])
+            # /assignments/<name>/feedback/<user>
+            elif len(parts) == 5 and parts[3] == "feedback":
+                target_user = parts[4]
+                if not self._require_user_match(target_user):
+                    return
+                self._handle_get_feedback(parts[2], target_user)
             # /assignments/<name>/status
             elif len(parts) == 4 and parts[3] == "status":
                 user = qs.get("user", [None])[0]
@@ -288,6 +294,11 @@ class AssignmentHandler(BaseHTTPRequestHandler):
             if not self._require_instructor():
                 return
             self._handle_upload_grades(parts[2])
+        # /assignments/<name>/feedback
+        elif len(parts) == 4 and parts[3] == "feedback":
+            if not self._require_instructor():
+                return
+            self._handle_upload_feedback(parts[2])
         else:
             self._send_error(404, "Not found")
 
@@ -410,6 +421,50 @@ class AssignmentHandler(BaseHTTPRequestHandler):
         grades_path.write_text(json.dumps(list(existing_map.values()), indent=2))
         self._send_json({"status": "ok", "count": len(existing_map)})
 
+    def _handle_upload_feedback(self, assignment: str):
+        """Store uploaded HTML feedback files."""
+        content_type = self.headers.get("Content-Type", "")
+        content_length = int(self.headers.get("Content-Length", 0))
+
+        if "multipart/form-data" not in content_type:
+            self._send_error(400, "Expected multipart/form-data")
+            return
+
+        body = self.rfile.read(content_length)
+        boundary = content_type.split("boundary=")[1].strip()
+        files = _extract_multipart_files(body, boundary.encode())
+
+        if not files:
+            self._send_error(400, "No files received")
+            return
+
+        grades_dir = self.server.grades_dir or self.root
+        fb_dir = grades_dir / assignment / "feedback"
+        fb_dir.mkdir(parents=True, exist_ok=True)
+
+        saved = []
+        for filename, content in files:
+            (fb_dir / filename).write_bytes(content)
+            saved.append(filename)
+
+        self._send_json({"status": "ok", "files": saved})
+
+    def _handle_get_feedback(self, assignment: str, user: str):
+        """Serve a student's HTML feedback file."""
+        grades_dir = self.server.grades_dir or self.root
+        fb_path = grades_dir / assignment / "feedback" / f"{user}.html"
+
+        if not fb_path.is_file():
+            self._send_error(404, "Feedback not available")
+            return
+
+        self.send_response(200)
+        self.send_header("Content-Type", "text/html; charset=utf-8")
+        content = fb_path.read_bytes()
+        self.send_header("Content-Length", str(len(content)))
+        self.end_headers()
+        self.wfile.write(content)
+
     def _handle_status(self, assignment: str, user: str | None):
         if not user:
             self._send_error(400, "Missing 'user' query parameter")
@@ -432,12 +487,17 @@ class AssignmentHandler(BaseHTTPRequestHandler):
                     feedback_text = g.get("feedback", "")
                     break
 
+        # Check if HTML feedback file exists
+        fb_path = grades_dir / assignment / "feedback" / f"{user}.html"
+        feedback_available = fb_path.is_file()
+
         self._send_json(
             {
                 "status": "submitted" if submitted else "new",
                 "graded": graded,
                 "grade": grade,
                 "feedback": feedback_text,
+                "feedback_available": feedback_available,
             }
         )
 
@@ -501,6 +561,32 @@ class AssignmentServer(HTTPServer):
         self.secret = secret
         self.enrollment_code = enrollment_code
         super().__init__(server_address, handler_class)
+
+
+def _extract_multipart_files(body: bytes, boundary: bytes) -> list[tuple[str, bytes]]:
+    """Extract all files from a multipart/form-data body.
+
+    Returns a list of ``(filename, content)`` tuples.
+    """
+    results = []
+    parts = body.split(b"--" + boundary)
+    for part in parts:
+        if b"filename=" not in part:
+            continue
+        header_end = part.find(b"\r\n\r\n")
+        if header_end == -1:
+            continue
+        headers = part[:header_end].decode("utf-8", errors="replace")
+        content = part[header_end + 4 :]
+        if content.endswith(b"\r\n"):
+            content = content[:-2]
+        # Extract filename from Content-Disposition
+        import re as _re
+
+        m = _re.search(r'filename="([^"]+)"', headers)
+        if m:
+            results.append((m.group(1), content))
+    return results
 
 
 def _extract_multipart_file(body: bytes, boundary: bytes) -> bytes | None:
@@ -825,13 +911,56 @@ def create_starlette_routes(
                     feedback_text = g.get("feedback", "")
                     break
 
+        _grades_root2 = resolved_grades_dir or root
+        fb_path = _grades_root2 / name / "feedback" / f"{user}.html"
+        feedback_available = fb_path.is_file()
+
         return _json(
             {
                 "status": "submitted" if submitted else "new",
                 "graded": graded,
                 "grade": grade,
                 "feedback": feedback_text,
+                "feedback_available": feedback_available,
             }
+        )
+
+    async def upload_feedback(request: Request):
+        err = _check_instructor(request)
+        if err:
+            return err
+        name = request.path_params["name"]
+        form = await request.form()
+
+        _grades_root = resolved_grades_dir or root
+        fb_dir = _grades_root / name / "feedback"
+        fb_dir.mkdir(parents=True, exist_ok=True)
+
+        saved = []
+        for key in form:
+            upload = form[key]
+            if hasattr(upload, "filename") and upload.filename:
+                content = await upload.read()
+                (fb_dir / upload.filename).write_bytes(content)
+                saved.append(upload.filename)
+
+        return _json({"status": "ok", "files": saved})
+
+    async def get_feedback(request: Request):
+        name = request.path_params["name"]
+        user = request.path_params["user"]
+        err = _check_user_match(request, user)
+        if err:
+            return err
+
+        _grades_root = resolved_grades_dir or root
+        fb_path = _grades_root / name / "feedback" / f"{user}.html"
+        if not fb_path.is_file():
+            return _json({"error": "Feedback not available"}, 404)
+
+        return Response(
+            fb_path.read_bytes(),
+            media_type="text/html",
         )
 
     async def register(request: Request):
@@ -871,6 +1000,8 @@ def create_starlette_routes(
         Route("/assignments/{name}/submit", submit, methods=["POST"]),
         Route("/assignments/{name}/submissions", list_submissions),
         Route("/assignments/{name}/grades", upload_grades, methods=["POST"]),
+        Route("/assignments/{name}/feedback", upload_feedback, methods=["POST"]),
+        Route("/assignments/{name}/feedback/{user}", get_feedback),
         Route("/assignments/{name}/status", status),
     ]
 

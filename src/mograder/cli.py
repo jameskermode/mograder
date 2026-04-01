@@ -2834,6 +2834,71 @@ def https_upload_grades(ctx, assignment, url, token, grades_csv, dry_run):
     do_upload_feedback(transport, assignment, grades, dry_run=dry_run)
 
 
+@https_group.command("upload-feedback")
+@click.argument("assignment")
+@click.option("--url", default=None, help="Server URL (overrides config)")
+@click.option("--token", default=None, help="Instructor auth token")
+@click.option(
+    "--feedback-dir",
+    type=click.Path(exists=True, path_type=Path),
+    default=None,
+    help="Feedback HTML directory (default: feedback/<assignment>)",
+)
+@click.option(
+    "--grades-csv",
+    type=click.Path(exists=True, path_type=Path),
+    default=None,
+    help="Grades CSV file (optional, also uploads grades)",
+)
+@click.option("--dry-run", is_flag=True, help="Show what would happen")
+@click.pass_context
+def https_upload_feedback(
+    ctx, assignment, url, token, feedback_dir, grades_csv, dry_run
+):
+    """Upload feedback HTML files (and optionally grades) to an HTTPS server."""
+    from mograder.transport.https_transport import HTTPSTransport
+
+    config = ctx.obj["config"]
+    url = url or config.https_url
+    if not url:
+        raise click.UsageError(
+            "No HTTPS URL configured. Provide --url or set [https] url in mograder.toml"
+        )
+    token = _resolve_https_token(config, token)
+    transport = HTTPSTransport(url, token=token)
+
+    # Upload grades if CSV provided
+    if grades_csv:
+        import csv
+
+        from mograder.transport.commands import do_upload_feedback
+
+        with open(grades_csv) as f:
+            reader = csv.DictReader(f)
+            grades = [dict(row) for row in reader]
+        do_upload_feedback(transport, assignment, grades, dry_run=dry_run)
+
+    # Find feedback HTML files
+    if feedback_dir is None:
+        feedback_dir = Path(config.feedback_dir) / assignment
+    if not feedback_dir.is_dir():
+        click.echo(f"No feedback directory: {feedback_dir}", err=True)
+        raise SystemExit(1)
+
+    html_files = sorted(feedback_dir.glob("*.html"))
+    if not html_files:
+        click.echo(f"No HTML files in {feedback_dir}", err=True)
+        raise SystemExit(1)
+
+    click.echo(f"Uploading {len(html_files)} feedback files for {assignment}...")
+    for f in html_files:
+        click.echo(f"  {f.name}")
+
+    if not dry_run:
+        transport.upload_feedback(assignment, html_files)
+        click.echo("Feedback uploaded.")
+
+
 @https_group.command("feedback")
 @click.argument("assignment")
 @click.option("--url", default=None, help="Server URL (overrides config)")

@@ -821,3 +821,97 @@ class TestGradesDir:
             assert len(data) == 0
         finally:
             srv.shutdown()
+
+
+class TestFeedbackUpload:
+    """Tests for HTML feedback file upload and serving."""
+
+    def test_upload_feedback_files(self, server):
+        """POST feedback HTML files → stored on disk."""
+        base_url, tmp_path, _ = server
+        (tmp_path / "hw1").mkdir(exist_ok=True)
+        resp = requests.post(
+            f"{base_url}/assignments/hw1/feedback",
+            files=[
+                ("files", ("alice.html", b"<h1>Feedback for Alice</h1>", "text/html")),
+                ("files", ("bob.html", b"<h1>Feedback for Bob</h1>", "text/html")),
+            ],
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["status"] == "ok"
+        assert "alice.html" in data["files"]
+        assert "bob.html" in data["files"]
+
+        fb_dir = tmp_path / "hw1" / "feedback"
+        assert (fb_dir / "alice.html").read_text() == "<h1>Feedback for Alice</h1>"
+        assert (fb_dir / "bob.html").read_text() == "<h1>Feedback for Bob</h1>"
+
+    def test_upload_feedback_requires_instructor(self, auth_server):
+        """Non-instructor cannot upload feedback."""
+        base_url, tmp_path, _, secret = auth_server
+        student_token = make_token(secret, "alice")
+        resp = requests.post(
+            f"{base_url}/assignments/hw1/feedback",
+            headers={"Authorization": f"Bearer {student_token}"},
+            files=[("files", ("alice.html", b"<h1>Feedback</h1>", "text/html"))],
+        )
+        assert resp.status_code == 403
+
+    def test_get_feedback_html(self, server):
+        """GET feedback returns HTML for authenticated user."""
+        base_url, tmp_path, _ = server
+        fb_dir = tmp_path / "hw1" / "feedback"
+        fb_dir.mkdir(parents=True)
+        (fb_dir / "alice.html").write_text("<h1>Alice's feedback</h1>")
+
+        resp = requests.get(
+            f"{base_url}/assignments/hw1/feedback/alice",
+        )
+        assert resp.status_code == 200
+        assert "Alice's feedback" in resp.text
+
+    def test_get_feedback_user_isolation(self, auth_server):
+        """User A cannot see user B's feedback."""
+        base_url, tmp_path, _, secret = auth_server
+        fb_dir = tmp_path / "hw1" / "feedback"
+        fb_dir.mkdir(parents=True)
+        (fb_dir / "bob.html").write_text("<h1>Bob's feedback</h1>")
+
+        alice_token = make_token(secret, "alice")
+        resp = requests.get(
+            f"{base_url}/assignments/hw1/feedback/alice",
+            headers={"Authorization": f"Bearer {alice_token}"},
+        )
+        # Alice has no feedback
+        assert resp.status_code == 404
+
+        resp = requests.get(
+            f"{base_url}/assignments/hw1/feedback/bob",
+            headers={"Authorization": f"Bearer {alice_token}"},
+        )
+        # Alice can't see Bob's feedback
+        assert resp.status_code == 403
+
+    def test_get_feedback_404(self, server):
+        """No feedback file → 404."""
+        base_url, _, _ = server
+        resp = requests.get(f"{base_url}/assignments/hw1/feedback/nobody")
+        assert resp.status_code == 404
+
+    def test_status_includes_feedback_available(self, server):
+        """Status response includes feedback_available field."""
+        base_url, tmp_path, _ = server
+        # No feedback yet
+        resp = requests.get(f"{base_url}/assignments/hw1/status?user=alice")
+        data = resp.json()
+        assert data.get("feedback_available") is False
+
+        # Add feedback file
+        fb_dir = tmp_path / "hw1" / "feedback"
+        fb_dir.mkdir(parents=True)
+        (fb_dir / "alice.html").write_text("<h1>Feedback</h1>")
+
+        resp = requests.get(f"{base_url}/assignments/hw1/status?user=alice")
+        data = resp.json()
+        assert data.get("feedback_available") is True

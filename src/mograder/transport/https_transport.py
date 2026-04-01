@@ -122,6 +122,26 @@ class HTTPSTransport:
         if "error" in data:
             raise TransportError(data["error"])
 
+    def upload_feedback(
+        self,
+        assignment: str,
+        feedback_files: list[Path],
+    ) -> None:
+        """Upload HTML feedback files to the server."""
+        files = [
+            ("files", (f.name, f.read_bytes(), "text/html")) for f in feedback_files
+        ]
+        resp = requests.post(
+            f"{self.base_url}/assignments/{assignment}/feedback",
+            files=files,
+            headers=self._headers(),
+            timeout=60,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        if "error" in data:
+            raise TransportError(data["error"])
+
     def get_status(self, assignment: str) -> RemoteStatus:
         resp = requests.get(
             f"{self.base_url}/assignments/{assignment}/status",
