@@ -203,6 +203,9 @@ def _(grader):
 @app.cell(hide_code=True)
 def _(mo):
     # === MOGRADER: SUBMIT ===
+    import os as _os
+
+    mo.stop(_os.environ.get("MOGRADER_DASHBOARD") == "1")
     submit_username = mo.ui.text(label="Username", placeholder="Enter your username")
     submit_btn = mo.ui.run_button(label="Submit")
     mo.hstack([submit_username, submit_btn])
