@@ -144,7 +144,7 @@ for (var i = 0; i < parts.length; i++) {{
 }}
 fetch(base + "{start_url}", {{method:"POST",credentials:"same-origin"}})
   .then(r=>r.ok?r.json():Promise.reject(r.statusText))
-  .then(d=>{{window.location.href=base+d.url}})
+  .then(d=>{{window.location.href=base+"/"+d.url}})
   .catch(e=>{{
     document.getElementById("msg").textContent="Error: "+e;
     document.querySelector(".spinner").style.display="none";

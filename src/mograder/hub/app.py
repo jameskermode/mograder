@@ -275,7 +275,7 @@ def create_hub_app(
             session = await session_mgr.get_or_spawn(username, assignment)
             return {
                 "status": "ok",
-                "url": f"/edit/user/{username}/{assignment}/",
+                "url": f"edit/user/{username}/{assignment}/",
                 "port": session.port,
             }
         except FileNotFoundError:
@@ -314,7 +314,7 @@ def create_hub_app(
             session = await session_mgr.get_or_spawn(username, assignment)
             return {
                 "status": "ok",
-                "url": f"/edit/user/{username}/{assignment}/",
+                "url": f"edit/user/{username}/{assignment}/",
                 "port": session.port,
             }
         except FileNotFoundError:
@@ -415,7 +415,7 @@ def create_hub_app(
             session = await session_mgr.get_or_spawn_run(username, lecture)
             return {
                 "status": "ok",
-                "url": f"/run/user/{username}/{lecture}/",
+                "url": f"run/user/{username}/{lecture}/",
                 "port": session.port,
             }
         except FileNotFoundError:

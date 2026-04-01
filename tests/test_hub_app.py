@@ -552,7 +552,7 @@ class TestStartEdit:
         assert resp.status_code == 200
         data = resp.json()
         assert data["status"] == "ok"
-        assert data["url"] == "/edit/user/dev-user/hw1/"
+        assert data["url"] == "edit/user/dev-user/hw1/"
         assert data["port"] == 18001
 
     def test_start_edit_no_notebook_404(self, client, hub_dirs):
@@ -767,7 +767,7 @@ class TestDeepLinkEdit:
         resp = client.post("/start-edit-deep/hw1")
         assert resp.status_code == 200
         data = resp.json()
-        assert data["url"] == "/edit/user/dev-user/hw1/"
+        assert data["url"] == "edit/user/dev-user/hw1/"
 
     def test_publish_rejects_name_user(self, hub_dirs):
         """Publish with assignment name 'user' → 400."""
