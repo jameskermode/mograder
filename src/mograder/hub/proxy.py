@@ -110,7 +110,14 @@ def create_proxy_router(session_manager) -> APIRouter:
     # -- Spinner page for deep links --
 
     def _spinner_html(title: str, start_url: str) -> HTMLResponse:
-        """Return an HTML page with a spinner that starts a session via fetch."""
+        """Return an HTML page with a spinner that starts a session via fetch.
+
+        Uses the current page URL to derive the hub base path so that deep
+        links work correctly behind a reverse proxy (e.g. ``/live/hub/``).
+        The ``start_url`` should be a hub-root-relative path like
+        ``/start-run/{lecture}``; it gets prefixed with the detected base.
+        The response ``url`` field is also resolved relative to the base.
+        """
         html = f"""\
 <!DOCTYPE html>
 <html><head><meta charset="utf-8"><title>{title}</title></head>
@@ -126,9 +133,18 @@ def create_proxy_router(session_manager) -> APIRouter:
 @keyframes spin{{to{{transform:rotate(360deg)}}}}
 </style>
 <script>
-fetch("{start_url}",{{method:"POST",credentials:"same-origin"}})
+// Derive hub base path from current URL.
+// e.g. /live/hub/run/L01/ → /live/hub, or /edit/A1/ → ""
+var p = window.location.pathname;
+var parts = ["/edit/", "/run/"];
+var base = "";
+for (var i = 0; i < parts.length; i++) {{
+  var idx = p.indexOf(parts[i]);
+  if (idx >= 0) {{ base = p.substring(0, idx); break; }}
+}}
+fetch(base + "{start_url}", {{method:"POST",credentials:"same-origin"}})
   .then(r=>r.ok?r.json():Promise.reject(r.statusText))
-  .then(d=>{{window.location.href=d.url}})
+  .then(d=>{{window.location.href=base+d.url}})
   .catch(e=>{{
     document.getElementById("msg").textContent="Error: "+e;
     document.querySelector(".spinner").style.display="none";
