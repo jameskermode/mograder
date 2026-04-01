@@ -59,12 +59,7 @@ Both assignments and lectures support **shareable deep links** that can be embed
 
 Deep links show a spinner page while the session starts, then redirect to the per-user editor or viewer. If the student already has a copy of the assignment, their edits are preserved — the release is not re-downloaded.
 
-**Examples:**
-
-```
-https://hub.example.com/edit/A1-Intro-to-SciML
-https://hub.example.com/run/L01-Introduction
-```
+**Try it on the live demo:** [edit demo-assignment](https://mograder-demo.jrkermode.uk/edit/demo-assignment) | [run demo-lecture](https://mograder-demo.jrkermode.uk/run/demo-lecture)
 
 These can be used in:
 
