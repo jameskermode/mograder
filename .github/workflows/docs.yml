@@ -38,13 +38,22 @@ jobs:
       - name: Build documentation
         run: uv run mkdocs build --strict
 
-      # 2. Build WASM dashboard into site/dashboard/
+      # 2. Generate release notebooks (with submit cell for WASM)
+      - name: Generate release notebooks
+        run: |
+          uv run mograder generate \
+            examples/source/demo-assignment/demo-assignment.py \
+            examples/source/demo-holistic/demo-holistic.py \
+            --submit-url https://mograder-demo.jrkermode.uk \
+            -o /tmp/demo-release --no-validate
+
+      # 3. Build WASM dashboard into site/dashboard/
       - name: Inject edit links into WASM app
         run: |
           uv run mograder wasm-edit-links \
             src/mograder/student/wasm_app.py \
-            demo/course/demo-assignment/files/demo-assignment.py \
-            demo/course/demo-holistic/files/demo-holistic.py \
+            /tmp/demo-release/demo-assignment/demo-assignment.py \
+            /tmp/demo-release/demo-holistic/demo-holistic.py \
             demo/course/demo-workshop/files/demo-workshop.py \
             -o /tmp/student_wasm_app.py
 
@@ -55,8 +64,8 @@ jobs:
 
       - name: Export demo notebooks
         run: |
-          uv run marimo export html-wasm demo/course/demo-assignment/files/demo-assignment.py -o site/dashboard/notebooks/demo-assignment.html --mode edit
-          uv run marimo export html-wasm demo/course/demo-holistic/files/demo-holistic.py -o site/dashboard/notebooks/demo-holistic.html --mode edit
+          uv run marimo export html-wasm /tmp/demo-release/demo-assignment/demo-assignment.py -o site/dashboard/notebooks/demo-assignment.html --mode edit
+          uv run marimo export html-wasm /tmp/demo-release/demo-holistic/demo-holistic.py -o site/dashboard/notebooks/demo-holistic.html --mode edit
 
       - name: Generate and export workshop
         run: |
