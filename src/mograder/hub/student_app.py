@@ -302,10 +302,11 @@ def _(
                 remove_on_exit=True,
             ):
                 _result = hub_start_edit(_client, HUB_USER, _name, _hub_headers)
-                if _result.success and _result.url:
+                if _result.success:
+                    # Use deep link URL — works behind reverse proxies
                     set_action_log(
                         f"Editing **{_name}** — "
-                        f'<a href="{_result.url}" target="_blank">open editor</a>'
+                        f'<a href="edit/{_name}" target="_blank">open editor</a>'
                     )
                 else:
                     set_action_log(_result.message)
@@ -341,10 +342,10 @@ def _(
                         timeout=120,
                     )
                     if _resp.status_code == 200:
-                        _url = _resp.json().get("url", "")
+                        # Use deep link URL — works behind reverse proxies
                         set_action_log(
                             f"Viewing **{_name}** — "
-                            f'<a href="{_url}" target="_blank">open lecture</a>'
+                            f'<a href="run/{_name}" target="_blank">open lecture</a>'
                         )
                     else:
                         set_action_log(f"Failed to start lecture: {_resp.text}")
@@ -411,7 +412,8 @@ def _(
         _items = []
         for _s in _sessions:
             _name = _s["assignment"]
-            _url = _s["url"]
+            _stype = _s.get("type", "assignment")
+            _deep_url = f"run/{_name}" if _stype == "lecture" else f"edit/{_name}"
             _stop_btn = mo.ui.button(
                 label="Stop",
                 kind="danger",
@@ -424,7 +426,7 @@ def _(
                 mo.hstack(
                     [
                         mo.md(
-                            f'**{_name}** — <a href="/{_url}" target="_blank">open</a>'
+                            f'**{_name}** — <a href="{_deep_url}" target="_blank">open</a>'
                         ),
                         _stop_btn,
                     ],
