@@ -40,6 +40,19 @@ echo "=== Assembling course directory ==="
 mkdir -p "$COURSE/import"
 
 cat > "$COURSE/mograder.toml" << 'TOML'
+transport = "https"
+
+[https]
+url = "https://mograder-demo.jrkermode.uk"
+
+[[assignments]]
+name = "demo-assignment"
+dir = "demo-assignment"
+
+[[assignments]]
+name = "demo-holistic"
+dir = "demo-holistic"
+
 [defaults]
 no_edit = true
 
