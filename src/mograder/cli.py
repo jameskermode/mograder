@@ -1,5 +1,6 @@
 """Click CLI for mograder: generate, autograde, feedback."""
 
+import contextlib
 import json
 import os
 import shutil
@@ -3595,18 +3596,33 @@ def hub_check(course_dir):
     default=None,
     help="Instructor token for remote warm-cache",
 )
+@click.option(
+    "--ssh",
+    "ssh_host",
+    envvar="MOGRADER_HUB_SSH",
+    default=None,
+    help="SSH host for tunnel (uses ~/.ssh/config, bypasses SSO proxy)",
+)
+@click.option(
+    "--ssh-port",
+    type=int,
+    default=8080,
+    help="Remote hub port for SSH tunnel (default: 8080)",
+)
 @click.pass_context
-def hub_warm_cache(ctx, notebooks, warm_all, dry_run, url, hub_token):
+def hub_warm_cache(
+    ctx, notebooks, warm_all, dry_run, url, hub_token, ssh_host, ssh_port
+):
     """Warm the uv cache and create shared venvs for notebook dependencies.
 
     Parses PEP 723 inline script metadata to find dependencies, populates
     the uv download cache, and creates a shared ``.venv`` in each notebook's
     directory for fast session startup.
 
-    With --url, sends a POST to the hub's /warm-cache endpoint instead.
+    With --url or --ssh, sends a POST to the hub's /warm-cache endpoint instead.
     """
     # Remote mode: delegate to hub API
-    if url:
+    if url or ssh_host:
         import requests as req
 
         if not hub_token:
@@ -3616,17 +3632,32 @@ def hub_warm_cache(ctx, notebooks, warm_all, dry_run, url, hub_token):
                 err=True,
             )
             raise SystemExit(1)
-        resp = req.post(
-            f"{url.rstrip('/')}/warm-cache",
-            headers={"Authorization": f"Bearer {hub_token}"},
-            timeout=300,
-        )
-        if resp.status_code != 200:
-            click.echo(f"warm-cache failed ({resp.status_code}): {resp.text}", err=True)
-            raise SystemExit(1)
-        data = resp.json()
-        warmed = data.get("warmed", [])
-        click.echo(f"Warmed {len(warmed)} notebooks: {', '.join(warmed) or '(none)'}")
+
+        def _do_warm(base_url):
+            resp = req.post(
+                f"{base_url.rstrip('/')}/warm-cache",
+                headers={"Authorization": f"Bearer {hub_token}"},
+                timeout=300,
+            )
+            if resp.status_code != 200:
+                click.echo(
+                    f"warm-cache failed ({resp.status_code}): {resp.text}",
+                    err=True,
+                )
+                raise SystemExit(1)
+            data = resp.json()
+            warmed = data.get("warmed", [])
+            click.echo(
+                f"Warmed {len(warmed)} notebooks: {', '.join(warmed) or '(none)'}"
+            )
+
+        if ssh_host and not url:
+            click.echo(f"Opening SSH tunnel to {ssh_host}:{ssh_port}...")
+            with _ssh_tunnel(ssh_host, ssh_port) as tunnel_url:
+                click.echo(f"Tunnel open: {tunnel_url}")
+                _do_warm(tunnel_url)
+        else:
+            _do_warm(url)
         return
 
     from mograder.hub.spawner import parse_pep723_deps, warm_notebook_cache
@@ -3691,6 +3722,49 @@ def hub_generate_token(username, role):
         click.echo(token)
 
 
+@contextlib.contextmanager
+def _ssh_tunnel(host: str, remote_port: int = 8080):
+    """Open an SSH tunnel and yield the local base URL."""
+    import socket as _socket
+    import subprocess as _sp
+
+    # Find a free local port
+    with _socket.socket(_socket.AF_INET, _socket.SOCK_STREAM) as s:
+        s.bind(("127.0.0.1", 0))
+        local_port = s.getsockname()[1]
+
+    proc = _sp.Popen(
+        ["ssh", "-N", "-L", f"{local_port}:localhost:{remote_port}", host],
+        stdout=_sp.DEVNULL,
+        stderr=_sp.PIPE,
+    )
+    # Wait for tunnel to be ready
+    for _ in range(20):
+        import time
+
+        time.sleep(0.5)
+        try:
+            _socket.create_connection(("localhost", local_port), timeout=1).close()
+            break
+        except OSError:
+            if proc.poll() is not None:
+                raise RuntimeError(
+                    f"SSH tunnel to {host} failed: {proc.stderr.read().decode().strip()}"
+                )
+    else:
+        proc.kill()
+        raise RuntimeError(f"SSH tunnel to {host} timed out")
+
+    try:
+        yield f"http://localhost:{local_port}"
+    finally:
+        proc.terminate()
+        try:
+            proc.wait(timeout=5)
+        except Exception:
+            proc.kill()
+
+
 @hub.command("publish")
 @click.argument("assignment")
 @click.option(
@@ -3714,6 +3788,19 @@ def hub_generate_token(username, role):
     is_flag=True,
     help="Publish as lecture (implies --force, skips Moodle verification)",
 )
+@click.option(
+    "--ssh",
+    "ssh_host",
+    envvar="MOGRADER_HUB_SSH",
+    default=None,
+    help="SSH host for tunnel (uses ~/.ssh/config, bypasses SSO proxy)",
+)
+@click.option(
+    "--ssh-port",
+    type=int,
+    default=8080,
+    help="Remote hub port for SSH tunnel (default: 8080)",
+)
 @click.pass_context
 def hub_publish(
     ctx,
@@ -3725,6 +3812,8 @@ def hub_publish(
     dry_run,
     no_warm,
     lecture,
+    ssh_host,
+    ssh_port,
 ):
     """Publish a release assignment to the hub.
 
@@ -3839,10 +3928,6 @@ def hub_publish(
         click.echo("Dry run — not publishing.")
         return
 
-    # Publish to hub
-    if not url:
-        click.echo("Error: --url required (or set MOGRADER_HUB_URL)", err=True)
-        raise SystemExit(1)
     if not hub_token:
         click.echo(
             "Error: --token required (or set MOGRADER_HUB_INSTRUCTOR_TOKEN)",
@@ -3850,47 +3935,58 @@ def hub_publish(
         )
         raise SystemExit(1)
 
-    multipart_files = []
-    for name, path in sorted(local_files.items()):
-        multipart_files.append(("files", (name, path.read_bytes())))
+    def _do_publish(base_url):
+        multipart_files = []
+        for name, path in sorted(local_files.items()):
+            multipart_files.append(("files", (name, path.read_bytes())))
 
-    publish_url = f"{url.rstrip('/')}/publish/{assignment_name}"
-    if item_type != "assignment":
-        publish_url += f"?type={item_type}"
+        publish_url = f"{base_url.rstrip('/')}/publish/{assignment_name}"
+        if item_type != "assignment":
+            publish_url += f"?type={item_type}"
 
-    resp = req.post(
-        publish_url,
-        files=multipart_files,
-        headers={"Authorization": f"Bearer {hub_token}"},
-        timeout=120,
-    )
-    if resp.status_code != 200:
-        click.echo(f"Publish failed ({resp.status_code}): {resp.text}", err=True)
-        raise SystemExit(1)
-
-    data = resp.json()
-    click.echo(f"Published {len(data.get('files', []))} files to hub.")
-
-    # Warm uv cache for the published assignment
-    if no_warm:
-        click.echo("Skipping cache warm (--no-warm).")
-    else:
-        click.echo("Warming uv cache...")
-        warm_resp = req.post(
-            f"{url.rstrip('/')}/warm-cache",
+        resp = req.post(
+            publish_url,
+            files=multipart_files,
             headers={"Authorization": f"Bearer {hub_token}"},
-            timeout=300,
+            timeout=120,
         )
-        if warm_resp.status_code == 200:
-            warmed = warm_resp.json().get("warmed", [])
-            click.echo(
-                f"Warmed {len(warmed)} notebooks: {', '.join(warmed) or '(none)'}"
-            )
+        if resp.status_code != 200:
+            click.echo(f"Publish failed ({resp.status_code}): {resp.text}", err=True)
+            raise SystemExit(1)
+
+        data = resp.json()
+        click.echo(f"Published {len(data.get('files', []))} files to hub.")
+
+        if no_warm:
+            click.echo("Skipping cache warm (--no-warm).")
         else:
-            click.echo(
-                f"Warning: cache warm failed ({warm_resp.status_code}): {warm_resp.text}",
-                err=True,
+            click.echo("Warming uv cache...")
+            warm_resp = req.post(
+                f"{base_url.rstrip('/')}/warm-cache",
+                headers={"Authorization": f"Bearer {hub_token}"},
+                timeout=300,
             )
+            if warm_resp.status_code == 200:
+                warmed = warm_resp.json().get("warmed", [])
+                click.echo(
+                    f"Warmed {len(warmed)} notebooks: {', '.join(warmed) or '(none)'}"
+                )
+            else:
+                click.echo(
+                    f"Warning: cache warm failed ({warm_resp.status_code}): {warm_resp.text}",
+                    err=True,
+                )
+
+    if ssh_host:
+        click.echo(f"Opening SSH tunnel to {ssh_host}:{ssh_port}...")
+        with _ssh_tunnel(ssh_host, ssh_port) as tunnel_url:
+            click.echo(f"Tunnel open: {tunnel_url}")
+            _do_publish(tunnel_url)
+    elif url:
+        _do_publish(url)
+    else:
+        click.echo("Error: --url or --ssh required (or set MOGRADER_HUB_URL)", err=True)
+        raise SystemExit(1)
 
 
 @hub.command("sync-users")
