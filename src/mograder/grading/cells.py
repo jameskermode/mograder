@@ -377,6 +377,8 @@ def build_submit_cell(server_url: str, assignment_name: str) -> str:
 def _(mo):
     {SUBMIT_MARKER}
     import os as _os
+    # Hide submit form when running from a dashboard or hub (they handle
+    # submission themselves).  Show in WASM, Molab, and standalone mode.
     mo.stop(_os.environ.get("MOGRADER_DASHBOARD") == "1")
     submit_username = mo.ui.text(label="Username", placeholder="Enter your username")
     submit_btn = mo.ui.run_button(label="Submit")
