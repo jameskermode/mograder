@@ -156,4 +156,5 @@ class HTTPSTransport:
             graded=data.get("graded", False),
             grade=data.get("grade"),
             feedback=data.get("feedback", ""),
+            feedback_available=data.get("feedback_available", False),
         )

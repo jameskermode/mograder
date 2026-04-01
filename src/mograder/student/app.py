@@ -475,6 +475,33 @@ def _(
                 )
                 btn_keys.append(key)
 
+            # Check if HTML feedback is available (HTTPS transport only)
+            if IS_HTTPS and token and slug:
+                try:
+                    from mograder.transport.https_transport import HTTPSTransport as _HT
+
+                    _fb_transport = _HT(
+                        CONFIG.https_url,
+                        token=token,
+                        user=token.split(":", 1)[0] if ":" in token else "",
+                    )
+                    _remote_status = _fb_transport.get_status(slug)
+                    if getattr(_remote_status, "feedback_available", False):
+                        _fb_user = _fb_transport.user
+                        _fb_url = (
+                            f"{CONFIG.https_url}/assignments/{slug}/feedback/{_fb_user}"
+                        )
+                        key = f"{i}_feedback"
+                        all_buttons[key] = mo.ui.button(
+                            label="Feedback",
+                            on_change=lambda _, u=_fb_url, n=a["name"]: set_pending(
+                                {"action": "view_feedback", "url": u, "name": n}
+                            ),
+                        )
+                        btn_keys.append(key)
+                except Exception:
+                    pass  # Status check is best-effort
+
             rows.append(
                 {
                     "Assignment": a["name"],
@@ -688,6 +715,14 @@ def _(
                 except Exception as _exc:
                     set_action_log(f"Validation failed for **{_name}**: {_exc}")
             set_refresh(lambda v: v + 1)
+
+        elif _act == "view_feedback":
+            _url = pending["url"]
+            _name = pending["name"]
+            set_action_log(
+                f"Feedback for **{_name}**: "
+                f'<a href="{_url}" target="_blank">view feedback</a>'
+            )
 
         elif _act == "submit" and (_client or _transport):
             _path = Path(pending["path"])

@@ -60,3 +60,4 @@ class RemoteStatus:
     graded: bool = False
     grade: str | None = None
     feedback: str = ""
+    feedback_available: bool = False
