@@ -52,3 +52,11 @@ mograder workshop serve dist/workshop/ --salt mykey
 ```
 
 This starts a local server and prints two URLs: one for students (the WASM notebook) and one for the instructor (a dashboard to release solutions incrementally). The instructor dashboard URL includes a randomly generated secret token.
+
+## Example: HetSys CDT Induction
+
+A publicly available workshop notebook is used for induction material in the [HetSys CDT](https://warwick.ac.uk/fac/sci/hetsys/) at the University of Warwick:
+
+**[Probability Foundations — L00a](https://hetsys.github.io/PX914/L00a-ProbabilityFoundations)**
+
+This is deployed as a WASM notebook on GitHub Pages, which is convenient for induction since students need access before they have university accounts or local Python installations. During an in-person induction session on arrival, the instructor releases model solutions in real time as students complete each exercise, using the workshop serve/dashboard workflow described above.
