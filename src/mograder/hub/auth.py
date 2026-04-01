@@ -190,7 +190,7 @@ class RemoteUserMiddleware:
                 # Assign a random guest identity and persist via cookie
                 import secrets as _secrets
 
-                username = f"guest-{_secrets.token_hex(4)}"
+                username = f"guest-{_secrets.token_hex(2)}"
                 set_cookie = True
 
         # 5. Reject unauthenticated
