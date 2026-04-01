@@ -404,7 +404,7 @@ def _(
                 mo.ui.button(label="\u00bb", disabled=True, tooltip="Autograde")
             )
 
-        # Export Moodle (feedback + optional moodle merge)
+        # Export marks and feedback (+ optional Moodle CSV merge)
         _auto_dir = COURSE_DIR / DIR_NAMES.autograded / _a.name
         _worksheet_path = COURSE_DIR / DIR_NAMES.import_dir / f"{_a.name}.csv"
         _export_dir = COURSE_DIR / "export"
@@ -425,9 +425,7 @@ def _(
                     ]
                 )
             _n5 = _a.name
-            _tooltip = (
-                "Export Moodle" if _worksheet_path.is_file() else "Export feedback"
-            )
+            _tooltip = "Export marks and feedback"
             _fb.append(
                 mo.ui.button(
                     label="\u00bb",
@@ -439,7 +437,11 @@ def _(
             )
         else:
             _fb.append(
-                mo.ui.button(label="\u00bb", disabled=True, tooltip="Export Moodle")
+                mo.ui.button(
+                    label="\u00bb",
+                    disabled=True,
+                    tooltip="Export marks and feedback",
+                )
             )
 
         # Feedback downloads — CSV and ZIP if they exist
