@@ -275,7 +275,46 @@ def create_hub_app(
             session = await session_mgr.get_or_spawn(username, assignment)
             return {
                 "status": "ok",
-                "url": f"/edit/{username}/{assignment}/",
+                "url": f"/edit/user/{username}/{assignment}/",
+                "port": session.port,
+            }
+        except FileNotFoundError:
+            raise HTTPException(status_code=404, detail="Notebook not found")
+        except TimeoutError as e:
+            raise HTTPException(status_code=504, detail=str(e))
+
+    # -- Deep link: auto-download + start-edit --
+
+    @app.post("/start-edit-deep/{assignment}")
+    async def start_edit_deep(request: Request, assignment: str):
+        """Auto-download release (if needed) and start an edit session.
+
+        Used by deep links from lectures and Moodle.  If the student
+        already has a copy, it is preserved (not overwritten).
+        """
+        user = request.scope.get("user", {})
+        username = user.get("username", "")
+        if not username:
+            raise HTTPException(status_code=403, detail="Authentication required")
+
+        if not storage.has_release(assignment):
+            raise HTTPException(status_code=404, detail="Assignment not found")
+
+        # Auto-download if student doesn't have a copy yet
+        nb = storage.assignment_path(username, assignment)
+        if not nb.exists():
+            release = storage.release_path(assignment)
+            storage.ensure_dir(username, assignment)
+            import shutil
+
+            shutil.copy2(str(release), str(nb))
+            storage.mark_uploaded(username, assignment)
+
+        try:
+            session = await session_mgr.get_or_spawn(username, assignment)
+            return {
+                "status": "ok",
+                "url": f"/edit/user/{username}/{assignment}/",
                 "port": session.port,
             }
         except FileNotFoundError:
@@ -308,7 +347,7 @@ def create_hub_app(
                 continue
             # Determine URL based on whether this is a lecture or assignment
             is_lecture = storage.item_type(a) == "lecture"
-            session_url = f"run/~{u}/{a}/" if is_lecture else f"edit/{u}/{a}/"
+            session_url = f"run/user/{u}/{a}/" if is_lecture else f"edit/user/{u}/{a}/"
             result.append(
                 {
                     "username": u,
@@ -376,7 +415,7 @@ def create_hub_app(
             session = await session_mgr.get_or_spawn_run(username, lecture)
             return {
                 "status": "ok",
-                "url": f"/run/~{username}/{lecture}/",
+                "url": f"/run/user/{username}/{lecture}/",
                 "port": session.port,
             }
         except FileNotFoundError:
@@ -428,6 +467,12 @@ def create_hub_app(
         user = request.scope.get("user", {})
         if not user.get("is_instructor"):
             raise HTTPException(status_code=403, detail="Instructor access required")
+
+        if assignment == "user":
+            raise HTTPException(
+                status_code=400,
+                detail="'user' is reserved and cannot be used as a name",
+            )
 
         # Read item type from query params (default: "assignment")
         item_type = request.query_params.get("type", "assignment")

@@ -552,7 +552,7 @@ class TestStartEdit:
         assert resp.status_code == 200
         data = resp.json()
         assert data["status"] == "ok"
-        assert data["url"] == "/edit/dev-user/hw1/"
+        assert data["url"] == "/edit/user/dev-user/hw1/"
         assert data["port"] == 18001
 
     def test_start_edit_no_notebook_404(self, client, hub_dirs):
@@ -665,3 +665,137 @@ class TestDashboardMount:
             files={"file": ("hw1.py", content, "text/x-python")},
         )
         assert resp.status_code == 200
+
+
+class TestDeepLinkEdit:
+    """Tests for /start-edit-deep/{assignment} — auto-download + start-edit."""
+
+    def test_deep_edit_unauthenticated_403(self, hub_dirs):
+        """POST /start-edit-deep/hw1 without auth → 403."""
+        from mograder.core.auth import make_token
+
+        secret = "test-secret"
+        app = create_hub_app(
+            hub_dirs["course_dir"],
+            dev=False,
+            notebooks_dir=hub_dirs["notebooks"],
+            release_dir=hub_dirs["release"],
+            secret=secret,
+        )
+        client = TestClient(app, raise_server_exceptions=False)
+        resp = client.post("/start-edit-deep/hw1")
+        assert resp.status_code == 403
+
+    def test_deep_edit_no_release_404(self, client, hub_dirs):
+        """POST /start-edit-deep/nonexistent → 404."""
+        resp = client.post("/start-edit-deep/nonexistent")
+        assert resp.status_code == 404
+
+    def test_deep_edit_downloads_release(self, app, client, hub_dirs):
+        """POST /start-edit-deep/hw1 creates student copy from release."""
+        _setup_release(hub_dirs, "hw1", "# release version")
+
+        from mograder.hub.models import MarimoSession
+
+        mock_session = MarimoSession(
+            username="dev-user",
+            assignment="hw1",
+            port=18001,
+            process=None,
+            notebook_path=str(hub_dirs["notebooks"] / "dev-user" / "hw1" / "hw1.py"),
+        )
+
+        async def mock_get_or_spawn(username, assignment):
+            return mock_session
+
+        app.state.session_mgr.get_or_spawn = mock_get_or_spawn
+
+        resp = client.post("/start-edit-deep/hw1")
+        assert resp.status_code == 200
+
+        # Check student file was created from release
+        nb = hub_dirs["notebooks"] / "dev-user" / "hw1" / "hw1.py"
+        assert nb.exists()
+        assert nb.read_text() == "# release version"
+
+    def test_deep_edit_preserves_student_edits(self, app, client, hub_dirs):
+        """POST /start-edit-deep/hw1 when student copy exists → file unchanged."""
+        _setup_release(hub_dirs, "hw1", "# release version")
+        _setup_student_file(hub_dirs, "dev-user", "hw1", "# my edits")
+
+        from mograder.hub.models import MarimoSession
+
+        mock_session = MarimoSession(
+            username="dev-user",
+            assignment="hw1",
+            port=18001,
+            process=None,
+            notebook_path=str(hub_dirs["notebooks"] / "dev-user" / "hw1" / "hw1.py"),
+        )
+
+        async def mock_get_or_spawn(username, assignment):
+            return mock_session
+
+        app.state.session_mgr.get_or_spawn = mock_get_or_spawn
+
+        resp = client.post("/start-edit-deep/hw1")
+        assert resp.status_code == 200
+
+        # Verify student file unchanged
+        nb = hub_dirs["notebooks"] / "dev-user" / "hw1" / "hw1.py"
+        assert nb.read_text() == "# my edits"
+
+    def test_deep_edit_returns_url(self, app, client, hub_dirs):
+        """POST /start-edit-deep/hw1 returns per-user edit URL."""
+        _setup_release(hub_dirs, "hw1")
+
+        from mograder.hub.models import MarimoSession
+
+        mock_session = MarimoSession(
+            username="dev-user",
+            assignment="hw1",
+            port=18001,
+            process=None,
+            notebook_path=str(hub_dirs["notebooks"] / "dev-user" / "hw1" / "hw1.py"),
+        )
+
+        async def mock_get_or_spawn(username, assignment):
+            return mock_session
+
+        app.state.session_mgr.get_or_spawn = mock_get_or_spawn
+
+        resp = client.post("/start-edit-deep/hw1")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["url"] == "/edit/user/dev-user/hw1/"
+
+    def test_publish_rejects_name_user(self, hub_dirs):
+        """Publish with assignment name 'user' → 400."""
+        import io
+
+        from mograder.core.auth import INSTRUCTOR_USER, make_token
+
+        secret = "test-secret"
+        app = create_hub_app(
+            hub_dirs["course_dir"],
+            dev=False,
+            notebooks_dir=hub_dirs["notebooks"],
+            release_dir=hub_dirs["release"],
+            secret=secret,
+        )
+        token = make_token(secret, INSTRUCTOR_USER)
+        client = TestClient(app, raise_server_exceptions=False)
+
+        with patch("mograder.hub.spawner.warm_notebook_cache"):
+            resp = client.post(
+                "/publish/user",
+                headers={"Authorization": f"Bearer {token}"},
+                files={
+                    "files": (
+                        "user.py",
+                        io.BytesIO(b"# bad name"),
+                        "text/x-python",
+                    )
+                },
+            )
+        assert resp.status_code == 400

@@ -33,7 +33,7 @@ def _make_session(username="alice", assignment="hw1", port=18000):
 
 class TestProxyRoutes:
     def test_user_isolation(self, mock_session_manager):
-        """User A requests /edit/B/hw1/ → 403."""
+        """User A requests /edit/user/B/hw1/ → 403."""
         from fastapi import FastAPI
         from starlette.testclient import TestClient
 
@@ -48,7 +48,7 @@ class TestProxyRoutes:
             return await call_next(request)
 
         client = TestClient(app, raise_server_exceptions=False)
-        resp = client.get("/edit/bob/hw1/")
+        resp = client.get("/edit/user/bob/hw1/")
         assert resp.status_code == 403
 
     def test_instructor_bypass(self, mock_session_manager):
@@ -73,7 +73,7 @@ class TestProxyRoutes:
 
         # This will fail to proxy (no upstream), but should not get 403
         client = TestClient(app, raise_server_exceptions=False)
-        resp = client.get("/edit/alice/hw1/")
+        resp = client.get("/edit/user/alice/hw1/")
         # Should not be 403 — will be 502 or similar since no upstream
         assert resp.status_code != 403
 
@@ -94,7 +94,7 @@ class TestProxyRoutes:
             return await call_next(request)
 
         client = TestClient(app, raise_server_exceptions=False)
-        resp = client.get("/edit/alice/hw1/")
+        resp = client.get("/edit/user/alice/hw1/")
         assert resp.status_code == 404
 
     def test_proxy_touches_last_seen(self, mock_session_manager):
@@ -117,5 +117,5 @@ class TestProxyRoutes:
             return await call_next(request)
 
         client = TestClient(app, raise_server_exceptions=False)
-        client.get("/edit/alice/hw1/")
+        client.get("/edit/user/alice/hw1/")
         assert session.last_seen > old_last_seen

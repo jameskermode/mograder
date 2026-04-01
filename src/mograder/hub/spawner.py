@@ -179,7 +179,7 @@ class SessionManager:
         """Build the marimo edit command, optionally wrapped in bwrap."""
         from mograder.grading.runner import _venv_python
 
-        base_url = f"/edit/{username}/{assignment}"
+        base_url = f"/edit/user/{username}/{assignment}"
         sandbox_dir = self._get_sandbox_dir(assignment)
 
         if sandbox_dir is not None:
@@ -269,7 +269,7 @@ class SessionManager:
         else:
             python_exe = sys.executable
 
-        base_url = f"/run/~{username}/{lecture}"
+        base_url = f"/run/user/{username}/{lecture}"
         cmd = [
             python_exe,
             "-m",
