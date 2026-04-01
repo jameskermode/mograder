@@ -84,12 +84,21 @@ with Gradebook('$COURSE/gradebook.db') as gb:
 print(f'Imported {len(mapping)} students')
 "
 
-# Copy auxiliary notebooks from demo/course (skip workshop — it has its
-# own encrypted serving mechanism via MOGRADER_WORKSHOP_DIR)
+# Generate release notebooks with submit cell for hub deployment
+SUBMIT_URL="https://mograder-demo.jrkermode.uk"
+echo "=== Generating release notebooks with submit cell ==="
+$MOGRADER generate \
+    examples/source/demo-assignment/demo-assignment.py \
+    examples/source/demo-holistic/demo-holistic.py \
+    --submit-url "$SUBMIT_URL" \
+    -o "$COURSE/release" --no-validate
+
+# Copy auxiliary notebooks from demo/course (lectures, workshops)
 if [ -d demo/course ]; then
     for d in demo/course/*/; do
         name=$(basename "$d")
-        case "$name" in *workshop*) continue ;; esac
+        # Skip assignments (generated above) and workshops (encrypted separately)
+        case "$name" in *assignment*|*holistic*|*workshop*) continue ;; esac
         mkdir -p "$COURSE/source/$name" "$COURSE/release/$name"
         cp "$d"/files/*.py "$COURSE/source/$name/" 2>/dev/null || true
         cp "$d"/files/*.py "$COURSE/release/$name/" 2>/dev/null || true
