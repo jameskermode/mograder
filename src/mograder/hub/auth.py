@@ -183,8 +183,14 @@ class RemoteUserMiddleware:
         # 4. Dev mode fallback
         if username is None and self.dev:
             header_user = _get_header(scope, self.trusted_header)
-            username = header_user or "dev-user"
             if header_user:
+                username = header_user
+                set_cookie = True
+            else:
+                # Assign a random guest identity and persist via cookie
+                import secrets as _secrets
+
+                username = f"guest-{_secrets.token_hex(4)}"
                 set_cookie = True
 
         # 5. Reject unauthenticated

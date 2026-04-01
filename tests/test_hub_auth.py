@@ -164,7 +164,7 @@ class TestMiddleware:
         assert resp["status"] == 403
 
     def test_dev_mode_fallback(self):
-        """Dev mode with no headers → dev-user."""
+        """Dev mode with no headers → random guest-XXXX user."""
         mw = RemoteUserMiddleware(
             _echo_app(),
             secret=SECRET,
@@ -174,7 +174,7 @@ class TestMiddleware:
         )
         resp = asyncio.run(_call_middleware(mw, client=("192.168.1.1", 9999)))
         assert resp["status"] == 200
-        assert b"user=dev-user" in resp["body"]
+        assert b"user=guest-" in resp["body"]
 
 
 class TestDependencies:

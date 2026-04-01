@@ -41,7 +41,9 @@ def app(hub_dirs):
 @pytest.fixture
 def client(app):
     """TestClient with dev-user auth."""
-    return TestClient(app, raise_server_exceptions=False)
+    return TestClient(
+        app, raise_server_exceptions=False, headers={"X-Remote-User": "dev-user"}
+    )
 
 
 def _setup_student_file(hub_dirs, username, assignment, content="# student code"):
