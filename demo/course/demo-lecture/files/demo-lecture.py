@@ -128,7 +128,7 @@ def _(degree_slider, mo, np, plt, x_data, x_fine, y_data, y_fine):
 
     Residual sum of squares: **{residual:.4f}**
 
-    > **Exercise:** Try the [demo assignment](/run/demo-assignment/) to
+    > **Exercise:** Try the [demo assignment](../../../../edit/demo-assignment/) to
     > practise these ideas with numpy.
     """
     )
