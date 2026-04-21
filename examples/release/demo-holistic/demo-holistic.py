@@ -10,7 +10,7 @@
 
 import marimo
 
-__generated_with = "0.20.0"
+__generated_with = "0.23.2"
 app = marimo.App()
 
 
@@ -48,17 +48,14 @@ def _(mo):
     return
 
 
-@app.cell
-def _():
-    def is_palindrome(s):
-        # YOUR CODE HERE
-        pass
-
-    return (is_palindrome,)
+@app.function
+def is_palindrome(s):
+    # YOUR CODE HERE
+    pass
 
 
 @app.cell(hide_code=True)
-def _(check, is_palindrome):
+def _(check):
     check(
         "Q1: Palindrome checker",
         [
@@ -89,17 +86,14 @@ def _(mo):
     return
 
 
-@app.cell
-def _():
-    def word_count(text):
-        # YOUR CODE HERE
-        pass
-
-    return (word_count,)
+@app.function
+def word_count(text):
+    # YOUR CODE HERE
+    pass
 
 
 @app.cell(hide_code=True)
-def _(check, word_count):
+def _(check):
     check(
         "Q2: Word counter",
         [
@@ -136,7 +130,7 @@ def _(mo):
     mo.md(r"""
     *Write your analysis here...*
     """)
-    return (response_text,)
+    return
 
 
 if __name__ == "__main__":
