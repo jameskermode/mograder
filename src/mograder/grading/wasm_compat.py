@@ -31,6 +31,8 @@ WASM_INCOMPATIBLE_DEPS: set[str] = {
     # TensorFlow
     "tensorflow",
     "tensorflow-gpu",
+    # Gaussian process libraries (depend on JAX)
+    "tinygp",
     # Other ML with native code
     "numba",
     "cython",
@@ -62,6 +64,10 @@ WASM_INCOMPATIBLE_DEPS: set[str] = {
     "fastparquet",
     "h5py",
     "tables",
+    # Atomistic simulation (Fortran extensions)
+    "atomistica",
+    # Visualisation with native code
+    "graphviz",
 }
 
 
