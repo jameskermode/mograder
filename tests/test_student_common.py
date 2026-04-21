@@ -50,45 +50,43 @@ def test_brand_logo_html_returns_string():
 
 
 def test_hub_actions_download():
-    """hub_download fetches release and uploads to notebook store."""
+    """hub_download POSTs to /download-release on the hub."""
     import httpx
     from unittest.mock import MagicMock
 
     from mograder.student.common import hub_download
 
-    # Mock httpx client
     mock_client = MagicMock(spec=httpx.Client)
+    resp = MagicMock()
+    resp.status_code = 200
+    mock_client.post.return_value = resp
 
-    release_resp = MagicMock()
-    release_resp.status_code = 200
-    release_resp.content = b"# notebook content"
+    headers = {"X-Remote-User": "user1"}
+    result = hub_download(mock_client, "user1", "A1-Test", headers)
 
-    upload_resp = MagicMock()
-    upload_resp.status_code = 200
-
-    mock_client.get.return_value = release_resp
-    mock_client.post.return_value = upload_resp
-
-    result = hub_download(mock_client, "user1", "A1-Test", {"X-Remote-User": "user1"})
     assert result.success is True
     assert "Downloaded" in result.message
+    mock_client.post.assert_called_once()
+    call_url = mock_client.post.call_args.args[0]
+    assert call_url == "/download-release/user1/A1-Test"
 
 
 def test_hub_actions_download_failure():
-    """hub_download returns failure on bad response."""
+    """hub_download returns failure when the server rejects the copy."""
     import httpx
     from unittest.mock import MagicMock
 
     from mograder.student.common import hub_download
 
     mock_client = MagicMock(spec=httpx.Client)
-    release_resp = MagicMock()
-    release_resp.status_code = 404
-    release_resp.text = "Not found"
-    mock_client.get.return_value = release_resp
+    resp = MagicMock()
+    resp.status_code = 404
+    resp.text = "Assignment not found"
+    mock_client.post.return_value = resp
 
     result = hub_download(mock_client, "user1", "A1-Test", {"X-Remote-User": "user1"})
     assert result.success is False
+    assert "Assignment not found" in result.message
 
 
 def test_hub_actions_validate():

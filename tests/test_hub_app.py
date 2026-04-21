@@ -121,6 +121,31 @@ class TestUpload:
         assert resp.status_code == 403
 
 
+class TestDownloadRelease:
+    def test_copies_release_with_unsafe_import(self, client, hub_dirs):
+        """Release files containing denied imports (e.g. ``os``) copy without
+        being run through the student-submission safety scanner."""
+        release_src = "import os as _os\n_os.environ.get('X')\n"
+        _setup_release(hub_dirs, "hw1", release_src)
+        resp = client.post("/download-release/dev-user/hw1")
+        assert resp.status_code == 200
+        nb = hub_dirs["notebooks"] / "dev-user" / "hw1" / "hw1.py"
+        assert nb.read_text() == release_src
+
+    def test_missing_release_404(self, client):
+        """Unknown assignment returns 404."""
+        resp = client.post("/download-release/dev-user/nonexistent")
+        assert resp.status_code == 404
+
+    def test_marks_uploaded(self, client, hub_dirs):
+        """Download creates the ``.uploaded`` marker the dashboard reads."""
+        _setup_release(hub_dirs, "hw1", "# release\n")
+        resp = client.post("/download-release/dev-user/hw1")
+        assert resp.status_code == 200
+        marker = hub_dirs["notebooks"] / "dev-user" / "hw1" / ".uploaded"
+        assert marker.exists()
+
+
 class TestExport:
     def test_returns_file(self, client, hub_dirs):
         """Existing notebook returns file content."""

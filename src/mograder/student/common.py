@@ -63,25 +63,15 @@ class ActionResult:
 
 
 def hub_download(client, username: str, assignment: str, headers: dict) -> ActionResult:
-    """Download release notebook and upload to user's notebook store."""
+    """Copy release notebook into the user's notebook store (server-side)."""
     try:
-        resp = client.get(
-            f"/release/{assignment}/{assignment}.py",
+        resp = client.post(
+            f"/download-release/{username}/{assignment}",
             headers=headers,
             timeout=30,
         )
         if resp.status_code != 200:
             return ActionResult(False, f"Download failed: {resp.text}")
-
-        up = client.post(
-            f"/upload/{username}/{assignment}",
-            headers=headers,
-            files={"file": (f"{assignment}.py", resp.content, "text/x-python")},
-            timeout=30,
-        )
-        if up.status_code != 200:
-            return ActionResult(False, f"Upload failed: {up.text}")
-
         return ActionResult(True, f"Downloaded **{assignment}**")
     except Exception as exc:
         return ActionResult(False, f"Download failed: {exc}")

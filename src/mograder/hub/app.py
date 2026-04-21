@@ -431,6 +431,22 @@ def create_hub_app(
         storage.mark_exported(username, assignment)
         return {"status": "ok"}
 
+    # -- Server-side copy of release into user's notebook store --
+
+    @app.post("/download-release/{username}/{assignment}")
+    async def download_release(request: Request, username: str, assignment: str):
+        _check_owner(request, username)
+        release = storage.release_path(assignment)
+        if release is None:
+            raise HTTPException(status_code=404, detail="Assignment not found")
+        nb = storage.assignment_path(username, assignment)
+        storage.ensure_dir(username, assignment)
+        shutil.copy2(str(release), str(nb))
+        storage.mark_uploaded(username, assignment)
+        if (username, assignment) in session_mgr.sessions:
+            await session_mgr.terminate(username, assignment)
+        return {"status": "ok", "path": str(nb)}
+
     # -- Release download --
 
     @app.get("/release/{assignment}/{filename:path}")
