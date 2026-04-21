@@ -12,7 +12,7 @@
 
 import marimo
 
-__generated_with = "0.20.0"
+__generated_with = "0.23.2"
 app = marimo.App()
 
 
@@ -65,7 +65,7 @@ def _(mo):
 
 
 @app.cell
-def _(np):
+def _():
     x = None
     y = None
     # YOUR CODE HERE
@@ -105,19 +105,16 @@ def _(mo):
     return
 
 
-@app.cell
-def _(np):
-    def finite_diff(x, y):
-        dydx = ...
-        # YOUR CODE HERE
-        pass
-        return dydx
-
-    return (finite_diff,)
+@app.function
+def finite_diff(x, y):
+    dydx = ...
+    # YOUR CODE HERE
+    pass
+    return dydx
 
 
 @app.cell(hide_code=True)
-def _(check, finite_diff, mo, np, x, y):
+def _(check, mo, np, x, y):
     mo.stop(x is None, check("Q2: Finite differences", []))
     _dydx = finite_diff(x, y)
     _exact = np.cos(x)
@@ -154,7 +151,7 @@ def _(mo):
 
 
 @app.cell
-def _(np, x, y):
+def _():
     integral = None
     # YOUR CODE HERE
     pass
@@ -198,7 +195,7 @@ def _(mo):
     mo.md(r"""
     *Write your analysis here...*
     """)
-    return (response_text,)
+    return
 
 
 @app.cell(hide_code=True)
