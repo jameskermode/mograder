@@ -10,7 +10,7 @@ echo "=== Fetching and resetting to origin/main ==="
 ssh $HOST "cd $REMOTE_DIR && git fetch origin && git reset --hard origin/main"
 
 echo "=== Installing dependencies ==="
-ssh $HOST "cd $REMOTE_DIR && \$HOME/.local/bin/uv sync --extra grader --extra asgi"
+ssh $HOST "cd $REMOTE_DIR && \$HOME/.local/bin/uv sync --extra hub"
 
 echo "=== Rebuilding demo data ==="
 ssh $HOST "cd $REMOTE_DIR && PYTHON=.venv/bin/python MOGRADER=.venv/bin/mograder bash demo/setup_grader_demo.sh"
