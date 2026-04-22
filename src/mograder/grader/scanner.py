@@ -56,6 +56,7 @@ class AssignmentInfo:
     has_release: bool = False
     num_submitted: int = 0
     num_autograded: int = 0
+    num_pending: int = 0  # submissions with no autograded .py, or a stale one
     num_graded: int = 0
     num_feedback: int = 0
     submissions: list[SubmissionInfo] = field(default_factory=list)
@@ -104,6 +105,7 @@ def scan_course(
 
     # Scan submitted/
     submitted_dir = course_dir / dn.submitted
+    autograded_dir = course_dir / dn.autograded
     if submitted_dir.is_dir():
         for d in sorted(submitted_dir.iterdir()):
             if d.is_dir():
@@ -115,6 +117,19 @@ def scan_course(
                 if py_files:
                     info = _ensure(d.name)
                     info.num_submitted = len(py_files)
+                    # Pending: submission has no autograded counterpart, or
+                    # the autograded .py is older than the submission (stale).
+                    # Matches the skip-logic in ``mograder autograde`` so
+                    # the grader UI shows exactly what would re-run.
+                    auto_d = autograded_dir / d.name
+                    pending = 0
+                    for f in py_files:
+                        auto_f = auto_d / f.name
+                        if not auto_f.is_file():
+                            pending += 1
+                        elif f.stat().st_mtime > auto_f.stat().st_mtime:
+                            pending += 1
+                    info.num_pending = pending
 
     # Scan autograded/
     autograded_dir = course_dir / dn.autograded

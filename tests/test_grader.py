@@ -112,6 +112,42 @@ def test_scan_course_full_pipeline(tmp_path):
     assert info.num_autograded == 2
     assert info.num_graded == 1
     assert info.num_feedback == 1
+    # carol has no autograded .py → pending
+    assert info.num_pending == 1
+
+
+def test_scan_course_pending_counts_stale(tmp_path):
+    """A submission whose autograded .py is older than the submission counts
+    as pending — matches the skip logic in ``mograder autograde``."""
+    import os
+    import time
+
+    name = "hw1"
+    sub_dir = tmp_path / "submitted" / name
+    sub_dir.mkdir(parents=True)
+    auto_dir = tmp_path / "autograded" / name
+    auto_dir.mkdir(parents=True)
+
+    # alice: fresh autograded output, submitted before → up to date
+    (sub_dir / "alice.py").write_text(_minimal_notebook())
+    (auto_dir / "alice.py").write_text(_make_autograded(graded=False))
+    time.sleep(0.05)
+    # bob: submitted AFTER autograded → stale, pending
+    (auto_dir / "bob.py").write_text(_make_autograded(graded=False))
+    time.sleep(0.05)
+    (sub_dir / "bob.py").write_text(_minimal_notebook())
+    # Make bob's autograded older than bob's submission explicitly
+    old = time.time() - 60
+    os.utime(auto_dir / "bob.py", (old, old))
+    # carol: no autograded yet → pending
+    (sub_dir / "carol.py").write_text(_minimal_notebook())
+
+    result = scan_course(tmp_path)
+    assert len(result) == 1
+    info = result[0]
+    assert info.num_submitted == 3
+    assert info.num_autograded == 2
+    assert info.num_pending == 2  # bob stale + carol missing
 
 
 def test_scan_course_multiple_assignments(tmp_path):

@@ -615,15 +615,25 @@ def _(
             )
             _rel_idx += 1
 
-        # Submitted column: count + fetch button (sync), or count only (file mode)
+        # Submitted column: count, with "(N pending)" badge when there are
+        # submissions whose autograded .py is missing or older than the
+        # submission — these are the ones that would actually re-run if the
+        # instructor clicked the »autograde button now.
+        _pending_md = (
+            f' <span style="color:#c0392b;font-weight:600">'
+            f"({_a.num_pending} pending)</span>"
+            if _a.num_pending
+            else ""
+        )
+        _sub_md = mo.md(f"{_a.num_submitted}{_pending_md}")
         if _has_sync:
             _sub_cell = mo.hstack(
-                [mo.md(str(_a.num_submitted)), fetch_sub_btns[_i]],
+                [_sub_md, fetch_sub_btns[_i]],
                 justify="start",
                 gap=0.25,
             )
         else:
-            _sub_cell = mo.md(str(_a.num_submitted))
+            _sub_cell = _sub_md
 
         # Feedback column: text only
         _fb_text = (
