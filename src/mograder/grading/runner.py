@@ -426,8 +426,16 @@ def run_notebook(
         # processes and can block bwrap's clone() call.  Bwrap provides its own
         # process isolation via PID namespaces.
         _effective_nproc = 0 if use_bubblewrap else rlimit_nproc
+        # --sandbox mode shells out to uv, whose Rust allocator reserves a
+        # large chunk of virtual address space. A 1 GiB RLIMIT_AS caps uv
+        # before it can even import, so the sandboxed notebook never runs
+        # (rc=0 but empty HTML — fails silently). Only enforce RLIMIT_AS in
+        # --no-sandbox mode where just the notebook executes.
+        _effective_as = 0 if sandbox_dir is None else rlimit_as
         _preexec = (
-            _make_apply_rlimits(rlimit_cpu, _effective_nproc, rlimit_nofile, rlimit_as)
+            _make_apply_rlimits(
+                rlimit_cpu, _effective_nproc, rlimit_nofile, _effective_as
+            )
             if os.name != "nt"
             else None
         )
