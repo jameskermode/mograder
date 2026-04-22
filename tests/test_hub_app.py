@@ -355,6 +355,46 @@ class TestSubmit:
         resp = client.post("/submit/dev-user/never-uploaded")
         assert resp.status_code == 404
 
+    def test_submit_strips_submit_cell(self, client, hub_dirs):
+        """The submit cell (mo.ui.run_button) would hang marimo export in
+        headless mode; it must not appear in the grader snapshot."""
+        notebook_with_submit = """import marimo
+app = marimo.App()
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    # === MOGRADER: SUBMIT ===
+    import os as _os
+    mo.stop(_os.environ.get("MOGRADER_DASHBOARD") == "1")
+    submit_username = mo.ui.text(label="Username")
+    submit_btn = mo.ui.run_button(label="Submit")
+    mo.hstack([submit_username, submit_btn])
+    return submit_btn, submit_username
+
+
+@app.cell(hide_code=True)
+def _(submit_btn, submit_username, mo):
+    mo.stop(not submit_btn.value or not submit_username.value)
+    submit_result = "ok"
+    mo.callout(mo.md(f"Status: {submit_result}"), kind="success")
+    return
+
+
+if __name__ == "__main__":
+    app.run()
+"""
+        _setup_student_file(hub_dirs, "dev-user", "hw1", notebook_with_submit)
+        resp = client.post("/submit/dev-user/hw1")
+        assert resp.status_code == 200
+
+        submitted = (
+            hub_dirs["course_dir"] / "submitted" / "hw1" / "dev-user.py"
+        ).read_text()
+        assert "MOGRADER: SUBMIT" not in submitted
+        assert "run_button" not in submitted
+        assert "submit_btn" not in submitted
+
 
 class TestRelease:
     def test_release_download(self, client, hub_dirs):

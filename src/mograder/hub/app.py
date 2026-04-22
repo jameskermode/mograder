@@ -251,6 +251,13 @@ def create_hub_app(
             tampered_marks = result.tampered_marks
             submit_text = result.fixed_source
 
+        # The submit cell uses ``mo.ui.run_button`` which hangs
+        # ``marimo export`` in headless mode.  Strip it from the grader
+        # snapshot so autograde can run without waiting for a click.
+        from mograder.grading.cells import strip_submit_cells
+
+        submit_text = strip_submit_cells(submit_text)
+
         from mograder.transport.https_server import _write_submission
 
         target_dir = course_dir / config.submitted_dir / assignment

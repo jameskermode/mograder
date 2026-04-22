@@ -398,6 +398,46 @@ def _(submit_btn, submit_username, mo):
 '''
 
 
+def strip_submit_cells(text: str) -> str:
+    """Remove the submit cell pair injected by :func:`build_submit_cell`.
+
+    The submit cell uses ``mo.ui.run_button`` which makes ``marimo export``
+    wait indefinitely for a click in headless mode.  Grader snapshots in
+    ``submitted/`` must therefore not contain it.
+
+    Returns *text* unchanged if no submit cell is present.
+    """
+    from marimo._ast.codegen import generate_filecontents_from_ir
+    from marimo._convert.converters import MarimoConvert
+    from marimo._schemas.serialization import NotebookSerializationV1
+
+    ir = MarimoConvert.from_py(text).to_ir()
+    to_drop: set[int] = set()
+    for i, cell in enumerate(ir.cells):
+        if SUBMIT_MARKER in cell.code:
+            to_drop.add(i)
+            # The generated submit cell is followed by a dependent cell that
+            # references ``submit_btn``; drop it too so the remaining cells
+            # don't NameError on a missing input.
+            for j in range(i + 1, len(ir.cells)):
+                if "submit_btn" in ir.cells[j].code:
+                    to_drop.add(j)
+                    break
+    if not to_drop:
+        return text
+    new_cells = [c for i, c in enumerate(ir.cells) if i not in to_drop]
+    new_ir = NotebookSerializationV1(
+        app=ir.app,
+        header=ir.header,
+        version=ir.version,
+        cells=new_cells,
+        violations=ir.violations,
+        valid=ir.valid,
+        filename=ir.filename,
+    )
+    return generate_filecontents_from_ir(new_ir)
+
+
 def _inject_before_main(lines: list[str], cell_text: str) -> list[str]:
     """Insert *cell_text* before the ``if __name__`` guard."""
     insert_idx = None
