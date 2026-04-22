@@ -155,8 +155,14 @@ jobs:
 
       - name: Verify
         run: |
-          sleep 8
-          HUB=$(curl -s -o /dev/null -w "%{http_code}" https://mograder-demo.jrkermode.uk/)
+          # Poll until the hub root responds 200 (uvicorn + the marimo ASGI
+          # mount take ~15s to warm up after restart, so a fixed short sleep
+          # is racy).
+          for i in $(seq 1 30); do
+            HUB=$(curl -s -o /dev/null -w "%{http_code}" https://mograder-demo.jrkermode.uk/)
+            [ "$HUB" = "200" ] && break
+            sleep 2
+          done
           GRADER=$(curl -s -o /dev/null -w "%{http_code}" -L https://mograder-demo.jrkermode.uk/grader)
           API=$(curl -s -o /dev/null -w "%{http_code}" https://mograder-demo.jrkermode.uk/assignments)
           KEYS=$(curl -s -o /dev/null -w "%{http_code}" https://mograder-demo.jrkermode.uk/keys.json)
