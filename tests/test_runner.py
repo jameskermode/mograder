@@ -89,6 +89,71 @@ def test_run_notebook_timeout(tmp_path):
     assert "timeout" in result.export_error
 
 
+def test_run_notebook_silent_failure_flagged(tmp_path):
+    """rc=0 with zero-byte HTML is surfaced as an explicit error, not treated
+    as success with empty checks."""
+    nb = tmp_path / "silent.py"
+    nb.write_text("# silent")
+
+    def mock_run(cmd, **kwargs):
+        result = MagicMock()
+        result.returncode = 0
+        result.stderr = ""
+        # Leave the output file empty (0 bytes) — the common silent-hang case
+        out_path = Path(cmd[cmd.index("-o") + 1])
+        out_path.write_text("")
+        return result
+
+    with patch("mograder.grading.runner.subprocess.run", side_effect=mock_run):
+        result = run_notebook(nb, timeout=60)
+
+    assert result.export_ok is False
+    assert "produced no HTML" in result.export_error
+
+
+def test_run_notebook_silent_failure_mentions_rlimit_as(tmp_path):
+    """When rlimit_as is below the floor, the silent-failure diagnostic
+    names it so the operator knows where to look.  Requires a sandbox_dir
+    so RLIMIT_AS is actually in the effective rlimits (--no-sandbox mode)."""
+    nb = tmp_path / "silent.py"
+    nb.write_text("# silent")
+    fake_sandbox = tmp_path / "venv"
+
+    def mock_run(cmd, **kwargs):
+        result = MagicMock()
+        result.returncode = 0
+        result.stderr = ""
+        Path(cmd[cmd.index("-o") + 1]).write_text("")
+        return result
+
+    with patch("mograder.grading.runner.subprocess.run", side_effect=mock_run):
+        result = run_notebook(
+            nb, timeout=60, sandbox_dir=fake_sandbox, rlimit_as=256 * 1024 * 1024
+        )
+
+    assert result.export_ok is False
+    assert "rlimit_as" in result.export_error
+    assert "1 GiB" in result.export_error
+
+
+def test_run_notebook_timeout_mentions_rlimit_as(tmp_path):
+    """Timeout error also surfaces a low rlimit_as as the likely cause."""
+    nb = tmp_path / "slow.py"
+    nb.write_text("# slow")
+    fake_sandbox = tmp_path / "venv"
+
+    with patch(
+        "mograder.grading.runner.subprocess.run",
+        side_effect=subprocess.TimeoutExpired("cmd", 5),
+    ):
+        result = run_notebook(
+            nb, timeout=5, sandbox_dir=fake_sandbox, rlimit_as=256 * 1024 * 1024
+        )
+
+    assert result.export_ok is False
+    assert "rlimit_as" in result.export_error
+
+
 def test_run_notebook_saves_html(tmp_path):
     nb = tmp_path / "student.py"
     nb.write_text("# notebook")

@@ -60,7 +60,10 @@ no_edit = true
 cpu = 60
 nproc = 128
 nofile = 128
-as = 536870912
+# 2 GiB virtual-address-space cap.  Values below ~1 GiB silently hang
+# ``marimo export`` (Python + numpy + marimo reserve ~1 GiB of VM just to
+# import).  For real RSS limits, set ``[security] use_bubblewrap = true``.
+as = 2147483648
 
 [hub]
 session_ttl = 300

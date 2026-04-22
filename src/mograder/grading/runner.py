@@ -3,6 +3,7 @@
 import csv
 import io
 import json
+import logging
 import os
 import platform
 import shutil
@@ -16,6 +17,39 @@ from pathlib import Path
 
 from mograder.core.models import CheckResult, NotebookResult
 from mograder.grading.parser import count_cell_errors, parse_check_results
+
+log = logging.getLogger("mograder.grading.runner")
+
+# RLIMIT_AS values below this threshold are empirically too tight for
+# Python + numpy + marimo to import: the subprocess hangs silently instead
+# of raising MemoryError (typically stuck inside a C extension's mmap loop).
+# Used to emit a warning when such a cap is configured.
+_RLIMIT_AS_SAFE_FLOOR = 1 << 30  # 1 GiB
+
+
+def _diagnose_empty_output(rlimits: dict, stderr: str) -> str:
+    """Return a short hint explaining why marimo export produced no output."""
+    if stderr.strip():
+        return f"stderr: {stderr.strip()[:400]}"
+    as_bytes = rlimits.get("as") or 0
+    if as_bytes and as_bytes < _RLIMIT_AS_SAFE_FLOOR:
+        return (
+            f"rlimit_as={as_bytes} bytes ({as_bytes // (1 << 20)} MiB) is below "
+            "1 GiB — Python+numpy+marimo can hang silently under this cap. "
+            "Raise [rlimits] as in mograder.toml or set 0 to disable."
+        )
+    return f"no stderr captured; rlimits={rlimits}. Check mograder log for details."
+
+
+def _diagnose_timeout(rlimits: dict) -> str:
+    """Return a short hint explaining a likely timeout cause."""
+    as_bytes = rlimits.get("as") or 0
+    if as_bytes and as_bytes < _RLIMIT_AS_SAFE_FLOOR:
+        return (
+            f"rlimit_as={as_bytes} bytes is below 1 GiB — likely silent hang "
+            "during Python imports. Raise [rlimits] as."
+        )
+    return f"rlimits={rlimits}. Student code may be blocking on I/O or looping."
 
 
 def _make_apply_rlimits(
@@ -439,6 +473,25 @@ def run_notebook(
             if os.name != "nt"
             else None
         )
+        _rlimits_applied = {
+            "cpu": rlimit_cpu,
+            "nproc": _effective_nproc,
+            "nofile": rlimit_nofile,
+            "as": _effective_as,
+        }
+        log.debug("run_notebook %s rlimits=%s", notebook_path.name, _rlimits_applied)
+        if (
+            _effective_as
+            and _effective_as < _RLIMIT_AS_SAFE_FLOOR
+            and platform.system() != "Darwin"
+        ):
+            log.warning(
+                "rlimit_as=%d bytes is below 1 GiB on %s — %s may hang silently "
+                "(Python+numpy+marimo reserve ~1 GiB of virtual memory to import)",
+                _effective_as,
+                platform.system(),
+                notebook_path.name,
+            )
 
         # Build list of extra paths the bwrap sandbox needs read-only
         # access to: the sandbox venv, ~/.local (for uv binary + uv-managed
@@ -478,11 +531,38 @@ def run_notebook(
             )
             stderr = proc.stderr
 
-        if proc.returncode != 0 and (
-            not tmp_path.exists() or tmp_path.stat().st_size == 0
-        ):
+        html_size = tmp_path.stat().st_size if tmp_path.exists() else 0
+
+        if proc.returncode != 0 and html_size == 0:
             result.export_ok = False
-            result.export_error = stderr[:2000]
+            result.export_error = stderr[:2000] or (
+                f"marimo export exited {proc.returncode} with no output "
+                f"(rlimits={_rlimits_applied})"
+            )
+            log.warning(
+                "export failed for %s: rc=%d stderr=%.500s",
+                notebook_path.name,
+                proc.returncode,
+                stderr.replace("\n", " "),
+            )
+            return result
+
+        if html_size == 0:
+            # Silent failure: subprocess exited cleanly but wrote nothing.
+            # Common causes (in order of likelihood):
+            #   - RLIMIT_AS too low — Python/numpy imports loop on mmap
+            #   - RLIMIT_NPROC per-user cap exhausted — fork(2) returns EAGAIN
+            #   - notebook imports something that hangs on I/O
+            hint = _diagnose_empty_output(_rlimits_applied, stderr)
+            result.export_ok = False
+            result.export_error = (
+                f"marimo export produced no HTML (rc={proc.returncode}). {hint}"
+            )
+            log.error(
+                "silent export failure for %s: %s",
+                notebook_path.name,
+                result.export_error,
+            )
             return result
 
         html_content = tmp_path.read_text()
@@ -505,10 +585,19 @@ def run_notebook(
 
     except subprocess.TimeoutExpired:
         result.export_ok = False
-        result.export_error = f"timeout after {timeout}s"
+        result.export_error = (
+            f"timeout after {timeout}s. {_diagnose_timeout(_rlimits_applied)}"
+        )
+        log.warning(
+            "export timed out for %s after %ds (rlimits=%s)",
+            notebook_path.name,
+            timeout,
+            _rlimits_applied,
+        )
     except Exception as e:
         result.export_ok = False
         result.export_error = str(e)
+        log.exception("export raised for %s", notebook_path.name)
     finally:
         tmp_path.unlink(missing_ok=True)
         sidecar_path.unlink(missing_ok=True)
