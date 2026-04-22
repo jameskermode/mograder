@@ -61,6 +61,59 @@ def test_cells_has_marker_functions():
     )
 
 
+def test_strip_submit_cells_removes_both_cells():
+    """Strip removes the MOGRADER: SUBMIT cell and the dependent
+    submit_btn-consuming cell so ``marimo export`` doesn't hang on
+    ``mo.ui.run_button``."""
+    from mograder.grading.cells import strip_submit_cells
+
+    notebook = """import marimo
+app = marimo.App()
+
+
+@app.cell
+def _():
+    response = "hi"
+    return (response,)
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    # === MOGRADER: SUBMIT ===
+    import os as _os
+    mo.stop(_os.environ.get("MOGRADER_DASHBOARD") == "1")
+    submit_username = mo.ui.text(label="Username")
+    submit_btn = mo.ui.run_button(label="Submit")
+    mo.hstack([submit_username, submit_btn])
+    return submit_btn, submit_username
+
+
+@app.cell(hide_code=True)
+def _(submit_btn, submit_username, mo):
+    mo.stop(not submit_btn.value or not submit_username.value)
+    mo.callout(mo.md("Submitted"), kind="success")
+    return
+
+
+if __name__ == "__main__":
+    app.run()
+"""
+    stripped = strip_submit_cells(notebook)
+    assert "MOGRADER: SUBMIT" not in stripped
+    assert "run_button" not in stripped
+    assert "submit_btn" not in stripped
+    # Non-submit content preserved
+    assert 'response = "hi"' in stripped
+
+
+def test_strip_submit_cells_no_op_when_absent():
+    """Returns the input unchanged when there's no submit cell."""
+    from mograder.grading.cells import strip_submit_cells
+
+    notebook = 'import marimo\napp = marimo.App()\n\n\nif __name__ == "__main__":\n    app.run()\n'
+    assert strip_submit_cells(notebook) == notebook
+
+
 def test_cells_has_grading_functions():
     from mograder.grading.cells import (
         extract_marking_scale,

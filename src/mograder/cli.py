@@ -1090,6 +1090,13 @@ def autograde(
                         hidden_labels = set()
                     hidden_labels |= _hidden_labels
 
+            # Strip the submit cell: it uses ``mo.ui.run_button`` which hangs
+            # ``marimo export`` in headless mode.  Must run *after*
+            # ``check_cell_integrity`` (which otherwise re-appends the
+            # release's submit cell as "missing") and *after* hidden test
+            # injection.
+            nb_text_for_run = cells.strip_submit_cells(nb_text_for_run)
+
             if ir.tampered_checks or ir.tampered_marks or nb.stem in cell_tamper_info:
                 fixed = fixed_dir / nb.name
                 fixed.write_text(nb_text_for_run)
