@@ -135,6 +135,12 @@ class TestMarkers:
         sm.mark_exported("alice", "hw1")
         assert (d / ".exported").exists()
 
+    def test_mark_submitted_creates_marker(self, sm):
+        d = sm.ensure_dir("alice", "hw1")
+        (d / "hw1.py").write_text("# code")
+        sm.mark_submitted("alice", "hw1")
+        assert (d / ".submitted").exists()
+
 
 class TestReset:
     def test_reset_to_release(self, sm):

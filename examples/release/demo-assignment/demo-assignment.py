@@ -7,7 +7,7 @@
 # ]
 # mograder-assignment = "demo-assignment"
 # mograder-hidden-tests = true
-# mograder-cell-hashes = "ff18443f,6f11581d,adc446de,442241f7,b5824e6b,06984910,eef64e3f,31db746f,92e2cea5,46efc5a1,f26057ad,b5f5459d"
+# mograder-cell-hashes = "ff18443f,6f11581d,adc446de,442241f7,b5824e6b,06984910,9aad9e83,31db746f,92e2cea5,46efc5a1,f26057ad,b5f5459d"
 # ///
 
 import marimo
@@ -118,7 +118,8 @@ def _(check, mo, np, x, y):
     mo.stop(x is None, check("Q2: Finite differences", []))
     _dydx = finite_diff(x, y)
     _exact = np.cos(x)
-    mo.stop(_dydx is None, check("Q2: Finite differences", []))
+    # `dydx = ...` is the source placeholder before students implement the fn
+    mo.stop(_dydx is None or _dydx is ..., check("Q2: Finite differences", []))
     check(
         "Q2: Finite differences",
         [

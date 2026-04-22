@@ -9,7 +9,7 @@
 
 import marimo
 
-__generated_with = "0.20.0"
+__generated_with = "0.23.2"
 app = marimo.App()
 
 
@@ -131,7 +131,8 @@ def _(check, finite_diff, mo, np, x, y):
     mo.stop(x is None, check("Q2: Finite differences", []))
     _dydx = finite_diff(x, y)
     _exact = np.cos(x)
-    mo.stop(_dydx is None, check("Q2: Finite differences", []))
+    # `dydx = ...` is the source placeholder before students implement the fn
+    mo.stop(_dydx is None or _dydx is ..., check("Q2: Finite differences", []))
     check(
         "Q2: Finite differences",
         [
@@ -224,7 +225,7 @@ def _(mo):
     """
     ### END SOLUTION
     mo.md(response_text)
-    return (response_text,)
+    return
 
 
 @app.cell(hide_code=True)

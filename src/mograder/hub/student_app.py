@@ -14,6 +14,7 @@ def _():
     from mograder.student.common import (
         hub_download,
         hub_start_edit,
+        hub_submit,
         hub_validate,
         load_student_config,
     )
@@ -40,6 +41,7 @@ def _():
         brand_logo_html,
         hub_download,
         hub_start_edit,
+        hub_submit,
         hub_validate,
         mo,
         version_html,
@@ -160,8 +162,15 @@ def _(
                 _status = "not started"
             else:
                 _uploaded_marker = _nb_path.parent / ".uploaded"
-                if _uploaded_marker.exists():
-                    if _nb_path.stat().st_mtime > _uploaded_marker.stat().st_mtime:
+                _submitted_marker = _nb_path.parent / ".submitted"
+                _nb_mtime = _nb_path.stat().st_mtime
+                if (
+                    _submitted_marker.exists()
+                    and _submitted_marker.stat().st_mtime >= _nb_mtime
+                ):
+                    _status = "submitted"
+                elif _uploaded_marker.exists():
+                    if _nb_mtime > _uploaded_marker.stat().st_mtime:
                         _status = "edited"
                     else:
                         _status = "downloaded"
@@ -205,6 +214,15 @@ def _(
                     label="Export",
                     on_change=lambda _, n=_slug: set_pending(
                         {"action": "hub_export", "assignment": n}
+                    ),
+                )
+                _btn_keys.append(_key)
+
+                _key = f"{_i}_submit"
+                _all_buttons[_key] = mo.ui.button(
+                    label="Submit",
+                    on_change=lambda _, n=_slug: set_pending(
+                        {"action": "hub_submit", "assignment": n}
                     ),
                 )
                 _btn_keys.append(_key)
@@ -273,6 +291,7 @@ def _(
     get_pending,
     hub_download,
     hub_start_edit,
+    hub_submit,
     hub_validate,
     mo,
     set_action_log,
@@ -328,6 +347,15 @@ def _(
             set_action_log(
                 f'Export **{_name}**: <a href="{_url}" target="_blank">download</a>'
             )
+
+        elif _act == "hub_submit":
+            _name = pending["assignment"]
+            with mo.status.spinner(
+                title=f"Submitting {_name}...",
+                remove_on_exit=True,
+            ):
+                _result = hub_submit(_client, HUB_USER, _name, _hub_headers)
+                set_action_log(_result.message)
 
         elif _act == "hub_run_lecture":
             _name = pending["lecture"]

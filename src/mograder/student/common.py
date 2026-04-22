@@ -106,6 +106,30 @@ def hub_validate(client, username: str, assignment: str, headers: dict) -> Actio
         return ActionResult(False, f"Validation failed: {exc}")
 
 
+def hub_submit(client, username: str, assignment: str, headers: dict) -> ActionResult:
+    """Copy the hub notebook into the course submitted/ dir for grading."""
+    try:
+        resp = client.post(
+            f"/submit/{username}/{assignment}",
+            headers=headers,
+            timeout=60,
+        )
+        if resp.status_code != 200:
+            return ActionResult(False, f"Submit failed: {resp.text}")
+        data = resp.json()
+        parts = [f"Submitted **{assignment}**"]
+        if data.get("tampered_checks") or data.get("tampered_marks"):
+            bits = []
+            if data.get("tampered_checks"):
+                bits.append(f"checks: {', '.join(data['tampered_checks'])}")
+            if data.get("tampered_marks"):
+                bits.append("marks")
+            parts.append(f"(reinjected {'; '.join(bits)})")
+        return ActionResult(True, " ".join(parts))
+    except Exception as exc:
+        return ActionResult(False, f"Submit failed: {exc}")
+
+
 def hub_start_edit(
     client, username: str, assignment: str, headers: dict
 ) -> ActionResult:

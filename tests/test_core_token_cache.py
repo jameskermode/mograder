@@ -1,7 +1,5 @@
 """Tests for mograder.core._token_cache unified caching."""
 
-import json
-
 
 def test_roundtrip(tmp_path):
     from mograder.core._token_cache import TokenCache

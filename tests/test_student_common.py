@@ -2,10 +2,6 @@
 
 from __future__ import annotations
 
-from pathlib import Path
-
-import pytest
-
 
 def test_load_student_config(tmp_path, monkeypatch):
     """load_student_config reads MOGRADER_COURSE_DIR and returns config + path."""
@@ -107,6 +103,51 @@ def test_hub_actions_validate():
     result = hub_validate(mock_client, "user1", "A1-Test", {"X-Remote-User": "user1"})
     assert result.success is True
     assert "1" in result.message  # "1/1 checks pass" or similar
+
+
+def test_hub_actions_submit():
+    """hub_submit POSTs to /submit and surfaces tampered-cell info."""
+    import httpx
+    from unittest.mock import MagicMock
+
+    from mograder.student.common import hub_submit
+
+    mock_client = MagicMock(spec=httpx.Client)
+    resp = MagicMock()
+    resp.status_code = 200
+    resp.json.return_value = {
+        "status": "ok",
+        "submitted_path": "/tmp/ignored",
+        "tampered_checks": ["Q1"],
+        "tampered_marks": False,
+    }
+    mock_client.post.return_value = resp
+
+    result = hub_submit(mock_client, "user1", "A1-Test", {"X-Remote-User": "user1"})
+
+    assert result.success is True
+    assert "Submitted" in result.message
+    assert "Q1" in result.message
+    mock_client.post.assert_called_once()
+    assert mock_client.post.call_args.args[0] == "/submit/user1/A1-Test"
+
+
+def test_hub_actions_submit_failure():
+    """hub_submit surfaces server errors."""
+    import httpx
+    from unittest.mock import MagicMock
+
+    from mograder.student.common import hub_submit
+
+    mock_client = MagicMock(spec=httpx.Client)
+    resp = MagicMock()
+    resp.status_code = 404
+    resp.text = "Notebook not found"
+    mock_client.post.return_value = resp
+
+    result = hub_submit(mock_client, "user1", "A1-Test", {"X-Remote-User": "user1"})
+    assert result.success is False
+    assert "Notebook not found" in result.message
 
 
 def test_hub_actions_start_edit():

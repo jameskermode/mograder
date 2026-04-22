@@ -181,13 +181,14 @@ def create_hub_app(
             hash_warnings = validate_cell_hashes(text)
             warnings = [str(w) for w in hash_warnings]
 
-            # Source reinjection if release available
+            # Source reinjection if release available.  Scoped to check/marks
+            # cells only so students' written-response cells are not clobbered.
             release = storage.release_path(assignment)
             if release:
-                from mograder.grading.integrity import fix_modified_cells
+                from mograder.grading.integrity import check_integrity
 
                 release_text = release.read_text()
-                result = fix_modified_cells(release_text, text)
+                result = check_integrity(release_text, text)
                 if result.fixed_source != text:
                     nb.write_text(result.fixed_source)
                 integrity_level = "source"
@@ -224,6 +225,50 @@ def create_hub_app(
                 status_code=500,
                 content={"detail": f"Validation failed: {e}"},
             )
+
+    # -- Submit (copy hub notebook into course submitted/ dir) --
+
+    @app.post("/submit/{username}/{assignment}")
+    async def submit(request: Request, username: str, assignment: str):
+        _check_owner(request, username)
+        nb = storage.assignment_path(username, assignment)
+        if not nb.exists():
+            raise HTTPException(status_code=404, detail="Notebook not found")
+
+        text = nb.read_text()
+
+        # Reinject tampered check/marks cells for the permanent submission
+        # (leaves the student's hub-notebooks copy untouched).
+        tampered_checks: list[str] = []
+        tampered_marks = False
+        submit_text = text
+        release = storage.release_path(assignment)
+        if release is not None:
+            from mograder.grading.integrity import check_integrity
+
+            result = check_integrity(release.read_text(), text)
+            tampered_checks = result.tampered_checks
+            tampered_marks = result.tampered_marks
+            submit_text = result.fixed_source
+
+        from mograder.transport.https_server import _write_submission
+
+        target_dir = course_dir / config.submitted_dir / assignment
+        try:
+            timestamped = _write_submission(
+                target_dir, username, submit_text.encode("utf-8")
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
+
+        storage.mark_submitted(username, assignment)
+
+        return {
+            "status": "ok",
+            "submitted_path": str(timestamped),
+            "tampered_checks": tampered_checks,
+            "tampered_marks": tampered_marks,
+        }
 
     # -- Validation report (HTML preview) --
 

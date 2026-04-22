@@ -193,6 +193,21 @@ class TestStatus:
         assert "has_release" in data
 
 
+_MARIMO_NOTEBOOK_WITH_RESPONSE = """import marimo
+app = marimo.App()
+
+
+@app.cell
+def _():
+    response_text = "{answer}"
+    return (response_text,)
+
+
+if __name__ == "__main__":
+    app.run()
+"""
+
+
 class TestValidate:
     def test_validate_returns_checks(self, client, hub_dirs):
         """Valid notebook returns check results."""
@@ -214,6 +229,131 @@ class TestValidate:
         data = resp.json()
         assert "checks" in data
         assert "integrity_level" in data
+
+    def test_validate_preserves_written_response(self, client, hub_dirs):
+        """Validate must not clobber student edits in non-solution cells.
+
+        Regression: the endpoint used to run ``fix_modified_cells`` which
+        reinjects *any* cell that doesn't contain ``# YOUR CODE HERE``,
+        silently overwriting written-response cells.
+        """
+        release_src = _MARIMO_NOTEBOOK_WITH_RESPONSE.format(answer="")
+        student_src = _MARIMO_NOTEBOOK_WITH_RESPONSE.format(
+            answer="MY_ANSWER_42_UNIQUE"
+        )
+        _setup_release(hub_dirs, "hw1", release_src)
+        nb = _setup_student_file(hub_dirs, "dev-user", "hw1", student_src)
+
+        with patch("mograder.hub.app.run_notebook") as mock_run:
+            mock_result = MagicMock()
+            mock_result.checks = []
+            mock_result.cell_errors = 0
+            mock_result.export_ok = True
+            mock_result.export_error = ""
+            mock_run.return_value = mock_result
+            resp = client.post("/validate/dev-user/hw1")
+
+        assert resp.status_code == 200
+        assert "MY_ANSWER_42_UNIQUE" in nb.read_text()
+
+
+_MARIMO_NOTEBOOK_WITH_CHECK = """import marimo
+app = marimo.App()
+
+
+@app.cell
+def _():
+    from mograder.runtime import check
+    return (check,)
+
+
+@app.cell
+def _(check):
+    check("Q1: trivial", {check_tuple})
+    return
+
+
+if __name__ == "__main__":
+    app.run()
+"""
+
+
+class TestSubmit:
+    def _make_release_and_student(self, hub_dirs, release_check, student_check):
+        release_src = _MARIMO_NOTEBOOK_WITH_CHECK.format(check_tuple=release_check)
+        student_src = _MARIMO_NOTEBOOK_WITH_CHECK.format(check_tuple=student_check)
+        _setup_release(hub_dirs, "hw1", release_src)
+        nb = _setup_student_file(hub_dirs, "dev-user", "hw1", student_src)
+        return nb, release_src, student_src
+
+    def test_submit_copies_to_submitted_dir(self, client, hub_dirs):
+        """Submit writes a timestamped file and user.py into submitted/<assign>/."""
+        _setup_student_file(hub_dirs, "dev-user", "hw1", "# student code\n")
+
+        resp = client.post("/submit/dev-user/hw1")
+        assert resp.status_code == 200
+
+        sub_dir = hub_dirs["course_dir"] / "submitted" / "hw1"
+        assert sub_dir.is_dir()
+        latest = sub_dir / "dev-user.py"
+        assert latest.exists()
+        assert "# student code" in latest.read_text()
+        timestamped = [p for p in sub_dir.glob("dev-user_*.py")]
+        assert len(timestamped) == 1
+
+    def test_submit_reinjects_tampered_check(self, client, hub_dirs):
+        """Submit uses release check cells for the permanent snapshot but
+        leaves the student's working copy alone."""
+        nb, release_src, student_src = self._make_release_and_student(
+            hub_dirs,
+            release_check='(1 + 1 == 2, "arithmetic")',
+            student_check='(True, "forced pass")',
+        )
+
+        resp = client.post("/submit/dev-user/hw1")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert "Q1" in data["tampered_checks"]
+
+        submitted = hub_dirs["course_dir"] / "submitted" / "hw1" / "dev-user.py"
+        assert "arithmetic" in submitted.read_text()
+        assert "forced pass" not in submitted.read_text()
+
+        # Student's working copy is untouched.
+        assert "forced pass" in nb.read_text()
+
+    def test_submit_creates_marker(self, client, hub_dirs):
+        _setup_student_file(hub_dirs, "dev-user", "hw1", "# code\n")
+        resp = client.post("/submit/dev-user/hw1")
+        assert resp.status_code == 200
+        marker = hub_dirs["notebooks"] / "dev-user" / "hw1" / ".submitted"
+        assert marker.exists()
+
+    def test_submit_resubmit_creates_history(self, client, hub_dirs):
+        """Two submits → two timestamped files, one symlink, both in place."""
+        _setup_student_file(hub_dirs, "dev-user", "hw1", "# v1\n")
+        r1 = client.post("/submit/dev-user/hw1")
+        assert r1.status_code == 200
+
+        # Mutate the working copy and submit again.
+        nb = hub_dirs["notebooks"] / "dev-user" / "hw1" / "hw1.py"
+        # Sleep to guarantee a distinct timestamp in the filename (1s resolution).
+        import time
+
+        time.sleep(1.1)
+        nb.write_text("# v2\n")
+        r2 = client.post("/submit/dev-user/hw1")
+        assert r2.status_code == 200
+
+        sub_dir = hub_dirs["course_dir"] / "submitted" / "hw1"
+        timestamped = sorted(p.name for p in sub_dir.glob("dev-user_*.py"))
+        assert len(timestamped) == 2, f"expected 2 timestamped files, got {timestamped}"
+        latest = sub_dir / "dev-user.py"
+        assert "# v2" in latest.read_text()
+
+    def test_submit_no_notebook_404(self, client):
+        resp = client.post("/submit/dev-user/never-uploaded")
+        assert resp.status_code == 404
 
 
 class TestRelease:
@@ -699,7 +839,6 @@ class TestDeepLinkEdit:
 
     def test_deep_edit_unauthenticated_403(self, hub_dirs):
         """POST /start-edit-deep/hw1 without auth → 403."""
-        from mograder.core.auth import make_token
 
         secret = "test-secret"
         app = create_hub_app(

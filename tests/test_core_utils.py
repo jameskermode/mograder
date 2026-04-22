@@ -1,7 +1,5 @@
 """Tests for mograder.core._utils shared utilities."""
 
-from pathlib import Path
-
 
 def test_rel_returns_relative_string(tmp_path):
     from mograder.core._utils import rel

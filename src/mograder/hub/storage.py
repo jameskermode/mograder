@@ -87,6 +87,12 @@ class StorageManager:
         d.mkdir(parents=True, exist_ok=True)
         (d / ".exported").touch()
 
+    def mark_submitted(self, username: str, assignment: str) -> None:
+        """Touch .submitted marker."""
+        d = self.assignment_path(username, assignment).parent
+        d.mkdir(parents=True, exist_ok=True)
+        (d / ".submitted").touch()
+
     # -- reset --
 
     def reset_to_release(self, username: str, assignment: str) -> Path | None:

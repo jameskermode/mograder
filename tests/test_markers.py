@@ -4,7 +4,6 @@ from mograder.grading.cells import (
     SOLUTION_BEGIN,
     SOLUTION_END,
     SUBMIT_MARKER,
-    _extract_assigned_names,
     _extract_return_names,
     _hash_cell,
     _inject_assignment_metadata,

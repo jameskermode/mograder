@@ -36,7 +36,12 @@ def _make_apply_rlimits(
         limits: list[tuple[int, int]] = []
         if cpu:
             limits.append((resource.RLIMIT_CPU, cpu))
-        if nproc:
+        # RLIMIT_NPROC is *per-user*, not per-process.  On busy dev machines
+        # (e.g. macOS desktops with hundreds of background processes) a 512
+        # cap causes fork(2) to fail with EAGAIN before the grader can run.
+        # Skip it on Darwin — real process isolation belongs in bubblewrap
+        # (Linux) anyway.
+        if nproc and platform.system() != "Darwin":
             limits.append((resource.RLIMIT_NPROC, nproc))
         if nofile:
             limits.append((resource.RLIMIT_NOFILE, nofile))
@@ -469,7 +474,7 @@ def run_notebook(
             not tmp_path.exists() or tmp_path.stat().st_size == 0
         ):
             result.export_ok = False
-            result.export_error = stderr[:500]
+            result.export_error = stderr[:2000]
             return result
 
         html_content = tmp_path.read_text()
