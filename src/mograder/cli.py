@@ -1,6 +1,7 @@
 """Click CLI for mograder: generate, autograde, feedback."""
 
 import contextlib
+import hashlib
 import json
 import os
 import shutil
@@ -933,23 +934,41 @@ def autograde(
     # A submission needs re-grading if:
     #   - the autograded .py doesn't exist, OR
     #   - the submitted .py is newer than the autograded .py, OR
-    #   - the source notebook is newer than the autograded .py
+    #   - the source notebook content has changed since the last autograde
+    #     (compared by SHA-256, not mtime — touching the source without
+    #     editing it must NOT trigger a re-grade-all)
     if not force and not _moodle_submitted_dir:
-        _source_mtime = source_path.stat().st_mtime if source_path else 0
+        _source_changed = False
+        _source_hash = None
+        if source_path:
+            _source_hash = hashlib.sha256(source_path.read_bytes()).hexdigest()
+            _hash_file = output_dir / ".mograder_source_hash"
+            if _hash_file.is_file():
+                _prev_hash = _hash_file.read_text().strip()
+                _source_changed = _prev_hash != _source_hash
+            else:
+                # No sidecar yet — fall back to mtime to preserve previous
+                # behaviour for never-before-graded directories.
+                _src_mtime = source_path.stat().st_mtime
+                _newest_dest_mtime = max(
+                    (
+                        (output_dir / nb.name).stat().st_mtime
+                        for nb in notebooks
+                        if (output_dir / nb.name).is_file()
+                    ),
+                    default=0.0,
+                )
+                _source_changed = _src_mtime > _newest_dest_mtime
         _to_grade = []
         _skipped = 0
         for nb in notebooks:
             dest = output_dir / nb.name
             _html_dest = dest.with_suffix(".html")
-            if dest.is_file():
+            if dest.is_file() and not _source_changed:
                 _dest_mtime = dest.stat().st_mtime
                 _sub_mtime = nb.stat().st_mtime
                 _html_ok = _html_dest.is_file() and _html_dest.stat().st_size > 0
-                if (
-                    _sub_mtime <= _dest_mtime
-                    and _source_mtime <= _dest_mtime
-                    and _html_ok
-                ):
+                if _sub_mtime <= _dest_mtime and _html_ok:
                     _skipped += 1
                     continue
             _to_grade.append(nb)
@@ -1262,6 +1281,16 @@ def autograde(
     # Write CSV if requested
     if csv_path:
         runner.write_csv(results, all_labels, csv_path, marks)
+
+    # Record the source hash for the up-to-date check on the next run.
+    # Only update if at least one submission was successfully autograded —
+    # otherwise we'd advance the marker past a source change that hasn't
+    # actually been propagated to any autograded output.
+    if source_path and any(r.export_ok for r in results):
+        _hash_file = output_dir / ".mograder_source_hash"
+        _hash_file.write_text(
+            hashlib.sha256(source_path.read_bytes()).hexdigest() + "\n"
+        )
 
     # Clean up temp Moodle extraction dir
     if _moodle_submitted_dir:

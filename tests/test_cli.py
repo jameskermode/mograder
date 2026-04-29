@@ -381,6 +381,147 @@ def test_autograde_with_source(
     assert "Running source notebook" in result.output
 
 
+def _make_autograded_pair(out_dir, name, content="autograded\n"):
+    """Create a stub <name>.py + <name>.html in *out_dir* and return the .py path."""
+    out_dir.mkdir(parents=True, exist_ok=True)
+    py = out_dir / name
+    py.write_text(content)
+    html = py.with_suffix(".html")
+    html.write_text("<html></html>")
+    return py
+
+
+@patch("mograder.grading.runner.create_shared_sandbox", return_value=None)
+@patch("mograder.grading.runner.run_notebook")
+@patch("mograder.grading.cells.inject_grading_cells")
+@patch("mograder.grading.runner.run_batch")
+def test_autograde_skips_when_source_hash_matches(
+    mock_batch, mock_inject, mock_run_nb, mock_sandbox, tmp_path
+):
+    """Touching the source notebook (same content, newer mtime) must NOT
+    trigger re-grading once a sidecar hash is recorded."""
+    import hashlib
+
+    nb = tmp_path / "student.py"
+    nb.write_text(
+        "import marimo\napp = marimo.App()\n\nif __name__ == '__main__':\n    app.run()\n"
+    )
+    source = tmp_path / "source.py"
+    source.write_text(
+        "import marimo\napp = marimo.App()\n\nif __name__ == '__main__':\n    app.run()\n"
+    )
+    out_dir = tmp_path / "grading"
+    auto_py = _make_autograded_pair(out_dir, "student.py")
+    # Sidecar matches current source; submission older than autograded.
+    (out_dir / ".mograder_source_hash").write_text(
+        hashlib.sha256(source.read_bytes()).hexdigest() + "\n"
+    )
+    # Bump source mtime to be newer than autograded — content unchanged.
+    later = auto_py.stat().st_mtime + 60
+    os.utime(source, (later, later))
+    # Submission older than autograded so submission-mtime check passes.
+    earlier = auto_py.stat().st_mtime - 60
+    os.utime(nb, (earlier, earlier))
+
+    runner = CliRunner()
+    result = runner.invoke(
+        cli, ["autograde", str(nb), "--source", str(source), "-o", str(out_dir)]
+    )
+    assert result.exit_code == 0, result.output
+    assert "All submissions are up to date" in result.output
+    mock_batch.assert_not_called()
+
+
+@patch("mograder.grading.runner.create_shared_sandbox", return_value=None)
+@patch("mograder.grading.runner.run_notebook")
+@patch("mograder.grading.cells.inject_grading_cells")
+@patch("mograder.grading.runner.run_batch")
+def test_autograde_regrades_when_source_hash_differs(
+    mock_batch, mock_inject, mock_run_nb, mock_sandbox, tmp_path
+):
+    """Editing the source content (different hash) must trigger re-grading."""
+    nb = tmp_path / "student.py"
+    nb.write_text(
+        "import marimo\napp = marimo.App()\n\nif __name__ == '__main__':\n    app.run()\n"
+    )
+    source = tmp_path / "source.py"
+    source.write_text(
+        "import marimo\napp = marimo.App()\n\nif __name__ == '__main__':\n    app.run()\n"
+    )
+    out_dir = tmp_path / "grading"
+    _make_autograded_pair(out_dir, "student.py")
+    # Sidecar records a stale hash — pretend source has been edited since.
+    (out_dir / ".mograder_source_hash").write_text("0" * 64 + "\n")
+
+    mock_run_nb.return_value = NotebookResult(
+        path=source,
+        checks=[CheckResult("Q1: Foo", "success")],
+        cell_errors=0,
+    )
+    mock_batch.return_value = [
+        NotebookResult(
+            path=nb,
+            checks=[CheckResult("Q1: Foo", "success")],
+            cell_errors=0,
+        )
+    ]
+    mock_inject.return_value = nb.read_text().splitlines(keepends=True)
+
+    runner = CliRunner()
+    result = runner.invoke(
+        cli, ["autograde", str(nb), "--source", str(source), "-o", str(out_dir)]
+    )
+    assert result.exit_code == 0, result.output
+    mock_batch.assert_called_once()
+
+
+@patch("mograder.grading.runner.create_shared_sandbox", return_value=None)
+@patch("mograder.grading.runner.run_notebook")
+@patch("mograder.grading.cells.inject_grading_cells")
+@patch("mograder.grading.runner.run_batch")
+def test_autograde_writes_source_hash_after_run(
+    mock_batch, mock_inject, mock_run_nb, mock_sandbox, tmp_path
+):
+    """A successful autograde leaves a ``.mograder_source_hash`` sidecar
+    that the next run can compare against."""
+    import hashlib
+
+    nb = tmp_path / "student.py"
+    nb.write_text(
+        "import marimo\napp = marimo.App()\n\nif __name__ == '__main__':\n    app.run()\n"
+    )
+    source = tmp_path / "source.py"
+    source.write_text(
+        "import marimo\napp = marimo.App()\n\nif __name__ == '__main__':\n    app.run()\n"
+    )
+
+    mock_run_nb.return_value = NotebookResult(
+        path=source,
+        checks=[CheckResult("Q1: Foo", "success")],
+        cell_errors=0,
+    )
+    mock_batch.return_value = [
+        NotebookResult(
+            path=nb,
+            checks=[CheckResult("Q1: Foo", "success")],
+            cell_errors=0,
+        )
+    ]
+    mock_inject.return_value = nb.read_text().splitlines(keepends=True)
+
+    out_dir = tmp_path / "grading"
+    runner = CliRunner()
+    result = runner.invoke(
+        cli, ["autograde", str(nb), "--source", str(source), "-o", str(out_dir)]
+    )
+    assert result.exit_code == 0, result.output
+    sidecar = out_dir / ".mograder_source_hash"
+    assert sidecar.is_file()
+    assert (
+        sidecar.read_text().strip() == hashlib.sha256(source.read_bytes()).hexdigest()
+    )
+
+
 @patch("mograder.grading.cells.inject_grading_cells")
 @patch("mograder.grading.runner.run_batch")
 def test_autograde_progress_flag(mock_batch, mock_inject, tmp_path):
