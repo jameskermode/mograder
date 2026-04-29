@@ -143,6 +143,64 @@ def test_autograde_runs_and_injects(mock_batch, mock_inject, tmp_path):
 
 @patch("mograder.grading.cells.inject_grading_cells")
 @patch("mograder.grading.runner.run_batch")
+def test_autograde_jobs_default_from_config(
+    mock_batch, mock_inject, tmp_path, monkeypatch
+):
+    """Without ``-j``, autograde uses ``[defaults] jobs`` from mograder.toml."""
+    nb = tmp_path / "student.py"
+    nb.write_text(
+        "import marimo\napp = marimo.App()\n\nif __name__ == '__main__':\n    app.run()\n"
+    )
+    (tmp_path / "mograder.toml").write_text("[defaults]\njobs = 1\n")
+    mock_batch.return_value = [
+        NotebookResult(
+            path=nb,
+            checks=[CheckResult("Q1: Foo", "success")],
+            cell_errors=0,
+        )
+    ]
+    mock_inject.return_value = nb.read_text().splitlines(keepends=True)
+    monkeypatch.chdir(tmp_path)
+
+    out_dir = tmp_path / "grading"
+    runner = CliRunner()
+    result = runner.invoke(cli, ["autograde", str(nb), "-o", str(out_dir)])
+    assert result.exit_code == 0, result.output
+    _, kwargs = mock_batch.call_args
+    assert kwargs["jobs"] == 1
+
+
+@patch("mograder.grading.cells.inject_grading_cells")
+@patch("mograder.grading.runner.run_batch")
+def test_autograde_jobs_flag_overrides_config(
+    mock_batch, mock_inject, tmp_path, monkeypatch
+):
+    """``-j`` on the command line wins over ``[defaults] jobs`` in config."""
+    nb = tmp_path / "student.py"
+    nb.write_text(
+        "import marimo\napp = marimo.App()\n\nif __name__ == '__main__':\n    app.run()\n"
+    )
+    (tmp_path / "mograder.toml").write_text("[defaults]\njobs = 1\n")
+    mock_batch.return_value = [
+        NotebookResult(
+            path=nb,
+            checks=[CheckResult("Q1: Foo", "success")],
+            cell_errors=0,
+        )
+    ]
+    mock_inject.return_value = nb.read_text().splitlines(keepends=True)
+    monkeypatch.chdir(tmp_path)
+
+    out_dir = tmp_path / "grading"
+    runner = CliRunner()
+    result = runner.invoke(cli, ["autograde", str(nb), "-o", str(out_dir), "-j", "3"])
+    assert result.exit_code == 0, result.output
+    _, kwargs = mock_batch.call_args
+    assert kwargs["jobs"] == 3
+
+
+@patch("mograder.grading.cells.inject_grading_cells")
+@patch("mograder.grading.runner.run_batch")
 def test_autograde_max_memory_flag(mock_batch, mock_inject, tmp_path):
     """--max-memory converts MB to bytes and passes to run_batch as rlimit_as."""
     nb = tmp_path / "student.py"

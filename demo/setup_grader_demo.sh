@@ -55,6 +55,9 @@ dir = "demo-holistic"
 
 [defaults]
 no_edit = true
+# Single-worker autograde — Oracle free-tier mini host (954 MB, no swap)
+# can't sustain the default 4 parallel marimo exports without OOM.
+jobs = 1
 
 [rlimits]
 cpu = 60
