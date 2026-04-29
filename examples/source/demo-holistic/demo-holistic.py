@@ -8,7 +8,7 @@
 
 import marimo
 
-__generated_with = "0.20.0"
+__generated_with = "0.23.4"
 app = marimo.App()
 
 
@@ -46,19 +46,16 @@ def _(mo):
     return
 
 
-@app.cell
-def _():
-    def is_palindrome(s):
-        ### BEGIN SOLUTION
-        cleaned = s.lower().replace(" ", "")
-        return cleaned == cleaned[::-1]
-        ### END SOLUTION
-
-    return (is_palindrome,)
+@app.function
+def is_palindrome(s):
+    ### BEGIN SOLUTION
+    cleaned = s.lower().replace(" ", "")
+    return cleaned == cleaned[::-1]
+    ### END SOLUTION
 
 
 @app.cell(hide_code=True)
-def _(check, is_palindrome):
+def _(check):
     check(
         "Q1: Palindrome checker",
         [
@@ -89,21 +86,18 @@ def _(mo):
     return
 
 
-@app.cell
-def _():
-    def word_count(text):
-        ### BEGIN SOLUTION
-        counts = {}
-        for word in text.lower().split():
-            counts[word] = counts.get(word, 0) + 1
-        return counts
-        ### END SOLUTION
-
-    return (word_count,)
+@app.function
+def word_count(text):
+    ### BEGIN SOLUTION
+    counts = {}
+    for word in text.lower().split():
+        counts[word] = counts.get(word, 0) + 1
+    return counts
+    ### END SOLUTION
 
 
 @app.cell(hide_code=True)
-def _(check, word_count):
+def _(check):
     check(
         "Q2: Word counter",
         [
@@ -150,7 +144,7 @@ def _(mo):
     """
     ### END SOLUTION
     mo.md(response_text)
-    return (response_text,)
+    return
 
 
 if __name__ == "__main__":
