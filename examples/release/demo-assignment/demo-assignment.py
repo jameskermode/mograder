@@ -65,7 +65,7 @@ def _(mo):
 
 
 @app.cell
-def _():
+def _(np):
     x = None
     y = None
     # YOUR CODE HERE
@@ -105,16 +105,19 @@ def _(mo):
     return
 
 
-@app.function
-def finite_diff(x, y):
-    dydx = ...
-    # YOUR CODE HERE
-    pass
-    return dydx
+@app.cell
+def _(np):
+    def finite_diff(x, y):
+        dydx = ...
+        # YOUR CODE HERE
+        pass
+        return dydx
+
+    return (finite_diff,)
 
 
 @app.cell(hide_code=True)
-def _(check, mo, np, x, y):
+def _(check, finite_diff, mo, np, x, y):
     mo.stop(x is None, check("Q2: Finite differences", []))
     _dydx = finite_diff(x, y)
     _exact = np.cos(x)
@@ -152,7 +155,7 @@ def _(mo):
 
 
 @app.cell
-def _():
+def _(np, x, y):
     integral = None
     # YOUR CODE HERE
     pass
