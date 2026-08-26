@@ -462,22 +462,34 @@ def _add_check_pass_returns(lines: list[str], exercise_keys: list[str]) -> list[
     current_cell_key = None
     captured = False
     initialized = False
+    in_signature = False
+    signature_depth = 0
     for i, line in enumerate(lines):
         if line.strip().startswith("@app.cell"):
             current_cell_key = cell_key_map.get(i)
             captured = False
             initialized = False
+            in_signature = False
+            signature_depth = 0
 
         if current_cell_key:
             stripped = line.strip()
 
-            # Insert default value right after the def line, before any mo.stop
-            if not initialized and stripped.startswith("def "):
+            # Insert the default once the signature has closed, before any mo.stop.
+            # marimo wraps ``def _(...)`` across several lines when a cell takes many
+            # parameters; appending after the line that merely opens the signature drops
+            # the assignment inside the parameter list, and the notebook no longer parses.
+            if not initialized and (in_signature or stripped.startswith("def ")):
                 output.append(line)
-                indent = "    "
-                var = f"check_passed_{_safe_varname(current_cell_key)}"
-                output.append(f"{indent}{var} = False\n")
-                initialized = True
+                signature_depth += line.count("(") - line.count(")")
+                if signature_depth <= 0 and stripped.endswith(":"):
+                    indent = "    "
+                    var = f"check_passed_{_safe_varname(current_cell_key)}"
+                    output.append(f"{indent}{var} = False\n")
+                    initialized = True
+                    in_signature = False
+                else:
+                    in_signature = True
                 continue
 
             if stripped.startswith("check(") and not captured:

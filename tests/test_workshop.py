@@ -486,3 +486,75 @@ def test_workshop_server_auth(tmp_path):
         assert data == {}
     finally:
         server.shutdown()
+
+
+# ---------------------------------------------------------------------------
+# Wrapped cell signatures
+
+
+_WRAPPED_SIGNATURE_NOTEBOOK = textwrap.dedent("""\
+    import marimo
+    app = marimo.App()
+
+    @app.cell(hide_code=True)
+    def _():
+        import marimo as mo
+        from mograder.runtime import check
+
+        # === MOGRADER: EXERCISES ===
+        _exercises = ["Q1"]
+        return check, mo
+
+    @app.cell
+    def _(np):
+        x = None
+        ### BEGIN SOLUTION
+        x = np.linspace(0, 1, 10)
+        ### END SOLUTION
+        return (x,)
+
+    @app.cell(hide_code=True)
+    def _(
+        alpha,
+        beta,
+        check,
+        delta,
+        epsilon,
+        gamma,
+        mo,
+        x,
+    ):
+        check("Q1: Array creation", [
+            (x is not None, "x should not be None"),
+        ])
+        return
+
+    if __name__ == "__main__":
+        app.run()
+""")
+
+
+def test_process_workshop_handles_a_wrapped_cell_signature(tmp_path):
+    """marimo wraps `def _(...)` over several lines once a cell has many parameters.
+
+    The generated notebook must still be valid Python: the `check_passed_<key>` default
+    belongs after the signature closes, not after the line that merely opens it.
+    """
+    import ast
+
+    source = tmp_path / "notebook.py"
+    source.write_text(_WRAPPED_SIGNATURE_NOTEBOOK)
+
+    output = process_workshop(source, tmp_path / "out", salt="s")
+
+    ast.parse(output.read_text())
+
+
+def test_wrapped_signature_still_captures_the_check_result(tmp_path):
+    source = tmp_path / "notebook.py"
+    source.write_text(_WRAPPED_SIGNATURE_NOTEBOOK)
+
+    generated = process_workshop(source, tmp_path / "out", salt="s").read_text()
+
+    assert "check_passed_Q1 = False" in generated
+    assert 'check_passed_Q1 = "success" in getattr(_result, "text", "")' in generated
