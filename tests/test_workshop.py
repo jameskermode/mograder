@@ -558,3 +558,79 @@ def test_wrapped_signature_still_captures_the_check_result(tmp_path):
 
     assert "check_passed_Q1 = False" in generated
     assert 'check_passed_Q1 = "success" in getattr(_result, "text", "")' in generated
+
+
+def test_solution_cell_never_names_check_passed(tmp_path):
+    """A solution cell must not depend on a variable that may not exist yet.
+
+    Pressing "Check for released solutions" sets the released-keys state, and marimo
+    re-runs every cell that reads that state whether or not the cell's other names are
+    defined. `check_passed_<key>` does not exist until that question's check cell has run,
+    which for any question needing a service call is "not until the student gets there" --
+    so the click raised `NameError: name 'check_passed_Q2' is not defined` on a page that
+    had just revealed Q1 correctly. The flags travel through a state dict instead, which a
+    student who has not reached the question simply has no entry in.
+
+    marimo honours the serialised signature as well as the body, so both are asserted: a
+    name left in the argument list is still a dependency.
+    """
+    import re
+
+    source = tmp_path / "notebook.py"
+    source.write_text(_WRAPPED_SIGNATURE_NOTEBOOK)
+
+    generated = process_workshop(source, tmp_path / "out", salt="s").read_text()
+
+    reveal = [
+        block
+        for block in generated.split("@app.cell")
+        if "MOGRADER: WORKSHOP SOLUTION" in block
+    ]
+    assert reveal, "no solution cell was generated"
+    for block in reveal:
+        signature = re.search(r"def _\((.*?)\):", block, re.S)
+        assert signature is not None
+        assert "check_passed_" not in signature.group(1)
+        assert "get_check_passed" in signature.group(1)
+        assert "get_check_passed().get(" in block
+
+
+def test_check_cell_publishes_its_flag_into_the_state(tmp_path):
+    """The check cell is the only place that knows the answer, so it does the publishing.
+
+    The setter must land before `_result`, which is the cell's last expression and so what
+    marimo renders; after it, the check output disappears.
+    """
+    source = tmp_path / "notebook.py"
+    source.write_text(_WRAPPED_SIGNATURE_NOTEBOOK)
+
+    generated = process_workshop(source, tmp_path / "out", salt="s").read_text()
+
+    assert 'set_check_passed(lambda d: {**d, "Q1": check_passed_Q1})' in generated
+    assert generated.count("get_check_passed, set_check_passed = mo.state({})") == 1
+
+    cell = generated.split('check_passed_Q1 = "success"')[1]
+    assert cell.index("set_check_passed(") < cell.index("_result\n")
+
+
+def test_the_generated_notebook_still_parses_with_the_state_wiring(tmp_path):
+    """The setter goes into a signature marimo may have wrapped over several lines."""
+    import ast
+
+    source = tmp_path / "notebook.py"
+    source.write_text(_WRAPPED_SIGNATURE_NOTEBOOK)
+
+    generated = process_workshop(source, tmp_path / "out", salt="s").read_text()
+
+    tree = ast.parse(generated)
+
+    # The check cell's signature must actually carry the setter: marimo injects only what
+    # the argument list names, so a body that publishes without it would raise NameError.
+    publishing = [
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.FunctionDef)
+        and "set_check_passed" in ast.dump(node)
+        and any(arg.arg == "set_check_passed" for arg in node.args.args)
+    ]
+    assert publishing, "no check cell declares set_check_passed in its signature"
