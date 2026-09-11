@@ -265,15 +265,47 @@ def build_exercises_dict(
     return exercises
 
 
+CHECK_STATE_CELL = """
+@app.cell(hide_code=True)
+def _(mo):
+    # One dict holding every question's pass flag. The solution cells read it instead of
+    # naming `check_passed_<key>` directly, because a cell that names an undefined variable
+    # raises the moment anything re-runs it -- and pressing "Check for released solutions"
+    # re-runs every reader of the released-keys state, whether or not the check cell it
+    # depends on has ever run. A question the student has not reached simply has no entry.
+    get_check_passed, set_check_passed = mo.state({})
+    return get_check_passed, set_check_passed
+
+
+"""
+
+
+def _with_setter_parameter(line: str) -> str:
+    """Add ``set_check_passed`` to the signature line that closes a check cell's ``def``.
+
+    marimo honours the serialised ``def _(...)`` list, not just the cell body: a name the
+    body uses but the signature omits is never injected, so the publish added below would
+    raise ``NameError`` without this. Handles the one-line form and the wrapped form marimo
+    emits when a cell takes many parameters, where the closing line is a bare ``):``.
+    """
+    stripped = line.strip()
+    if stripped.startswith(")"):
+        indent = line[: len(line) - len(line.lstrip())]
+        return f"{indent}    set_check_passed,\n{line}"
+    head, _, tail = line.rpartition(")")
+    if head.rstrip().endswith("("):
+        return f"{head}set_check_passed){tail}"
+    return f"{head.rstrip().rstrip(',')}, set_check_passed){tail}"
+
+
 def build_solution_cell(key: str) -> str:
     """Return marimo cell that auto-reveals the solution when check() passes."""
     safe_key = key.replace('"', '\\"')
-    var_name = f"check_passed_{_safe_varname(key)}"
     return f'''
 @app.cell(hide_code=True)
-def _(mo, EXERCISES, SALT_HASH, released_keys, reveal_solution, workshop_key, {var_name}):
+def _(mo, EXERCISES, SALT_HASH, released_keys, reveal_solution, workshop_key, get_check_passed):
     {_WORKSHOP_SOLUTION_PREFIX} {key} ===
-    _status, _solution = reveal_solution("{safe_key}", {var_name}, EXERCISES, released_keys(), workshop_key.value, SALT_HASH)
+    _status, _solution = reveal_solution("{safe_key}", get_check_passed().get("{safe_key}", False), EXERCISES, released_keys(), workshop_key.value, SALT_HASH)
     if _status == "passed":
         _out = mo.callout(mo.md(f"**Model solution**\\n\\n```python\\n{{_solution}}\\n```"), kind="success")
     elif _status == "released":
@@ -480,15 +512,16 @@ def _add_check_pass_returns(lines: list[str], exercise_keys: list[str]) -> list[
             # parameters; appending after the line that merely opens the signature drops
             # the assignment inside the parameter list, and the notebook no longer parses.
             if not initialized and (in_signature or stripped.startswith("def ")):
-                output.append(line)
                 signature_depth += line.count("(") - line.count(")")
                 if signature_depth <= 0 and stripped.endswith(":"):
+                    output.append(_with_setter_parameter(line))
                     indent = "    "
                     var = f"check_passed_{_safe_varname(current_cell_key)}"
                     output.append(f"{indent}{var} = False\n")
                     initialized = True
                     in_signature = False
                 else:
+                    output.append(line)
                     in_signature = True
                 continue
 
@@ -503,6 +536,12 @@ def _add_check_pass_returns(lines: list[str], exercise_keys: list[str]) -> list[
                 var = f"check_passed_{_safe_varname(current_cell_key)}"
                 output.append(
                     f'{indent}{var} = "success" in getattr(_result, "text", "")\n'
+                )
+                # Publish into the shared dict the solution cell reads. Before `_result`,
+                # which is the cell's last expression and therefore what renders.
+                output.append(
+                    f"{indent}set_check_passed(lambda d: {{**d, "
+                    f'"{current_cell_key}": {var}}})\n'
                 )
                 output.append(f"{indent}_result\n")
                 output.append(f"{indent}return ({var},)\n")
@@ -548,14 +587,24 @@ def _inject_solution_cells(lines: list[str], exercise_keys: list[str]) -> list[s
         if pos >= main_idx:
             deferred.append(build_solution_cell(key))
 
+    # The state cell has to exist before any solution cell reads it. marimo is a dataflow
+    # graph rather than a script, so position does not affect execution, but emitting it
+    # once and first keeps the generated file readable.
+    state_emitted = False
+
+    def _with_state(text: str) -> list[str]:
+        nonlocal state_emitted
+        prefix = [] if state_emitted else CHECK_STATE_CELL.splitlines(keepends=True)
+        state_emitted = True
+        return prefix + text.splitlines(keepends=True)
+
     for i, line in enumerate(lines):
         if i == main_idx and deferred:
             for sol_text in deferred:
-                output.extend(sol_text.splitlines(keepends=True))
+                output.extend(_with_state(sol_text))
             deferred.clear()
         if i in insert_map and i < main_idx:
-            sol_cell = build_solution_cell(insert_map[i])
-            output.extend(sol_cell.splitlines(keepends=True))
+            output.extend(_with_state(build_solution_cell(insert_map[i])))
         output.append(line)
     return output
 
