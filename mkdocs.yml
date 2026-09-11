@@ -95,5 +95,7 @@ nav:
   - Configuration: configuration.md
   - Security: security.md
   - Comparison: comparison.md
+  - Decisions:
+    - marimohub: decisions/marimohub.md
   - Development: development.md
   - Course Repo Template: course-repo-template.md
