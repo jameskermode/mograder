@@ -634,3 +634,72 @@ def test_the_generated_notebook_still_parses_with_the_state_wiring(tmp_path):
         and any(arg.arg == "set_check_passed" for arg in node.args.args)
     ]
     assert publishing, "no check cell declares set_check_passed in its signature"
+
+
+_BARE_RETURN_NOTEBOOK = textwrap.dedent("""\
+    import marimo
+    app = marimo.App()
+
+    @app.cell
+    def _():
+        import marimo as mo
+        return (mo,)
+
+    @app.cell(hide_code=True)
+    def _():
+        from mograder.runtime import check
+        return (check,)
+
+    @app.cell(hide_code=True)
+    def _():
+        # === MOGRADER: EXERCISES ===
+        _exercises = ["Q1"]
+        return
+
+    @app.cell
+    def _(np):
+        def f_X(x):
+            pdf = None
+            ### BEGIN SOLUTION
+            pdf = np.exp(-x)
+            ### END SOLUTION
+            return pdf
+        return (f_X,)
+
+    @app.cell(hide_code=True)
+    def _(check, mo, f_X):
+        mo.stop(f_X(0.0) is None, check("Q1: f_X", []))
+        check("Q1: f_X", [
+            (f_X(0.0) == 1.0, "f_X(0) should be 1"),
+        ])
+        return
+
+    if __name__ == "__main__":
+        app.run()
+""")
+
+
+def test_bare_return_in_the_exercises_cell_is_the_one_augmented(tmp_path):
+    """marimo writes a bare `return` for a cell that exports nothing.
+
+    The exercises cell's names were added to the next line starting `return ` -- with a
+    space -- so a bare `return` was skipped and the names landed on the next return in the
+    file. In L00b that was the student stub's nested `return pdf`, which then returned a
+    tuple instead of None: the `is None` guard never fired and the unsolved check cell
+    raised `unsupported operand type(s)`.
+    """
+    import ast
+
+    source = tmp_path / "notebook.py"
+    source.write_text(_BARE_RETURN_NOTEBOOK)
+
+    generated = process_workshop(source, tmp_path / "out", salt="s").read_text()
+    ast.parse(generated)
+
+    exercises_cell = generated.split("EXERCISES = ")[1].split("@app.cell")[0]
+    assert (
+        "return EXERCISES, KEYS_URL, SALT_HASH, reveal_solution, fetch_released_keys\n"
+        in exercises_cell
+    )
+    assert "        return pdf\n" in generated
+    assert generated.count("return EXERCISES") == 1

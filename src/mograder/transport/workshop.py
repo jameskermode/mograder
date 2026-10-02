@@ -451,8 +451,16 @@ def _replace_exercises_cell(
             )
             continue
 
-        # Augment the return of the exercises cell only
-        if augment_next_return and line.strip().startswith("return "):
+        # Augment the return of the exercises cell only. marimo writes a bare `return`
+        # for a cell that exports nothing, and the search must not run past the cell:
+        # the next `return` in the file may belong to a nested function in a later cell.
+        if augment_next_return and line.lstrip().startswith("@app."):
+            augment_next_return = False
+        if augment_next_return and line.strip() == "return":
+            indent = line[: len(line) - len(line.lstrip())]
+            line = f"{indent}return EXERCISES, KEYS_URL, SALT_HASH, reveal_solution, fetch_released_keys\n"
+            augment_next_return = False
+        elif augment_next_return and line.strip().startswith("return "):
             new_names = (
                 "EXERCISES, KEYS_URL, SALT_HASH, reveal_solution, fetch_released_keys, "
             )
