@@ -134,6 +134,35 @@ def test_convert_markdown_cells_preserves_indentation():
     assert '        """)\n' in result
 
 
+def test_convert_markdown_cells_drops_response_text_from_return():
+    """The converted cell no longer defines response_text, so it must not return it."""
+    lines = [
+        "@app.cell\n",
+        "def written_analysis(mo):\n",
+        '    response_text = "*Write your analysis here...*"\n',
+        "    # YOUR CODE HERE\n",
+        "    pass\n",
+        "    mo.md(response_text)\n",
+        "    return (response_text,)\n",
+    ]
+    result = convert_markdown_cells(lines)
+    assert "response_text" not in "".join(result)
+    assert result[-1] == "    return\n"
+    assert result[1] == "def written_analysis(mo):\n"
+
+
+def test_convert_markdown_cells_keeps_other_return_names():
+    lines = [
+        '    response_text = "placeholder"\n',
+        "    # YOUR CODE HERE\n",
+        "    pass\n",
+        "    mo.md(response_text)\n",
+        "    return (other, response_text)\n",
+    ]
+    result = convert_markdown_cells(lines)
+    assert result[-1] == "    return (other,)\n"
+
+
 def test_convert_markdown_cells_no_match():
     lines = [
         "    x = 1\n",

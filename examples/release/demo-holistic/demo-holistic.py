@@ -5,7 +5,7 @@
 #     "mograder",
 # ]
 # mograder-assignment = "demo-holistic"
-# mograder-cell-hashes = "bb1d4527,0fe01e32,27c75308,d0c40b37,601961a7,7579b131,90b6af02,f26057ad"
+# mograder-cell-hashes = "bb1d4527,0fe01e32,27c75308,d0c40b37,601961a7,7579b131,90b6af02,f26057ad,88138001,3566ecb1"
 # ///
 
 import marimo
@@ -126,10 +126,24 @@ def _(mo):
 
 
 @app.cell
-def _(mo):
+def written_analysis(mo):
     mo.md(r"""
     *Write your analysis here...*
     """)
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    notebook_file = mo.watch.file(__file__)
+    return (notebook_file,)
+
+
+@app.cell(hide_code=True)
+def _(notebook_file):
+    from mograder.runtime import word_count as _word_count
+
+    _word_count(notebook_file, target=(50, 150))
     return
 
 

@@ -21,11 +21,11 @@ def _(np):
     return (finite_diff,)
 ```
 
-For written-response cells, assign the model answer to `response_text` inside a solution block. The generated release version is automatically converted to an editable `mo.md()` block for the student:
+For written-response cells, name the cell `written_analysis` and assign the model answer to `response_text` inside a solution block. The release version is automatically converted to a plain, editable markdown cell (`mo.md()`), so students write their answer directly, with no variable to assign:
 
 ```python
 @app.cell
-def _(mo):
+def written_analysis(mo):
     response_text = "*Write your analysis here...*"
     ### BEGIN SOLUTION
     response_text = r"""
@@ -34,7 +34,24 @@ def _(mo):
     """
     ### END SOLUTION
     mo.md(response_text)
-    return (response_text,)
+    return
+```
+
+To show students a live word count, add two hidden cells. `mo.watch.file` re-runs the count whenever marimo autosaves the notebook, and `word_count()` reads the text of the cell named `written_analysis` (maths counts as one word):
+
+```python
+@app.cell(hide_code=True)
+def _(mo):
+    notebook_file = mo.watch.file(__file__)
+    return (notebook_file,)
+
+
+@app.cell(hide_code=True)
+def _(notebook_file):
+    from mograder.runtime import word_count as _word_count
+
+    _word_count(notebook_file, target=(300, 500))
+    return
 ```
 
 ## Autograding checks

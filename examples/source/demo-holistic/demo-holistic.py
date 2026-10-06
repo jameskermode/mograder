@@ -130,7 +130,7 @@ def _(mo):
 
 
 @app.cell
-def _(mo):
+def written_analysis(mo):
     response_text = "*Write your analysis here...*"
     ### BEGIN SOLUTION
     response_text = r"""
@@ -144,6 +144,20 @@ def _(mo):
     """
     ### END SOLUTION
     mo.md(response_text)
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    notebook_file = mo.watch.file(__file__)
+    return (notebook_file,)
+
+
+@app.cell(hide_code=True)
+def _(notebook_file):
+    from mograder.runtime import word_count as _word_count
+
+    _word_count(notebook_file, target=(50, 150))
     return
 
 

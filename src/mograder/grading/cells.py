@@ -360,10 +360,36 @@ def convert_markdown_cells(lines: list[str]) -> list[str]:
                 output.append(f"{indent}{placeholder}\n")
                 output.append(f'{indent}""")\n')
                 i += 4
+                # The cell no longer defines response_text: drop it from the
+                # cell's return statement (if any) so the release is valid.
+                j = i
+                while j < len(lines) and not lines[j].startswith(
+                    ("@app.", "if __name__")
+                ):
+                    if lines[j].strip().startswith("return"):
+                        lines = (
+                            lines[:j]
+                            + [_drop_return_name(lines[j], "response_text")]
+                            + lines[j + 1 :]
+                        )
+                        break
+                    j += 1
                 continue
         output.append(lines[i])
         i += 1
     return output
+
+
+def _drop_return_name(line: str, name: str) -> str:
+    """Remove ``name`` from a marimo ``return (a, b,)`` line."""
+    m = re.match(r"^(\s*)return\s*\(?([^)]*)\)?\s*$", line)
+    if not m or name not in line:
+        return line
+    indent, inner = m.group(1), m.group(2)
+    names = [n.strip() for n in inner.split(",") if n.strip() and n.strip() != name]
+    if not names:
+        return f"{indent}return\n"
+    return f"{indent}return ({', '.join(names)},)\n"
 
 
 def build_submit_cell(server_url: str, assignment_name: str) -> str:

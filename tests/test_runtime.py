@@ -377,3 +377,75 @@ def test_grader_scores_unattempted(mock_mo):
     assert kind == "neutral"
     assert "**0/25**" in content
     assert "\u2014" in content  # em dash for unattempted
+
+
+# --- word_count ---
+
+SOURCE_STYLE = """
+import marimo
+app = marimo.App()
+
+
+@app.cell
+def written_analysis(mo):
+    response_text = "*Write your analysis here...*"
+    ### BEGIN SOLUTION
+    response_text = r\"\"\"
+    One two three $\\alpha + \\beta$ four.
+    \"\"\"
+    ### END SOLUTION
+    mo.md(response_text)
+    return
+"""
+
+RELEASE_STYLE = """
+import marimo
+app = marimo.App()
+
+
+@app.cell
+def written_analysis(mo):
+    mo.md(r\"\"\"
+    The answer is **five** words long.
+    \"\"\")
+    return
+"""
+
+
+def test_count_words_in_named_cell_source_style():
+    from mograder.runtime import count_response_words
+
+    # longest string literal is the model answer; maths counts as one word
+    assert count_response_words(SOURCE_STYLE) == 5
+
+
+def test_count_words_in_named_cell_release_style():
+    from mograder.runtime import count_response_words
+
+    assert count_response_words(RELEASE_STYLE) == 6
+
+
+def test_count_words_missing_cell_returns_none():
+    from mograder.runtime import count_response_words
+
+    assert count_response_words("x = 1\n") is None
+    assert count_response_words(RELEASE_STYLE, cell="other_name") is None
+
+
+def test_word_count_reads_watched_file(tmp_path):
+    from mograder.runtime import word_count
+
+    nb = tmp_path / "nb.py"
+    nb.write_text(RELEASE_STYLE)
+    html = word_count(nb, target=(300, 500)).text
+    assert "Word count: 6" in html
+    assert "#EA4335" in html  # red: far below target
+
+
+def test_word_count_colours():
+    from mograder.runtime import _word_count_colour
+
+    assert _word_count_colour(400, (300, 500)) == "#34A853"
+    assert _word_count_colour(250, (300, 500)) == "#FF9800"
+    assert _word_count_colour(550, (300, 500)) == "#FF9800"
+    assert _word_count_colour(100, (300, 500)) == "#EA4335"

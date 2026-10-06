@@ -247,4 +247,80 @@ class Grader:
 
 
 # Re-export remote helpers for use in notebooks
+def count_response_words(source: str, cell: str = "written_analysis"):
+    """Count the words in the written answer held by the cell named ``cell``.
+
+    ``source`` is the text of a marimo notebook. The answer is taken to be the
+    longest string literal in that cell, which covers both the release form
+    (a plain ``mo.md(r\"\"\"...\"\"\")`` cell edited by the student) and the
+    source form (a ``response_text`` model answer). Inline and display maths
+    count as one word each. Returns ``None`` if the cell is not found.
+    """
+    import ast
+
+    try:
+        tree = ast.parse(source)
+    except SyntaxError:
+        return None
+    for node in ast.walk(tree):
+        if isinstance(node, ast.FunctionDef) and node.name == cell:
+            strings = [
+                n.value
+                for n in ast.walk(node)
+                if isinstance(n, ast.Constant) and isinstance(n.value, str)
+            ]
+            if not strings:
+                return 0
+            text = max(strings, key=len)
+            text = re.sub(r"\$\$.*?\$\$|\$[^$]*\$", " MATH ", text, flags=re.S)
+            return len(re.findall(r"\S+", text))
+    return None
+
+
+def _word_count_colour(n: int, target: tuple[int, int]) -> str:
+    lo, hi = target
+    if lo <= n <= hi:
+        return "#34A853"  # green
+    if lo - 100 <= n < lo or hi < n <= hi + 100:
+        return "#FF9800"  # amber
+    return "#EA4335"  # red
+
+
+def word_count(
+    notebook_file, cell: str = "written_analysis", target=(300, 500)
+) -> mo.Html:
+    """Live word count for a written answer in a plain markdown cell.
+
+    Students write their answer directly in a markdown cell named ``cell``
+    (``def written_analysis(mo): mo.md(...)``), with no variable to assign.
+    Pass the notebook file wrapped with ``mo.watch.file`` so the count
+    refreshes whenever marimo autosaves the notebook::
+
+        @app.cell(hide_code=True)
+        def _(mo):
+            notebook_file = mo.watch.file(__file__)
+            return (notebook_file,)
+
+        @app.cell(hide_code=True)
+        def _(notebook_file):
+            from mograder.runtime import word_count as _word_count
+            _word_count(notebook_file)
+            return
+    """
+    from pathlib import Path
+
+    reader = (
+        notebook_file if hasattr(notebook_file, "read_text") else Path(notebook_file)
+    )
+    n = count_response_words(reader.read_text(), cell=cell)
+    if n is None:
+        return mo.md(f"*Word count unavailable: no cell named `{cell}`.*")
+    colour = _word_count_colour(n, target)
+    lo, hi = target
+    return mo.md(
+        f'<span style="color:{colour}; font-weight:bold">Word count: {n}</span> '
+        f"(target: {lo}–{hi}; updates when the notebook is saved)"
+    )
+
+
 from mograder.remote import fetch, status, submit  # noqa: F401, E402
