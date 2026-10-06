@@ -33,10 +33,15 @@ SCORES_MARKER = "# MOGRADER_SCORES_CELL"
 _SIMPLE_NAME_RE = re.compile(r"^[a-zA-Z_]\w*$")
 _ASSIGN_RE = re.compile(r"^\s*([a-zA-Z_]\w*)\s*=")
 _TUPLE_ASSIGN_RE = re.compile(r"^\s*\(?([a-zA-Z_]\w*(?:\s*,\s*[a-zA-Z_]\w*)*)\)?\s*=")
+_DEF_RE = re.compile(r"^\s*(?:async\s+def|def|class)\s+([a-zA-Z_]\w*)")
 
 
 def _extract_assigned_names(line: str) -> list[str]:
-    """Extract all variable names from an assignment LHS (simple or tuple)."""
+    """Extract the names a line binds: an assignment LHS (simple or tuple),
+    or a ``def``/``class`` statement."""
+    m = _DEF_RE.match(line)
+    if m:
+        return [m.group(1)]
     m = _TUPLE_ASSIGN_RE.match(line)
     if not m:
         return []

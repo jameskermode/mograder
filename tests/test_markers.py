@@ -359,6 +359,23 @@ def test_strip_solutions_no_sentinel_when_pre_assigned():
     assert "    x = ...\n" not in result
 
 
+def test_strip_solutions_no_sentinel_for_function_defined_before_block():
+    """A function defined before a top-level solution block is not overwritten with ``...``."""
+    lines = [
+        "    def solver(x):\n",
+        f"        {SOLUTION_BEGIN}\n",
+        "        return 2 * x\n",
+        f"        {SOLUTION_END}\n",
+        "\n",
+        f"    {SOLUTION_BEGIN}\n",
+        "    plot(solver)\n",
+        f"    {SOLUTION_END}\n",
+        "    return (solver,)\n",
+    ]
+    result = strip_solutions(lines)
+    assert "    solver = ...\n" not in result
+
+
 def test_strip_solutions_sentinel_multiple_returns():
     """return x, y gets sentinels for both names."""
     lines = [
