@@ -353,3 +353,75 @@ def test_validate_cell_hashes_no_hashes():
     """Notebook without hashes → empty list (graceful degradation)."""
     assert validate_cell_hashes("plain notebook without PEP 723") == []
     assert validate_cell_hashes(_HASH_NOTEBOOK_TEMPLATE) == []
+
+
+# -- Written-analysis answer cells (student-editable markdown) ------------------
+
+from pathlib import Path as _Path
+
+_DEMO = (
+    _Path(__file__).resolve().parent.parent
+    / "examples/source/demo-holistic/demo-holistic.py"
+)
+_PLACEHOLDER = "    *Write your analysis here...*\n"
+
+
+def _demo_release(tmp_path):
+    from mograder.grading.cells import process_file
+
+    assert process_file(_DEMO, tmp_path)
+    return (tmp_path / _DEMO.name).read_text()
+
+
+def _with_answer(release: str) -> str:
+    assert _PLACEHOLDER in release
+    return release.replace(
+        _PLACEHOLDER, "    My analysis of the time and space complexity.\n", 1
+    )
+
+
+def test_written_answer_not_flagged_by_cell_integrity(tmp_path):
+    release = _demo_release(tmp_path)
+    result = check_cell_integrity(release, _with_answer(release))
+    assert result.tampered_cells == []
+    assert result.fixed_source.count("def written_analysis") == 1
+    assert "Write your analysis here" not in result.fixed_source
+
+
+def test_written_answer_not_flagged_by_cell_hashes(tmp_path):
+    release = _demo_release(tmp_path)
+    assert validate_cell_hashes(_with_answer(release)) == []
+
+
+def test_modified_instruction_cell_still_flagged(tmp_path):
+    release = _demo_release(tmp_path)
+    tampered = _with_answer(release).replace(
+        "Discuss the time and space complexity", "Discuss nothing", 1
+    )
+    assert check_cell_integrity(release, tampered).tampered_cells
+    assert validate_cell_hashes(tampered)
+
+
+def test_written_answer_with_pre_0_3_4_hashes(tmp_path):
+    """Older releases hashed the answer cell too; editing it must not warn."""
+    import re
+
+    from marimo._convert.converters import MarimoConvert
+
+    from mograder.grading.cells import _hash_cell
+
+    release = _demo_release(tmp_path)
+    ir = MarimoConvert.from_py(release).to_ir()
+    old = ",".join(
+        _hash_cell(c.code) for c in ir.cells if "# YOUR CODE HERE" not in c.code
+    )
+    old_release = re.sub(
+        r'# mograder-cell-hashes = "[^"]*"',
+        f'# mograder-cell-hashes = "{old}"',
+        release,
+    )
+    assert validate_cell_hashes(_with_answer(old_release)) == []
+    tampered = _with_answer(old_release).replace(
+        "Discuss the time and space complexity", "Discuss nothing", 1
+    )
+    assert validate_cell_hashes(tampered)

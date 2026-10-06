@@ -638,17 +638,36 @@ def _hash_cell(code: str) -> str:
     return hashlib.sha256(code.strip().encode()).hexdigest()[:8]
 
 
+RESPONSE_CELL_NAME = "written_analysis"
+
+
+def is_student_editable(code: str, name: str | None = None) -> bool:
+    """Whether students are expected to edit this release cell.
+
+    True for solution cells (containing ``# YOUR CODE HERE``) and for written
+    answer cells, which the release turns into plain markdown and identifies by
+    their cell name (``written_analysis`` or ``written_analysis_<suffix>``).
+    Such cells are excluded from integrity checks and cell hashes.
+    """
+    if "# YOUR CODE HERE" in code:
+        return True
+    return name is not None and (
+        name == RESPONSE_CELL_NAME or name.startswith(RESPONSE_CELL_NAME + "_")
+    )
+
+
 def _inject_cell_hashes(text: str) -> str:
     """Compute hashes of non-solution cells and inject into PEP 723 block.
 
-    Non-solution cells are those NOT containing ``# YOUR CODE HERE``.
+    Non-solution cells are those students are not expected to edit
+    (see :func:`is_student_editable`).
     """
     from marimo._convert.converters import MarimoConvert
 
     ir = MarimoConvert.from_py(text).to_ir()
     hashes = []
     for cell in ir.cells:
-        if "# YOUR CODE HERE" not in cell.code:
+        if not is_student_editable(cell.code, cell.name):
             hashes.append(_hash_cell(cell.code))
 
     if not hashes:

@@ -12,6 +12,7 @@ from mograder.grading.cells import (
     HIDDEN_TESTS_END,
     MARKS_MARKER,
     _hash_cell,
+    is_student_editable,
 )
 
 # Pattern to extract question key from check() calls, e.g. check("Q1: ...")
@@ -51,9 +52,9 @@ class CellIntegrityResult:
     fixed_source: str  # reassembled with release cells reinjected
 
 
-def _is_solution_cell(code: str) -> bool:
-    """A release cell is a solution cell if it contains the placeholder."""
-    return "# YOUR CODE HERE" in code
+def _is_solution_cell(cell) -> bool:
+    """A release cell students may edit: a solution cell or a written answer cell."""
+    return is_student_editable(cell.code, getattr(cell, "name", None))
 
 
 def check_cell_integrity(release_text: str, submitted_text: str) -> CellIntegrityResult:
@@ -70,7 +71,7 @@ def check_cell_integrity(release_text: str, submitted_text: str) -> CellIntegrit
     # Separate release cells into solution and non-solution
     non_solution_codes: set[str] = set()
     for cell in release_ir.cells:
-        if not _is_solution_cell(cell.code):
+        if not _is_solution_cell(cell):
             non_solution_codes.add(cell.code)
 
     # Build set of submitted cell codes for quick lookup
@@ -80,7 +81,7 @@ def check_cell_integrity(release_text: str, submitted_text: str) -> CellIntegrit
     tampered_cells: list[str] = []
     missing_cells = []
     for cell in release_ir.cells:
-        if _is_solution_cell(cell.code):
+        if _is_solution_cell(cell):
             continue
         if cell.code not in submitted_codes:
             snippet = cell.code.strip().split("\n")[0][:60]
@@ -154,17 +155,21 @@ def validate_cell_hashes(text: str) -> list[CellHashWarning]:
         return []
 
     ir = MarimoConvert.from_py(text).to_ir()
+    hashed = [c for c in ir.cells if not _is_solution_cell(c)]
+    if len(hashed) != len(hashes):
+        # Releases from mograder < 0.3.4 also hashed written answer cells:
+        # align with that layout, but don't warn about the answer cells.
+        legacy = [c for c in ir.cells if "# YOUR CODE HERE" not in c.code]
+        if len(legacy) == len(hashes):
+            hashed = legacy
+
     warnings: list[CellHashWarning] = []
-    hash_idx = 0
-    for cell in ir.cells:
-        if "# YOUR CODE HERE" in cell.code:
+    for hash_idx, cell in enumerate(hashed):
+        if hash_idx >= len(hashes) or _is_solution_cell(cell):
             continue
-        if hash_idx < len(hashes):
-            actual = _hash_cell(cell.code)
-            if actual != hashes[hash_idx]:
-                snippet = cell.code.strip().split("\n")[0][:60]
-                warnings.append(CellHashWarning(index=hash_idx, snippet=snippet))
-        hash_idx += 1
+        if _hash_cell(cell.code) != hashes[hash_idx]:
+            snippet = cell.code.strip().split("\n")[0][:60]
+            warnings.append(CellHashWarning(index=hash_idx, snippet=snippet))
 
     return warnings
 
@@ -181,13 +186,13 @@ def fix_modified_cells(release_text: str, submitted_text: str) -> CellIntegrityR
     # Build ordered list of non-solution cells from release
     release_nonsol = []
     for i, cell in enumerate(release_ir.cells):
-        if not _is_solution_cell(cell.code):
+        if not _is_solution_cell(cell):
             release_nonsol.append((i, cell))
 
     # Build ordered list of non-solution cells from submitted
     submitted_nonsol_indices = []
     for i, cell in enumerate(submitted_ir.cells):
-        if not _is_solution_cell(cell.code):
+        if not _is_solution_cell(cell):
             submitted_nonsol_indices.append(i)
 
     tampered: list[str] = []
