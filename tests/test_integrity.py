@@ -1,5 +1,7 @@
 """Tests for integrity checking of check/marks cells."""
 
+from pathlib import Path as _Path
+
 from mograder.grading.integrity import (
     check_cell_integrity,
     check_integrity,
@@ -356,8 +358,6 @@ def test_validate_cell_hashes_no_hashes():
 
 
 # -- Written-analysis answer cells (student-editable markdown) ------------------
-
-from pathlib import Path as _Path
 
 _DEMO = (
     _Path(__file__).resolve().parent.parent

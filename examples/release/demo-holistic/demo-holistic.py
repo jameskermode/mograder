@@ -5,7 +5,7 @@
 #     "mograder",
 # ]
 # mograder-assignment = "demo-holistic"
-# mograder-cell-hashes = "bb1d4527,0fe01e32,27c75308,d0c40b37,601961a7,7579b131,90b6af02,f26057ad,88138001,3566ecb1"
+# mograder-cell-hashes = "bb1d4527,0fe01e32,27c75308,d0c40b37,601961a7,7579b131,90b6af02,88138001,3566ecb1"
 # ///
 
 import marimo
