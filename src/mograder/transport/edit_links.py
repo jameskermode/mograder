@@ -67,7 +67,7 @@ def _compress_lz(py_file: Path) -> str | None:
         import lzstring
     except ModuleNotFoundError:
         return None
-    content = py_file.read_text()
+    content = py_file.read_text(encoding="utf-8")
     lz = lzstring.LZString()
     return lz.compressToEncodedURIComponent(content)
 

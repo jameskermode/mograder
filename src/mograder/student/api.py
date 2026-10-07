@@ -86,7 +86,7 @@ def create_student_api(course_dir: Path, config: MograderConfig) -> Starlette:
         )
         if not py_files:
             return None
-        content = py_files[0].read_text()
+        content = py_files[0].read_text(encoding="utf-8")
         lz = lzstring.LZString()
         compressed = lz.compressToEncodedURIComponent(content)
         _content_lz_cache[dir_key] = compressed

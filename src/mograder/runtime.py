@@ -61,7 +61,7 @@ def _write_sidecar(
         "earned_weight": earned_weight,
         "total_weight": total_weight,
     }
-    with open(path, "a") as f:
+    with open(path, "a", encoding="utf-8") as f:
         f.write(json.dumps(record) + "\n")
 
 
@@ -129,7 +129,7 @@ class Grader:
             import __main__
 
             if hasattr(__main__, "__file__") and __main__.__file__:
-                with open(__main__.__file__) as f:
+                with open(__main__.__file__, encoding="utf-8") as f:
                     head = f.read(4096)
                 self._has_hidden = bool(_HIDDEN_TESTS_RE.search(head))
         except Exception:
@@ -312,7 +312,7 @@ def word_count(
     reader = (
         notebook_file if hasattr(notebook_file, "read_text") else Path(notebook_file)
     )
-    n = count_response_words(reader.read_text(), cell=cell)
+    n = count_response_words(reader.read_text(encoding="utf-8"), cell=cell)
     if n is None:
         return mo.md(f"*Word count unavailable: no cell named `{cell}`.*")
     colour = _word_count_colour(n, target)

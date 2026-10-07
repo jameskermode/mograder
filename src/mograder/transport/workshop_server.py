@@ -34,7 +34,7 @@ def _get_exercises_state(keys_all: dict, keys_path: Path) -> dict:
     exercises = list(keys_all.keys())
     released = {}
     if keys_path.is_file():
-        current = json.loads(keys_path.read_text())
+        current = json.loads(keys_path.read_text(encoding="utf-8"))
         for ex in exercises:
             released[ex] = ex in current
     return {"exercises": exercises, "released": released}
@@ -44,14 +44,14 @@ def _do_release(keys_path: Path, keys_all: dict, exercise: str, released: bool) 
     """Release or lock a single exercise. Returns updated state."""
     current = {}
     if keys_path.is_file():
-        current = json.loads(keys_path.read_text())
+        current = json.loads(keys_path.read_text(encoding="utf-8"))
 
     if released:
         current[exercise] = keys_all.get(exercise, True)
     else:
         current.pop(exercise, None)
 
-    keys_path.write_text(json.dumps(current, indent=2) + "\n")
+    keys_path.write_text(json.dumps(current, indent=2) + "\n", encoding="utf-8")
     return _get_exercises_state(keys_all, keys_path)
 
 
@@ -62,7 +62,7 @@ def _do_release_all(keys_path: Path, keys_all: dict, released: bool) -> dict:
     else:
         current = {}
 
-    keys_path.write_text(json.dumps(current, indent=2) + "\n")
+    keys_path.write_text(json.dumps(current, indent=2) + "\n", encoding="utf-8")
     return _get_exercises_state(keys_all, keys_path)
 
 

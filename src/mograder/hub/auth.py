@@ -116,7 +116,7 @@ def load_allowed_users(path: Path) -> set[str] | None:
         return None
     return {
         line.strip()
-        for line in path.read_text().splitlines()
+        for line in path.read_text(encoding="utf-8").splitlines()
         if line.strip() and not line.strip().startswith("#")
     }
 

@@ -65,7 +65,7 @@ def read_moodle_worksheet(path: Path) -> tuple[list[str], list[dict]]:
 def read_grades_csv(path: Path) -> dict[str, dict]:
     """Read mograder grades CSV into lookup dict keyed by student."""
     grades = {}
-    with open(path, newline="") as f:
+    with open(path, encoding="utf-8", newline="") as f:
         reader = csv.DictReader(f)
         for row in reader:
             mark_str = row["mark"].strip()

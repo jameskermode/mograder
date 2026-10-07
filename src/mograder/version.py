@@ -30,7 +30,7 @@ def is_editable_install() -> bool:
         dist = importlib.metadata.distribution("mograder")
         for f in dist.files or []:
             if f.name == "direct_url.json":
-                data = json.loads(dist.locate_file(f).read_text())
+                data = json.loads(dist.locate_file(f).read_text(encoding="utf-8"))
                 return data.get("dir_info", {}).get("editable", False)
     except Exception:
         pass
@@ -44,7 +44,7 @@ def get_version_info() -> str:
         dist = importlib.metadata.distribution("mograder")
         for f in dist.files or []:
             if f.name == "direct_url.json":
-                data = json.loads(dist.locate_file(f).read_text())
+                data = json.loads(dist.locate_file(f).read_text(encoding="utf-8"))
 
                 # Git-based install (e.g. uv add "mograder @ git+...")
                 vcs = data.get("vcs_info", {})
@@ -142,7 +142,7 @@ def check_for_update() -> None:
         now = datetime.now(timezone.utc)
         if _UPDATE_CHECK_FILE.is_file():
             try:
-                state = json.loads(_UPDATE_CHECK_FILE.read_text())
+                state = json.loads(_UPDATE_CHECK_FILE.read_text(encoding="utf-8"))
                 last = datetime.fromisoformat(state["last_checked"])
                 hours = (now - last).total_seconds() / 3600
                 if hours < _CHECK_INTERVAL_HOURS:
@@ -161,7 +161,8 @@ def check_for_update() -> None:
         # Save state
         _CONFIG_DIR.mkdir(parents=True, exist_ok=True)
         _UPDATE_CHECK_FILE.write_text(
-            json.dumps({"last_checked": now.isoformat(), "latest": latest})
+            json.dumps({"last_checked": now.isoformat(), "latest": latest}),
+            encoding="utf-8",
         )
 
         if is_newer(latest, get_version()):

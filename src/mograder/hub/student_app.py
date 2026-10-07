@@ -151,7 +151,9 @@ def _(
             _type = "assignment"
             if _manifest.is_file():
                 try:
-                    _type = _json.loads(_manifest.read_text()).get("type", "assignment")
+                    _type = _json.loads(_manifest.read_text(encoding="utf-8")).get(
+                        "type", "assignment"
+                    )
                 except Exception:
                     pass
             # Scheduled visibility: students do not see hidden or not-yet-open

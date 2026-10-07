@@ -203,7 +203,7 @@ def create_hub_app(
 
         # Write new file
         storage.ensure_dir(username, assignment)
-        nb.write_text(content)
+        nb.write_text(content, encoding="utf-8")
         storage.mark_uploaded(username, assignment)
 
         # Kill running session if any
@@ -242,7 +242,7 @@ def create_hub_app(
         try:
             from mograder.grading.integrity import validate_cell_hashes
 
-            text = nb.read_text()
+            text = nb.read_text(encoding="utf-8")
             hash_warnings = validate_cell_hashes(text)
             warnings = [str(w) for w in hash_warnings]
 
@@ -252,10 +252,10 @@ def create_hub_app(
             if release:
                 from mograder.grading.integrity import check_integrity
 
-                release_text = release.read_text()
+                release_text = release.read_text(encoding="utf-8")
                 result = check_integrity(release_text, text)
                 if result.fixed_source != text:
-                    nb.write_text(result.fixed_source)
+                    nb.write_text(result.fixed_source, encoding="utf-8")
                 integrity_level = "source"
         except Exception as e:
             warnings.append(f"Integrity check error: {e}")
@@ -300,7 +300,7 @@ def create_hub_app(
         if not nb.exists():
             raise HTTPException(status_code=404, detail="Notebook not found")
 
-        text = nb.read_text()
+        text = nb.read_text(encoding="utf-8")
 
         # Reinject tampered check/marks cells for the permanent submission
         # (leaves the student's hub-notebooks copy untouched).
@@ -311,7 +311,7 @@ def create_hub_app(
         if release is not None:
             from mograder.grading.integrity import check_integrity
 
-            result = check_integrity(release.read_text(), text)
+            result = check_integrity(release.read_text(encoding="utf-8"), text)
             tampered_checks = result.tampered_checks
             tampered_marks = result.tampered_marks
             submit_text = result.fixed_source
@@ -680,7 +680,9 @@ def create_hub_app(
             if p.is_file() and not p.name.startswith(".") and p.name != "files.json"
         )
         manifest = {"files": all_files, "type": item_type}
-        (assignment_dir / "files.json").write_text(json.dumps(manifest, indent=2))
+        (assignment_dir / "files.json").write_text(
+            json.dumps(manifest, indent=2), encoding="utf-8"
+        )
 
         # Auto-warm cache for the published notebook
         nb = assignment_dir / f"{assignment}.py"
@@ -741,7 +743,8 @@ def create_hub_app(
         allowed_path.write_text(
             "# Allowed users — managed by mograder sync-users\n"
             + "\n".join(lines)
-            + "\n"
+            + "\n",
+            encoding="utf-8",
         )
         log.info("sync-users: wrote %d users to %s", len(lines), allowed_path)
         return {"status": "ok", "count": len(lines)}
@@ -766,13 +769,13 @@ def create_hub_app(
         for _ws_dir in sorted(rel_dir.iterdir()):
             _keys_all_path = _ws_dir / "keys_all.json"
             if _ws_dir.is_dir() and _keys_all_path.is_file():
-                _keys_all = json.loads(_keys_all_path.read_text())
+                _keys_all = json.loads(_keys_all_path.read_text(encoding="utf-8"))
                 _keys_path = _ws_dir / "keys.json"
                 if not _keys_path.exists():
-                    _keys_path.write_text("{}")
+                    _keys_path.write_text("{}", encoding="utf-8")
                 # Generate dashboard HTML for instructor control
                 (_ws_dir / "dashboard.html").write_text(
-                    generate_dashboard_html(list(_keys_all.keys()))
+                    generate_dashboard_html(list(_keys_all.keys())), encoding="utf-8"
                 )
                 _ws_app = create_workshop_starlette_routes(
                     export_dir=_ws_dir,

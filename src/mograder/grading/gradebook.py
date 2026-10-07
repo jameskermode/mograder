@@ -106,7 +106,7 @@ class Gradebook:
         import time
 
         lock_path = Path(str(self.db_path) + ".lock")
-        fd = lock_path.open("w")
+        fd = lock_path.open("w", encoding="utf-8")
         deadline = time.monotonic() + timeout
         while True:
             try:
@@ -431,7 +431,7 @@ class Gradebook:
                 if f.suffix != ".py":
                     continue
                 student = f.stem
-                lines = f.read_text().splitlines(keepends=True)
+                lines = f.read_text(encoding="utf-8").splitlines(keepends=True)
                 manual_mark, feedback_text = parse_marker_feedback(lines)
                 auto_mark = parse_auto_marks(lines)
 

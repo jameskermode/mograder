@@ -705,7 +705,7 @@ def process_file(
     submit_url: str | None = None,
 ) -> bool:
     """Process a single notebook file. Returns True on success."""
-    lines = source.read_text().splitlines(keepends=True)
+    lines = source.read_text(encoding="utf-8").splitlines(keepends=True)
 
     errors = validate_markers(lines, str(source))
     if errors:
@@ -754,12 +754,12 @@ def process_file(
     if n_hidden > 0:
         student_lines = _inject_hidden_tests_metadata(student_lines)
 
-    dest.write_text("".join(student_lines))
+    dest.write_text("".join(student_lines), encoding="utf-8")
 
     # Inject cell hashes (needs parsed marimo IR, so operates on written text)
-    text = dest.read_text()
+    text = dest.read_text(encoding="utf-8")
     text = _inject_cell_hashes(text)
-    dest.write_text(text)
+    dest.write_text(text, encoding="utf-8")
 
     msg = f"OK: {_rel(source)} → {_rel(dest)} ({n_solutions} solution blocks stripped"
     if n_hidden:
@@ -1237,7 +1237,7 @@ def write_marker_feedback(file_path: Path, mark: int | None, feedback: str) -> N
 
     Raises ValueError if the feedback marker is not found.
     """
-    text = file_path.read_text()
+    text = file_path.read_text(encoding="utf-8")
     if FEEDBACK_MARKER not in text:
         raise ValueError(f"No {FEEDBACK_MARKER} found in {file_path}")
 
@@ -1271,4 +1271,4 @@ def write_marker_feedback(file_path: Path, mark: int | None, feedback: str) -> N
             r"_feedback\s*=\s*'(?:[^'\\]|\\.)*'", replacement, text, count=1
         )
 
-    file_path.write_text(new_text)
+    file_path.write_text(new_text, encoding="utf-8")

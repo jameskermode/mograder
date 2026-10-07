@@ -8,7 +8,7 @@ _PKG_DIR = Path(__file__).resolve().parent
 
 
 def _read_head_html() -> str:
-    return (_PKG_DIR / "head.html").read_text()
+    return (_PKG_DIR / "head.html").read_text(encoding="utf-8")
 
 
 FAVICON_LINK = _read_head_html()

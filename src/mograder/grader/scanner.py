@@ -145,7 +145,9 @@ def scan_course(
                     else:
                         graded_count = 0
                         for f in py_files:
-                            lines = f.read_text().splitlines(keepends=True)
+                            lines = f.read_text(encoding="utf-8").splitlines(
+                                keepends=True
+                            )
                             mark, _ = parse_marker_feedback(lines)
                             if mark is not None:
                                 graded_count += 1
@@ -222,7 +224,7 @@ def scan_submissions(
                     info.graded = sub["graded_at"] is not None
                 else:
                     # Fall back to .py parsing
-                    lines = f.read_text().splitlines(keepends=True)
+                    lines = f.read_text(encoding="utf-8").splitlines(keepends=True)
                     info.has_grading_cells = has_grading_cells(lines)
                     mark, feedback_text = parse_marker_feedback(lines)
                     auto_mark = parse_auto_marks(lines)
@@ -272,7 +274,7 @@ def collect_student_marks(
             student = f.stem
             if student not in result:
                 result[student] = {}
-            lines = f.read_text().splitlines(keepends=True)
+            lines = f.read_text(encoding="utf-8").splitlines(keepends=True)
             mark, _ = parse_marker_feedback(lines)
             auto_mark = parse_auto_marks(lines)
             if auto_mark is not None and mark is not None:
@@ -299,7 +301,7 @@ def get_max_marks(
     result: dict[str, int | float] = {}
     for a in assignments:
         if a.source_path and a.source_path.is_file():
-            lines = a.source_path.read_text().splitlines(keepends=True)
+            lines = a.source_path.read_text(encoding="utf-8").splitlines(keepends=True)
             marks = parse_marks_metadata(lines)
             result[a.name] = sum(marks.values()) if marks else 100
         else:

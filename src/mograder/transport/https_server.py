@@ -305,7 +305,7 @@ class AssignmentHandler(BaseHTTPRequestHandler):
     def _handle_list_assignments(self):
         manifest_path = self.root / "assignments.json"
         if manifest_path.is_file():
-            data = json.loads(manifest_path.read_text())
+            data = json.loads(manifest_path.read_text(encoding="utf-8"))
         else:
             # Auto-discover from directory structure
             data = []
@@ -409,7 +409,7 @@ class AssignmentHandler(BaseHTTPRequestHandler):
         # Merge with existing grades if any
         existing = []
         if grades_path.is_file():
-            existing = json.loads(grades_path.read_text())
+            existing = json.loads(grades_path.read_text(encoding="utf-8"))
 
         # Replace or add grades by userid
         existing_map = {g.get("userid", g.get("username", "")): g for g in existing}
@@ -418,7 +418,9 @@ class AssignmentHandler(BaseHTTPRequestHandler):
         ):
             key = g.get("userid", g.get("username", ""))
             existing_map[key] = g
-        grades_path.write_text(json.dumps(list(existing_map.values()), indent=2))
+        grades_path.write_text(
+            json.dumps(list(existing_map.values()), indent=2), encoding="utf-8"
+        )
         self._send_json({"status": "ok", "count": len(existing_map)})
 
     def _handle_upload_feedback(self, assignment: str):
@@ -479,7 +481,7 @@ class AssignmentHandler(BaseHTTPRequestHandler):
         feedback_text = ""
         graded = False
         if grades_path.is_file():
-            grades = json.loads(grades_path.read_text())
+            grades = json.loads(grades_path.read_text(encoding="utf-8"))
             for g in grades:
                 if g.get("username") == user or g.get("userid") == user:
                     graded = True
@@ -765,7 +767,7 @@ def create_starlette_routes(
             return err
         manifest_path = root / "assignments.json"
         if manifest_path.is_file():
-            data = json.loads(manifest_path.read_text())
+            data = json.loads(manifest_path.read_text(encoding="utf-8"))
         else:
             data = []
             if resolved_release_dir is not None:
@@ -874,7 +876,7 @@ def create_starlette_routes(
 
         existing = []
         if grades_path.is_file():
-            existing = json.loads(grades_path.read_text())
+            existing = json.loads(grades_path.read_text(encoding="utf-8"))
 
         existing_map = {g.get("userid", g.get("username", "")): g for g in existing}
         for g in grades_data.get(
@@ -882,7 +884,9 @@ def create_starlette_routes(
         ):
             key = g.get("userid", g.get("username", ""))
             existing_map[key] = g
-        grades_path.write_text(json.dumps(list(existing_map.values()), indent=2))
+        grades_path.write_text(
+            json.dumps(list(existing_map.values()), indent=2), encoding="utf-8"
+        )
         return _json({"status": "ok", "count": len(existing_map)})
 
     async def status(request: Request):
@@ -903,7 +907,7 @@ def create_starlette_routes(
         feedback_text = ""
         graded = False
         if grades_path.is_file():
-            grades = json.loads(grades_path.read_text())
+            grades = json.loads(grades_path.read_text(encoding="utf-8"))
             for g in grades:
                 if g.get("username") == user or g.get("userid") == user:
                     graded = True

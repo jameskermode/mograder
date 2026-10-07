@@ -58,7 +58,7 @@ def warm_notebook_cache(nb_path: Path, dry_run: bool = False) -> list[str]:
 
     Returns the dependency list (empty if none found).
     """
-    deps = parse_pep723_deps(nb_path.read_text())
+    deps = parse_pep723_deps(nb_path.read_text(encoding="utf-8"))
     if not deps or dry_run:
         return deps
     dep_args = []
@@ -177,7 +177,7 @@ class SessionManager:
         import tomllib
 
         cfg = config_home / "marimo" / "marimo.toml"
-        text = cfg.read_text() if cfg.is_file() else ""
+        text = cfg.read_text(encoding="utf-8") if cfg.is_file() else ""
         try:
             data = tomllib.loads(text)
         except tomllib.TOMLDecodeError:
@@ -197,7 +197,7 @@ class SessionManager:
             text = text.rstrip() + ("\n\n" if text.strip() else "")
             text += "[runtime]\nauto_instantiate = true\n"
         cfg.parent.mkdir(parents=True, exist_ok=True)
-        cfg.write_text(text)
+        cfg.write_text(text, encoding="utf-8")
 
     def _build_env(self, username: str, notebook_path: Path) -> dict[str, str]:
         """Build environment for student marimo process."""

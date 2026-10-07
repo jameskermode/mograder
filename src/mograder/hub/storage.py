@@ -153,7 +153,7 @@ class StorageManager:
             return {}
         import json
 
-        return json.loads(f.read_text())
+        return json.loads(f.read_text(encoding="utf-8"))
 
     def write_visibility(self, data: dict[str, dict]) -> None:
         import json
@@ -163,7 +163,7 @@ class StorageManager:
         self.release_dir.mkdir(parents=True, exist_ok=True)
         f = self.release_dir / self.VISIBILITY_FILE
         tmp = f.with_suffix(".tmp")
-        tmp.write_text(json.dumps(data, indent=2, sort_keys=True))
+        tmp.write_text(json.dumps(data, indent=2, sort_keys=True), encoding="utf-8")
         tmp.replace(f)
 
     def visibility(
@@ -263,7 +263,7 @@ class StorageManager:
         if manifest.is_file():
             import json
 
-            return json.loads(manifest.read_text())
+            return json.loads(manifest.read_text(encoding="utf-8"))
         return {}
 
     def item_type(self, name: str) -> str:
@@ -282,7 +282,7 @@ class StorageManager:
             if nb.is_file():
                 from mograder.grading.cells import read_notebook_type
 
-                return read_notebook_type(nb.read_text())
+                return read_notebook_type(nb.read_text(encoding="utf-8"))
         return "assignment"
 
     def _list_all_items(self) -> list[str]:

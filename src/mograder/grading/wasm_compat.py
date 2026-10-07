@@ -133,7 +133,7 @@ def check_wasm_compatible(notebook_path: Path) -> tuple[bool, list[str]]:
     Returns:
         Tuple of (is_compatible, list_of_blocking_deps).
     """
-    content = notebook_path.read_text()
+    content = notebook_path.read_text(encoding="utf-8")
     blockers: list[str] = []
 
     # Check declared dependencies

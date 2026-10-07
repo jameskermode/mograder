@@ -156,7 +156,7 @@ def _load_fetch_meta(output_dir: Path) -> dict:
     meta_path = output_dir / ".fetch_metadata.json"
     if meta_path.is_file():
         try:
-            return json.loads(meta_path.read_text())
+            return json.loads(meta_path.read_text(encoding="utf-8"))
         except (json.JSONDecodeError, OSError):
             pass
     return {}
@@ -167,7 +167,7 @@ def _save_fetch_meta(output_dir: Path, meta: dict) -> None:
     import json
 
     meta_path = output_dir / ".fetch_metadata.json"
-    meta_path.write_text(json.dumps(meta, indent=2) + "\n")
+    meta_path.write_text(json.dumps(meta, indent=2) + "\n", encoding="utf-8")
 
 
 def do_fetch_submissions(

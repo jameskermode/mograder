@@ -215,4 +215,4 @@ def write_toml(path: Path, data: dict) -> None:
                             lines.append(f"{ik} = {_toml_value(iv)}")
                     lines.append("")
 
-    path.write_text("\n".join(lines) + "\n")
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")

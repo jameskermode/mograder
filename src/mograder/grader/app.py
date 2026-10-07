@@ -1194,7 +1194,9 @@ def _(
                 if _src_files:
                     _source_path = _src_files[0]
     if _source_path and _source_path.is_file():
-        _scale_text = _extract_scale(_source_path.read_text().splitlines(keepends=True))
+        _scale_text = _extract_scale(
+            _source_path.read_text(encoding="utf-8").splitlines(keepends=True)
+        )
 
     # Create mark + feedback inputs, re-reading from DB or .py file for fresh data
     _marks_meta = None
@@ -1225,9 +1227,9 @@ def _(
 
         # Fall back to .py parsing if no DB data
         if GRADEBOOK is None or not grading_assignment_name:
-            _lines = grading_current_sub.autograded_path.read_text().splitlines(
-                keepends=True
-            )
+            _lines = grading_current_sub.autograded_path.read_text(
+                encoding="utf-8"
+            ).splitlines(keepends=True)
             _mark, _feedback_text = _parse_fb(_lines)
             _auto_mark = _parse_auto(_lines)
 
@@ -1845,9 +1847,9 @@ def _(
             )
             _dest_dir = _source_dir / _name
             _dest_dir.mkdir(parents=True, exist_ok=True)
-            _content = _template.read_text()
+            _content = _template.read_text(encoding="utf-8")
             _content = _content.replace("{assignment_name}", _name)
-            (_dest_dir / f"{_name}.py").write_text(_content)
+            (_dest_dir / f"{_name}.py").write_text(_content, encoding="utf-8")
             set_action_log(f"**New assignment** — created `{_name}`.")
         set_data_version(lambda v: v + 1)
         set_pending_action(None)

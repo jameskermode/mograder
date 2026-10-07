@@ -21,7 +21,7 @@ class TokenCache:
         if not self.path.is_file():
             return None
         try:
-            data = json.loads(self.path.read_text())
+            data = json.loads(self.path.read_text(encoding="utf-8"))
         except (json.JSONDecodeError, OSError):
             return None
         if data.get(match_key) == match_value.rstrip("/"):
@@ -37,7 +37,7 @@ class TokenCache:
         if url_key in data:
             data = {**data, url_key: data[url_key].rstrip("/")}
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        self.path.write_text(json.dumps(data))
+        self.path.write_text(json.dumps(data), encoding="utf-8")
         os.chmod(self.path, 0o600)
 
     def clear(self) -> None:

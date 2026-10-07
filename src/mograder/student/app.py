@@ -704,7 +704,7 @@ def _(
                     # Check cell hash integrity
                     from mograder.grading.integrity import validate_cell_hashes
 
-                    _hw = validate_cell_hashes(_path.read_text())
+                    _hw = validate_cell_hashes(_path.read_text(encoding="utf-8"))
                     if _hw:
                         _msg += "\n\n**Warning:** modified non-solution cells detected:"
                         for _w in _hw:

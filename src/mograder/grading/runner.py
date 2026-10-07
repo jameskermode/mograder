@@ -142,7 +142,7 @@ def create_shared_sandbox(notebook_path: Path) -> Path | None:
             )
 
         # Always run install — uv is fast on cache hits
-        reqs_file.write_text(proc.stdout)
+        reqs_file.write_text(proc.stdout, encoding="utf-8")
         venv_python = _venv_python(venv_dir)
         subprocess.run(
             [
@@ -179,7 +179,7 @@ def _read_sidecar(path: Path) -> list[CheckResult]:
     """
     by_label: dict[str, CheckResult] = {}
     try:
-        text = path.read_text().strip()
+        text = path.read_text(encoding="utf-8").strip()
     except OSError:
         return []
     if not text:
@@ -223,7 +223,7 @@ def _poll_sidecar(
 
         # Read any new lines from the sidecar
         try:
-            text = sidecar_path.read_text().strip()
+            text = sidecar_path.read_text(encoding="utf-8").strip()
         except OSError:
             text = ""
         if text:
@@ -249,7 +249,7 @@ def _poll_sidecar(
 
     # Final drain — process exited, read any remaining lines
     try:
-        text = sidecar_path.read_text().strip()
+        text = sidecar_path.read_text(encoding="utf-8").strip()
     except OSError:
         text = ""
     if text:
@@ -329,7 +329,7 @@ def _kill_tree(pid: int) -> None:
                 if not entry.isdigit():
                     continue
                 try:
-                    with open(f"/proc/{entry}/stat") as f:
+                    with open(f"/proc/{entry}/stat", encoding="utf-8") as f:
                         stat = f.read()
                     rparen = stat.rfind(")")
                     fields = stat[rparen + 2 :].split()
@@ -402,7 +402,7 @@ def run_notebook(
     if safety_check:
         from mograder.grading.safety import check_safety
 
-        source = notebook_path.read_text()
+        source = notebook_path.read_text(encoding="utf-8")
         safety_result = check_safety(source)
         if not safety_result.safe:
             descs = "; ".join(f.description for f in safety_result.findings)
@@ -578,7 +578,7 @@ def run_notebook(
             )
             return result
 
-        html_content = tmp_path.read_text()
+        html_content = tmp_path.read_text(encoding="utf-8")
         result.cell_errors = count_cell_errors(html_content)
 
         # Prefer sidecar results; fall back to HTML parsing
@@ -794,7 +794,7 @@ def write_csv(
     """Write results to a CSV file."""
     has_tampering = any(r.tampered for r in results)
 
-    with open(path, "w", newline="") as f:
+    with open(path, "w", encoding="utf-8", newline="") as f:
         writer = csv.writer(f)
         q_headers = [label.split(":")[0].strip() for label in all_labels]
         header = ["notebook"] + q_headers + ["cell_errors", "export_error"]

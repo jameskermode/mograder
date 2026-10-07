@@ -31,7 +31,7 @@ def load_or_create_secret(root_dir: Path) -> str:
     """Read or create the secret file in *root_dir*."""
     secret_path = root_dir / SECRET_FILENAME
     if secret_path.is_file():
-        return secret_path.read_text().strip()
+        return secret_path.read_text(encoding="utf-8").strip()
     secret = generate_secret()
     # Create with restrictive permissions (owner-only read/write)
     import os

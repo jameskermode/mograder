@@ -22,7 +22,7 @@ def load_cached_results(course_dir: Path, notebook_name: str) -> dict | None:
     if not path.is_file():
         return None
     try:
-        return json.loads(path.read_text())
+        return json.loads(path.read_text(encoding="utf-8"))
     except (json.JSONDecodeError, OSError):
         return None
 
@@ -47,7 +47,7 @@ def save_cached_results(
         "export_error": result.export_error,
         "cell_errors": result.cell_errors,
     }
-    path.write_text(json.dumps(data))
+    path.write_text(json.dumps(data), encoding="utf-8")
 
 
 def is_cache_stale(cached: dict, notebook_path: Path) -> bool:
@@ -68,7 +68,7 @@ def load_submission_record(course_dir: Path, notebook_name: str) -> dict | None:
     if not path.is_file():
         return None
     try:
-        return json.loads(path.read_text())
+        return json.loads(path.read_text(encoding="utf-8"))
     except (json.JSONDecodeError, OSError):
         return None
 
@@ -79,7 +79,7 @@ def save_submission_record(
     """Record that a notebook was submitted at the given file mtime."""
     path = _submission_path(course_dir, notebook_name)
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps({"file_mtime": file_mtime}))
+    path.write_text(json.dumps({"file_mtime": file_mtime}), encoding="utf-8")
 
 
 def get_submission_status(course_dir: Path, notebook_path: Path) -> str:

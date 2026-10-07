@@ -1184,3 +1184,24 @@ def test_generate_assignment_skips_source_previews(tmp_path, monkeypatch):
     assert ".DS_Store" not in files
     assert "data.csv" in files
     assert "answer = 42" not in (rel / "A1-Intro.py").read_text()
+
+
+@patch("mograder.grading.runner.create_shared_sandbox", return_value=None)
+@patch("mograder.grading.runner.run_notebook")
+def test_validate_reads_notebook_as_utf8(mock_run_nb, mock_sandbox, tmp_path):
+    """Notebooks are UTF-8 whatever the platform's default encoding.
+
+    U+2010 encodes as e2 80 90; 0x90 is undefined in cp1252, so reading the
+    file with Windows' default encoding failed with UnicodeDecodeError.
+    """
+    nb_text = _inject_cell_hashes(
+        _VALIDATE_NB.replace("x = 1", "x = 1  # θ ≈ 1 ‐ σ², ψ → ∞")
+    )
+    nb = tmp_path / "student.py"
+    nb.write_bytes(nb_text.encode("utf-8"))
+    mock_run_nb.return_value = NotebookResult(
+        path=nb, checks=[CheckResult("Q1", "success")], cell_errors=0
+    )
+    result = CliRunner().invoke(cli, ["validate", str(nb)])
+    assert result.exception is None, result.output
+    assert "WARNING" not in result.output

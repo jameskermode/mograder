@@ -373,7 +373,7 @@ def process_workshop(
     keys_url: str = "./keys.json",
 ) -> Path:
     """Full pipeline: parse _exercises -> strip solutions -> encrypt -> inject cells -> write."""
-    source_lines = source_path.read_text().splitlines(keepends=True)
+    source_lines = source_path.read_text(encoding="utf-8").splitlines(keepends=True)
 
     errors = validate_markers(source_lines, str(source_path))
     if errors:
@@ -407,7 +407,7 @@ def process_workshop(
 
     output_dir.mkdir(parents=True, exist_ok=True)
     dest = output_dir / source_path.name
-    dest.write_text("".join(processed))
+    dest.write_text("".join(processed), encoding="utf-8")
     return dest
 
 
@@ -627,10 +627,10 @@ def write_keys(
     (so released solutions can be decrypted without the workshop key).
     """
     if which == "empty":
-        path.write_text("{}\n")
+        path.write_text("{}\n", encoding="utf-8")
     else:
         keys = {k: salt for k in exercise_keys}
-        path.write_text(json.dumps(keys, indent=2) + "\n")
+        path.write_text(json.dumps(keys, indent=2) + "\n", encoding="utf-8")
 
 
 def generate_dashboard_html(
@@ -750,8 +750,8 @@ def release_key(keys_path: Path, exercise_id: str, salt: str) -> None:
     the student needing to know the workshop key.
     """
     if keys_path.exists():
-        keys = json.loads(keys_path.read_text())
+        keys = json.loads(keys_path.read_text(encoding="utf-8"))
     else:
         keys = {}
     keys[exercise_id] = salt
-    keys_path.write_text(json.dumps(keys, indent=2) + "\n")
+    keys_path.write_text(json.dumps(keys, indent=2) + "\n", encoding="utf-8")

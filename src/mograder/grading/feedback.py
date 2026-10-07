@@ -210,7 +210,7 @@ def inject_feedback_html(
 
     new_html = html_source[:json_start] + new_json + ";" + html_source[json_end + 1 :]
     dest.parent.mkdir(parents=True, exist_ok=True)
-    dest.write_text(new_html)
+    dest.write_text(new_html, encoding="utf-8")
 
 
 def _export_via_marimo(
@@ -279,7 +279,7 @@ def export_feedback_html(
             _auto_mark = auto_mark
             _total_avail = total_available
         else:
-            lines = notebook_path.read_text().splitlines(keepends=True)
+            lines = notebook_path.read_text(encoding="utf-8").splitlines(keepends=True)
             manual_mark, _feedback = parse_marker_feedback(lines)
             _auto_mark = parse_auto_marks(lines)
             marks_meta = parse_marks_metadata(lines)
@@ -296,7 +296,7 @@ def export_feedback_html(
 
         if _mark is not None:
             inject_feedback_html(
-                autograde_html.read_text(),
+                autograde_html.read_text(encoding="utf-8"),
                 dest,
                 mark=_mark,
                 feedback_text=_feedback or "",
@@ -328,7 +328,7 @@ def collect_grades(graded_notebooks: list[Path]) -> list[dict]:
     """
     grades = []
     for nb in graded_notebooks:
-        lines = nb.read_text().splitlines(keepends=True)
+        lines = nb.read_text(encoding="utf-8").splitlines(keepends=True)
         manual_mark, feedback = parse_marker_feedback(lines)
         auto_mark = parse_auto_marks(lines)
 
@@ -362,7 +362,7 @@ def write_grades_csv(grades: list[dict], path: Path):
         fieldnames = ["student", "mark", "auto_mark", "feedback"]
     if has_penalty:
         fieldnames.extend(["penalty_pct", "penalised_mark"])
-    with open(path, "w", newline="") as f:
+    with open(path, "w", encoding="utf-8", newline="") as f:
         writer = csv.DictWriter(f, fieldnames=fieldnames, extrasaction="ignore")
         writer.writeheader()
         writer.writerows(grades)

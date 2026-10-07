@@ -147,7 +147,7 @@ def _kill_tree(pid: int) -> None:
                 if not entry.isdigit():
                     continue
                 try:
-                    with open(f"/proc/{entry}/stat") as f:
+                    with open(f"/proc/{entry}/stat", encoding="utf-8") as f:
                         stat = f.read()
                     # Field 4 (0-indexed 3) is PPID.  The comm field (2) may
                     # contain spaces/parens, so split from the *last* ')'.

@@ -276,7 +276,7 @@ def generate(
             dest_dir.mkdir(parents=True, exist_ok=True)
 
             # Strip layout metadata, rewrite links, inject type
-            lines = filepath.read_text().splitlines(keepends=True)
+            lines = filepath.read_text(encoding="utf-8").splitlines(keepends=True)
             lines = strip_layout_metadata(lines)
             lines = rewrite_notebook_links(lines)
             lines = _inject_type_metadata(lines, "lecture")
@@ -297,7 +297,7 @@ def generate(
             if dry_run:
                 click.echo(f"DRY-RUN: {_rel(filepath)} → {_rel(dest)} ({note})")
             else:
-                dest.write_text("".join(lines))
+                dest.write_text("".join(lines), encoding="utf-8")
                 click.echo(f"OK: {_rel(filepath)} → {_rel(dest)} ({note})")
 
                 # Copy auxiliary files only if the notebook lives in its own
@@ -709,7 +709,7 @@ def validate(ctx, assignments, timeout, fix, release_path):
     any_failed = False
     for file in files:
         # --- Cell hash integrity check ---
-        notebook_text = file.read_text()
+        notebook_text = file.read_text(encoding="utf-8")
         hash_warnings = validate_cell_hashes(notebook_text)
         if hash_warnings:
             click.echo("WARNING: The following non-solution cells have been modified:")
@@ -720,7 +720,7 @@ def validate(ctx, assignments, timeout, fix, release_path):
                 # Find release notebook
                 release_text = None
                 if release_path:
-                    release_text = release_path.read_text()
+                    release_text = release_path.read_text(encoding="utf-8")
                 else:
                     # Try .mograder/release/<assignment>/ cache
                     assignment = parse_assignment_name(notebook_text)
@@ -730,12 +730,12 @@ def validate(ctx, assignments, timeout, fix, release_path):
                             list(cache_dir.glob("*.py")) if cache_dir.is_dir() else []
                         )
                         if candidates:
-                            release_text = candidates[0].read_text()
+                            release_text = candidates[0].read_text(encoding="utf-8")
 
                 if release_text:
                     fix_result = fix_modified_cells(release_text, notebook_text)
                     if fix_result.tampered_cells:
-                        file.write_text(fix_result.fixed_source)
+                        file.write_text(fix_result.fixed_source, encoding="utf-8")
                         click.echo(
                             f"Fixed {len(fix_result.tampered_cells)} cell(s) from release"
                         )
@@ -960,7 +960,7 @@ def autograde(
             _source_hash = hashlib.sha256(source_path.read_bytes()).hexdigest()
             _hash_file = output_dir / ".mograder_source_hash"
             if _hash_file.is_file():
-                _prev_hash = _hash_file.read_text().strip()
+                _prev_hash = _hash_file.read_text(encoding="utf-8").strip()
                 _source_changed = _prev_hash != _source_hash
             else:
                 # No sidecar yet — fall back to mtime to preserve previous
@@ -1057,7 +1057,7 @@ def autograde(
             click.echo("  → WARNING: no check results found in source notebook")
 
         # Parse per-question marks metadata
-        source_text = source_path.read_text()
+        source_text = source_path.read_text(encoding="utf-8")
         source_lines = source_text.splitlines(keepends=True)
         marks = cells.parse_marks_metadata(source_lines)
         if marks:
@@ -1084,7 +1084,7 @@ def autograde(
             list(release_dir.glob("*.py")) if release_dir.is_dir() else []
         )
         if release_candidates:
-            release_text = release_candidates[0].read_text()
+            release_text = release_candidates[0].read_text(encoding="utf-8")
             click.echo(
                 f"Cell integrity check using release: {_rel(release_candidates[0])}"
             )
@@ -1099,7 +1099,7 @@ def autograde(
         fixed_dir = Path(tempfile.mkdtemp())
         run_paths = []
         for nb in notebooks:
-            nb_text = nb.read_text()
+            nb_text = nb.read_text(encoding="utf-8")
 
             # Cell integrity check: verify non-solution cells match release
             if release_text:
@@ -1134,7 +1134,7 @@ def autograde(
 
             if ir.tampered_checks or ir.tampered_marks or nb.stem in cell_tamper_info:
                 fixed = fixed_dir / nb.name
-                fixed.write_text(nb_text_for_run)
+                fixed.write_text(nb_text_for_run, encoding="utf-8")
                 run_paths.append(fixed)
                 tamper_info[nb.stem] = ir
                 warns = [f"check({k})" for k in ir.tampered_checks]
@@ -1145,10 +1145,10 @@ def autograde(
                         f"  WARNING: {nb.stem} — tampered cells reinjected: "
                         f"{', '.join(warns)}"
                     )
-            elif nb_text_for_run != nb.read_text():
+            elif nb_text_for_run != nb.read_text(encoding="utf-8"):
                 # Hidden tests were injected but no tampering detected
                 fixed = fixed_dir / nb.name
-                fixed.write_text(nb_text_for_run)
+                fixed.write_text(nb_text_for_run, encoding="utf-8")
                 run_paths.append(fixed)
             else:
                 run_paths.append(nb)
@@ -1236,7 +1236,7 @@ def autograde(
     for result in results:
         if not result.export_ok:
             continue
-        source_lines = result.path.read_text().splitlines(keepends=True)
+        source_lines = result.path.read_text(encoding="utf-8").splitlines(keepends=True)
         modified = cells.inject_grading_cells(
             source_lines,
             result.checks,
@@ -1245,7 +1245,7 @@ def autograde(
             source_check_keys=source_check_keys,
         )
         dest = output_dir / result.path.name
-        dest.write_text("".join(modified))
+        dest.write_text("".join(modified), encoding="utf-8")
         click.echo(f"  Grading copy: {_rel(dest)}")
 
     # Write results to gradebook at course root.
@@ -1307,7 +1307,8 @@ def autograde(
     if source_path and any(r.export_ok for r in results):
         _hash_file = output_dir / ".mograder_source_hash"
         _hash_file.write_text(
-            hashlib.sha256(source_path.read_bytes()).hexdigest() + "\n"
+            hashlib.sha256(source_path.read_bytes()).hexdigest() + "\n",
+            encoding="utf-8",
         )
 
     # Clean up temp Moodle extraction dir
@@ -2237,7 +2238,7 @@ def _write_edit_links_html(
         parts.append("<p><b>Preview:</b></p>")
         parts.append(f"<div>{links_html}</div>")
     parts.append("</body></html>")
-    path.write_text("\n".join(parts))
+    path.write_text("\n".join(parts), encoding="utf-8")
 
 
 @moodle_group.command("sync-users")
@@ -2335,7 +2336,7 @@ def moodle_sync_users(ctx, course_id, url, token, hub_url, hub_token, dry_run):
 
         path = Path(".") / ALLOWED_USERS_FILE
         lines = "# Allowed users — synced from Moodle\n" + "\n".join(usernames) + "\n"
-        path.write_text(lines)
+        path.write_text(lines, encoding="utf-8")
         click.echo(f"Wrote {len(usernames)} users to {path}")
 
 
@@ -2627,7 +2628,7 @@ def _refresh_config(course: Path):
     try:
         resp = requests.get(url, timeout=15)
         resp.raise_for_status()
-        config_path.write_text(resp.text)
+        config_path.write_text(resp.text, encoding="utf-8")
         click.echo("  Done.")
     except Exception as e:
         click.echo(f"  Warning: could not fetch config ({e})")
@@ -2686,7 +2687,7 @@ def student(course_dir_or_url, port, headless, no_token):
         base = Path.home() if os.environ.get("TAURI") else Path.cwd()
         course = (base / dir_name).resolve()
         course.mkdir(exist_ok=True)
-        (course / "mograder.toml").write_text(resp.text)
+        (course / "mograder.toml").write_text(resp.text, encoding="utf-8")
         click.echo(f"  Created {course}/mograder.toml")
     else:
         course = Path(course_dir_or_url).resolve()
@@ -2889,7 +2890,7 @@ def https_upload_grades(ctx, assignment, url, token, grades_csv, dry_run):
     transport = HTTPSTransport(url, token=token)
 
     # Read grades from CSV
-    with open(grades_csv) as f:
+    with open(grades_csv, encoding="utf-8") as f:
         reader = csv.DictReader(f)
         grades = [dict(row) for row in reader]
     do_upload_feedback(transport, assignment, grades, dry_run=dry_run)
@@ -2934,7 +2935,7 @@ def https_upload_feedback(
 
         from mograder.transport.commands import do_upload_feedback
 
-        with open(grades_csv) as f:
+        with open(grades_csv, encoding="utf-8") as f:
             reader = csv.DictReader(f)
             grades = [dict(row) for row in reader]
         do_upload_feedback(transport, assignment, grades, dry_run=dry_run)
@@ -3060,7 +3061,7 @@ def serve(
             secret = load_or_create_secret(directory)
         usernames = [
             line.strip()
-            for line in generate_tokens.read_text().splitlines()
+            for line in generate_tokens.read_text(encoding="utf-8").splitlines()
             if line.strip()
         ]
         for username in usernames:
@@ -3074,7 +3075,7 @@ def serve(
             raise click.UsageError(
                 "Cannot use both --enrollment-code and --enrollment-code-file."
             )
-        enrollment_code = enrollment_code_file.read_text().strip()
+        enrollment_code = enrollment_code_file.read_text(encoding="utf-8").strip()
 
     env_port = os.environ.get("PORT")
     if port is None:
@@ -3148,7 +3149,7 @@ def token(usernames, secret_file, secret_stdin, secret_value):
         secret_file = default
 
     if secret_file is not None:
-        secret = secret_file.read_text().strip()
+        secret = secret_file.read_text(encoding="utf-8").strip()
     elif secret_stdin:
         secret = click.get_text_stream("stdin").read().strip()
     else:
@@ -3207,7 +3208,7 @@ def workshop_encrypt(sources, output_dir, salt, keys_url):
         source = Path(src)
         out = output_dir or _infer_output_dir(source, "source", "release", "release")
 
-        source_lines = source.read_text().splitlines(keepends=True)
+        source_lines = source.read_text(encoding="utf-8").splitlines(keepends=True)
         exercise_keys = parse_exercises_metadata(source_lines)
 
         dest = process_workshop(source, out, salt=_salt, keys_url=keys_url)
@@ -3252,7 +3253,7 @@ def workshop_export(sources, output_dir, salt, keys_url):
         source = Path(src)
 
         # Read exercises before processing
-        source_lines = source.read_text().splitlines(keepends=True)
+        source_lines = source.read_text(encoding="utf-8").splitlines(keepends=True)
         exercise_keys = parse_exercises_metadata(source_lines)
         if not exercise_keys:
             click.echo(f"SKIP: {_rel(source)} (no exercises marker)", err=True)
@@ -3292,7 +3293,9 @@ def workshop_export(sources, output_dir, salt, keys_url):
         from mograder.transport.workshop import generate_dashboard_html
 
         dashboard_path = output_dir / "dashboard.html"
-        dashboard_path.write_text(generate_dashboard_html(exercise_keys))
+        dashboard_path.write_text(
+            generate_dashboard_html(exercise_keys), encoding="utf-8"
+        )
         click.echo(f"Dashboard: {_rel(dashboard_path)}")
 
 
@@ -3331,12 +3334,12 @@ def workshop_serve(export_dir, port, host, salt):
     if not keys_all_path.is_file():
         raise click.ClickException(f"keys_all.json not found in {export_dir}")
 
-    keys_all = json.loads(keys_all_path.read_text())
+    keys_all = json.loads(keys_all_path.read_text(encoding="utf-8"))
 
     # Generate dashboard HTML
     exercise_keys = list(keys_all.keys())
     dashboard_path = export_dir / "dashboard.html"
-    dashboard_path.write_text(generate_dashboard_html(exercise_keys))
+    dashboard_path.write_text(generate_dashboard_html(exercise_keys), encoding="utf-8")
 
     # Generate a secret token for instructor auth
     secret = _secrets.token_urlsafe(16)
@@ -3398,7 +3401,7 @@ def workshop_publish(source, url, hub_token, salt, no_warm):
     assignment_name = source.stem
 
     # Parse exercises to get keys for key files
-    source_lines = source.read_text().splitlines(keepends=True)
+    source_lines = source.read_text(encoding="utf-8").splitlines(keepends=True)
     exercise_keys = parse_exercises_metadata(source_lines)
     if not exercise_keys:
         raise click.ClickException(f"No exercises marker found in {source}")
@@ -3495,14 +3498,14 @@ def wasm_edit_links(wasm_app, notebooks, output, url_template):
     links = {}
     for nb_path in notebooks:
         nb_path = Path(nb_path)
-        content = nb_path.read_text()
+        content = nb_path.read_text(encoding="utf-8")
         compressed = lz.compressToEncodedURIComponent(content)
         url = url_template.replace("{content_lz}", compressed)
         key = nb_path.stem
         links[key] = url
         click.echo(f"  {key}: {len(compressed)} chars compressed")
 
-    source = Path(wasm_app).read_text()
+    source = Path(wasm_app).read_text(encoding="utf-8")
 
     # Replace the empty dict in the precomputed_edit_links assignment
     old = "precomputed_edit_links = {}"
@@ -3522,7 +3525,7 @@ def wasm_edit_links(wasm_app, notebooks, output, url_template):
     source = source.replace(old, replacement)
 
     dest = output or wasm_app
-    Path(dest).write_text(source)
+    Path(dest).write_text(source, encoding="utf-8")
     click.echo(f"Wrote {len(links)} edit link(s) to {_rel(Path(dest))}")
 
 
@@ -3807,7 +3810,7 @@ def hub_warm_cache(
 
     for nb_path in targets:
         nb_path = Path(nb_path)
-        deps = parse_pep723_deps(nb_path.read_text())
+        deps = parse_pep723_deps(nb_path.read_text(encoding="utf-8"))
         if not deps:
             click.echo(f"  {_rel(nb_path)}: no PEP 723 deps")
             continue
@@ -4004,7 +4007,10 @@ def hub_publish(
         from mograder.grading.cells import read_notebook_type
 
         nb_file = assignment_dir / f"{assignment_name}.py"
-        if nb_file.is_file() and read_notebook_type(nb_file.read_text()) == "lecture":
+        if (
+            nb_file.is_file()
+            and read_notebook_type(nb_file.read_text(encoding="utf-8")) == "lecture"
+        ):
             lecture = True
             click.echo("Auto-detected lecture from mograder-type metadata.")
 
@@ -4327,7 +4333,7 @@ def hub_schedule(ctx, schedule_file, dry_run, url, hub_token, ssh_host, ssh_port
     from datetime import date, datetime, time, timedelta
     from zoneinfo import ZoneInfo
 
-    cfg = tomllib.loads(schedule_file.read_text())
+    cfg = tomllib.loads(schedule_file.read_text(encoding="utf-8"))
     tz = ZoneInfo(cfg.get("timezone", "Europe/London"))
     start = cfg.get("start")
     if cfg.get("weeks") and not isinstance(start, date):
@@ -4397,7 +4403,7 @@ def hub_sync_users(ctx, file, url, hub_token):
     usernames = sorted(
         {
             line.strip()
-            for line in path.read_text().splitlines()
+            for line in path.read_text(encoding="utf-8").splitlines()
             if line.strip() and not line.strip().startswith("#")
         }
     )

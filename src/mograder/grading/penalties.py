@@ -118,7 +118,7 @@ def load_fetch_metadata(submitted_dir: Path) -> dict | None:
     if not meta_path.is_file():
         return None
     try:
-        data = json.loads(meta_path.read_text())
+        data = json.loads(meta_path.read_text(encoding="utf-8"))
         return data
     except (json.JSONDecodeError, OSError):
         return None
