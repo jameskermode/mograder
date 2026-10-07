@@ -36,6 +36,17 @@ def _():
 
     HUB_USER = _hub_username()
 
+    def actions_cell_style(_row_id, column, _value):
+        """Table cell style: the Actions column is as wide as its widest row
+        (by default the table squeezes it, clipping or wrapping the buttons)."""
+        if column == "Actions":
+            return {
+                "minWidth": "max-content",
+                "maxWidth": "none",
+                "whiteSpace": "nowrap",
+            }
+        return {}
+
     def link_button(label, href, tooltip=""):
         """A link styled as a button, opening a new tab.
 
@@ -57,6 +68,7 @@ def _():
         CONFIG,
         HUB_USER,
         Path,
+        actions_cell_style,
         brand_logo_html,
         hub_submit,
         hub_validate,
@@ -377,6 +389,7 @@ def _(
     get_refresh,
     hub_item_open,
     hub_storage,
+    actions_cell_style,
     https_assignments,
     link_button,
     mo,
@@ -495,13 +508,13 @@ def _(
         for _row in _rows:
             _keys = _row.pop("btn_keys")
             _btns = [_row.pop("open")] + [buttons[k] for k in _keys]
-            _row["Actions"] = mo.hstack(
-                _btns, gap=0.5, justify="center", align="center"
-            )
+            _row["Actions"] = mo.hstack(_btns, gap=0.5, justify="start", align="center")
             _display_rows.append(_row)
 
         if _display_rows:
-            _table = mo.ui.table(_display_rows, selection=None)
+            _table = mo.ui.table(
+                _display_rows, selection=None, style_cell=actions_cell_style
+            )
             mo.output.replace(mo.vstack([mo.md("### Assignments"), _table]))
 
     return (buttons,)
@@ -511,6 +524,7 @@ def _(
 @app.cell
 def _(
     HUB_USER,
+    actions_cell_style,
     get_refresh,
     hub_lectures,
     hub_storage,
@@ -557,12 +571,12 @@ def _(
                     "Actions": mo.hstack(
                         _links + [_lec_buttons[k] for k in _keys if k in _lec_buttons],
                         gap=0.5,
-                        justify="center",
+                        justify="start",
                         align="center",
                     ),
                 }
             )
-        _table = mo.ui.table(_rows, selection=None)
+        _table = mo.ui.table(_rows, selection=None, style_cell=actions_cell_style)
         mo.output.replace(mo.vstack([mo.md("### Lectures"), _table]))
     return ()
 
