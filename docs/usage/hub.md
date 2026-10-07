@@ -258,7 +258,9 @@ The lecture type is auto-detected from PEP 723 metadata — no `--lecture` flag 
 |----------|-------------|
 | `MOGRADER_HUB_SECRET` | HMAC secret for session/token signing (required unless `--dev`) |
 | `MOGRADER_HUB_URL` | Hub base URL (for `publish` and `warm-cache` commands) |
-| `MOGRADER_HUB_INSTRUCTOR_TOKEN` | Instructor token (for `publish` and `warm-cache` commands) |
+| `MOGRADER_HUB_INSTRUCTOR_TOKEN` | Instructor token (for `publish`, `warm-cache`, `visibility` and `schedule`) |
+| `MOGRADER_HUB_SSH` | SSH host for the `--ssh` tunnel |
+| `MOGRADER_HUB_SSH_OPTIONS` | Extra `ssh` options for the tunnel, e.g. `-o ProxyJump=none` to bypass a jump host |
 
 ## API Endpoints
 

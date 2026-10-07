@@ -3841,8 +3841,12 @@ def _ssh_tunnel(host: str, remote_port: int = 8080):
         s.bind(("127.0.0.1", 0))
         local_port = s.getsockname()[1]
 
+    # Extra ssh options, e.g. MOGRADER_HUB_SSH_OPTIONS="-o ProxyJump=none"
+    import shlex
+
+    extra = shlex.split(os.environ.get("MOGRADER_HUB_SSH_OPTIONS", ""))
     proc = _sp.Popen(
-        ["ssh", "-N", "-L", f"{local_port}:localhost:{remote_port}", host],
+        ["ssh", *extra, "-N", "-L", f"{local_port}:localhost:{remote_port}", host],
         stdout=_sp.DEVNULL,
         stderr=_sp.PIPE,
     )
