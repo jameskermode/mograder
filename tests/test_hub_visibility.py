@@ -264,3 +264,24 @@ class TestSupportFiles:
         assert r.status_code == 200
         assert r.json()["url"] == "edit/user/alice/L01/"
         assert (hub.notebooks / "alice" / "L01" / "L01.py").read_text() == LECTURE
+
+
+class TestPublishReplaces:
+    def test_republish_removes_stale_files(self, hub):
+        d = hub.release / "A1"
+        (d / "A1.html").write_text("<html>old preview with solutions</html>")
+        (d / ".venv").mkdir()
+        resp = hub.instructor.post(
+            "/publish/A1", files={"files": ("A1.py", b"# new\n", "text/x-python")}
+        )
+        assert resp.status_code == 200
+        assert resp.json()["files"] == ["A1.py"]
+        assert not (d / "A1.html").exists()
+        assert (d / ".venv").is_dir()
+
+    def test_traversal_rejected(self, hub):
+        resp = hub.instructor.post(
+            "/publish/A1", files={"files": ("../A2/A2.py", b"x", "text/x-python")}
+        )
+        assert resp.status_code == 400
+        assert (hub.release / "A2" / "A2.py").read_text() == "# a2\n"

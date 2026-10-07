@@ -637,12 +637,26 @@ def create_hub_app(
         assignment_dir = rel_dir / assignment
         assignment_dir.mkdir(parents=True, exist_ok=True)
 
+        uploads = []
+        base = assignment_dir.resolve()
         for f in files:
-            content = await f.read()
-            if f.filename:
-                target = assignment_dir / f.filename
-                target.parent.mkdir(parents=True, exist_ok=True)
-                target.write_bytes(content)
+            if not f.filename:
+                continue
+            target = (assignment_dir / f.filename).resolve()
+            if base not in target.parents:
+                raise HTTPException(status_code=400, detail="Invalid filename")
+            uploads.append((target, await f.read()))
+
+        # Replace the release: files left over from an earlier publish (e.g. a
+        # stale preview, or a data file since removed) would otherwise stay
+        # downloadable. Dotfiles and directories (e.g. a prebuilt .venv) stay.
+        if uploads:
+            for old in assignment_dir.iterdir():
+                if old.is_file() and not old.name.startswith("."):
+                    old.unlink()
+        for target, content in uploads:
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_bytes(content)
 
         # Build manifest from directory (excluding files.json and dotfiles)
         all_files = sorted(
