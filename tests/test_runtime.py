@@ -449,3 +449,23 @@ def test_word_count_colours():
     assert _word_count_colour(250, (300, 500)) == "#FF9800"
     assert _word_count_colour(550, (300, 500)) == "#FF9800"
     assert _word_count_colour(100, (300, 500)) == "#EA4335"
+
+
+def test_word_count_with_watcher_object_and_utf8(tmp_path):
+    """mo.watch.file's object: read_text() takes no encoding; read via fspath."""
+    import os
+
+    from mograder.runtime import word_count
+
+    nb = tmp_path / "nb.py"
+    nb.write_bytes((RELEASE_STYLE + "\n# θ ≈ 1 ‐ σ²\n").encode("utf-8"))
+
+    class Watched:  # like marimo's FileState
+        def __fspath__(self):
+            return os.fspath(nb)
+
+        def read_text(self):  # no encoding parameter
+            raise AssertionError("word_count should read the file itself")
+
+    html = word_count(Watched(), target=(300, 500)).text
+    assert "Word count: 6" in html

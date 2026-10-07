@@ -307,12 +307,14 @@ def word_count(
             _word_count(notebook_file)
             return
     """
+    import os
     from pathlib import Path
 
-    reader = (
-        notebook_file if hasattr(notebook_file, "read_text") else Path(notebook_file)
-    )
-    n = count_response_words(reader.read_text(encoding="utf-8"), cell=cell)
+    # Read the file ourselves, as UTF-8: mo.watch.file's read_text() takes no
+    # encoding and uses the platform default (cp1252 on Windows). Its
+    # __fspath__ gives the path; the cell still re-runs when the file changes.
+    text = Path(os.fspath(notebook_file)).read_text(encoding="utf-8")
+    n = count_response_words(text, cell=cell)
     if n is None:
         return mo.md(f"*Word count unavailable: no cell named `{cell}`.*")
     colour = _word_count_colour(n, target)
