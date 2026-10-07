@@ -39,3 +39,15 @@ a.mograder-btn:hover,
   font: inherit;
   line-height: inherit;
 }
+
+/* marimo adds a spacer column to fill the table's spare width, which shows
+   as an empty extra column after Actions: hide it */
+th.w-full.border-0:last-child,
+td.border-0:last-child:empty {
+  display: none;
+}
+
+/* ...and let the real columns share the full table width instead */
+table.caption-bottom.w-auto:has(th.w-full.border-0) {
+  width: 100%;
+}
