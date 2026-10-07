@@ -29,7 +29,7 @@ mograder generate --lecture L01-Intro.py --dry-run
 The `--lecture` flag:
 
 - **Strips slide layout metadata** — removes `layout_file` and `html_head_file` from `marimo.App()` so students get a plain scrollable notebook instead of a slide deck
-- **Rewrites inter-notebook links** — lecture links (`../L02-Name/L02-Name.py`) become hub `/run/L02-Name/` URLs; assignment links are stripped to plain text
+- **Rewrites inter-notebook links** — lecture links (`../L02-Name/L02-Name.py`) become hub `run/L02-Name/` deep links and assignment links `edit/A2-Name/` deep links, relative to the session page so they work under any hub prefix (`rewrite_notebook_links(lines, base=hub_url)` gives absolute links for use outside the hub, e.g. handouts)
 - **Injects `mograder-type = "lecture"`** into the PEP 723 script block, making the notebook self-describing (the hub auto-detects this during publishing)
 - **Copies auxiliary files** — images, data files, and helper `.py` modules from the source directory (when the notebook lives in its own subdirectory)
 - **Builds a release zip** when there are multiple files

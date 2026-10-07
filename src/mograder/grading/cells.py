@@ -611,30 +611,29 @@ def strip_layout_metadata(lines: list[str]) -> list[str]:
     return text.splitlines(keepends=True)
 
 
-def rewrite_notebook_links(lines: list[str]) -> list[str]:
-    """Rewrite inter-notebook links for hub deployment.
+# Hub sessions are served at <hub>/run/user/<user>/<lecture>/ and
+# <hub>/edit/user/<user>/<assignment>/, four levels below the hub root.
+HUB_ROOT_FROM_SESSION = "../../../../"
 
-    - Lecture links ``[text](../Name/Name.py)`` where Name starts with
-      ``L`` become ``[text](/run/Name/)``
-    - Assignment links ``[text](../Name/Name.py)`` where Name starts with
-      ``A`` are stripped to plain text: just ``text``
+
+def rewrite_notebook_links(lines: list[str], base: str | None = None) -> list[str]:
+    """Rewrite inter-notebook links ``[text](../Name/Name.py)`` to hub deep links.
+
+    - Lecture links (``Name`` starts with ``L``) become ``<base>run/Name/``
+    - Assignment links (``Name`` starts with ``A``) become ``<base>edit/Name/``,
+      which opens the student's own copy (fetched from the release on first visit)
+
+    ``base`` is the hub URL, for links from outside the hub (e.g. handouts).
+    By default links are relative to a hub session page, so they work whatever
+    prefix the hub is served under (e.g. ``/live/hub/`` behind a reverse proxy).
     """
+    prefix = HUB_ROOT_FROM_SESSION if base is None else base.rstrip("/") + "/"
     text = "".join(lines)
-
-    # Lecture links: ../L-Name/L-Name.py → /run/L-Name/
     text = re.sub(
-        r"\[([^\]]+)\]\(\.\./((L[^/]+)/\3\.py)\)",
-        r"[\1](/run/\3/)",
+        r"\[([^\]]+)\]\(\.\./(([LA])[^/]+)/\2\.py\)",
+        lambda m: f"[{m[1]}]({prefix}{'run' if m[3] == 'L' else 'edit'}/{m[2]}/)",
         text,
     )
-
-    # Assignment links: ../A-Name/A-Name.py → plain text (strip link)
-    text = re.sub(
-        r"\[([^\]]+)\]\(\.\./((A[^/]+)/\3\.py)\)",
-        r"\1",
-        text,
-    )
-
     return text.splitlines(keepends=True)
 
 

@@ -607,26 +607,48 @@ def test_read_notebook_type_assignment():
 
 
 def test_rewrite_lecture_links():
-    """Lecture links become /run/ URLs."""
+    """Lecture links become run/ deep links relative to the session page."""
     lines = [
         "| 3 | [L02: Sensitivity](../L02-Sensitivity/L02-Sensitivity.py) |\n",
     ]
-    result = rewrite_notebook_links(lines)
-    text = "".join(result)
-    assert "[L02: Sensitivity](/run/L02-Sensitivity/)" in text
+    text = "".join(rewrite_notebook_links(lines))
+    assert "[L02: Sensitivity](../../../../run/L02-Sensitivity/)" in text
     assert ".py" not in text
 
 
-def test_rewrite_assignment_links_stripped():
-    """Assignment links become plain text."""
+def test_rewrite_assignment_links():
+    """Assignment links become edit/ deep links."""
     lines = [
         "| [A2: Sensitivity](../A2-Sensitivity/A2-Sensitivity.py) |\n",
     ]
-    result = rewrite_notebook_links(lines)
-    text = "".join(result)
-    assert "A2: Sensitivity" in text
-    assert "(" not in text
+    text = "".join(rewrite_notebook_links(lines))
+    assert "[A2: Sensitivity](../../../../edit/A2-Sensitivity/)" in text
     assert ".py" not in text
+
+
+def test_rewrite_links_with_hub_base():
+    """An explicit hub URL gives absolute links (for use outside the hub)."""
+    lines = ["[L01](../L01-Intro/L01-Intro.py) [A1](../A1-Set-up/A1-Set-up.py)\n"]
+    text = "".join(
+        rewrite_notebook_links(lines, base="https://hub.example.com/live/hub/")
+    )
+    assert "[L01](https://hub.example.com/live/hub/run/L01-Intro/)" in text
+    assert "[A1](https://hub.example.com/live/hub/edit/A1-Set-up/)" in text
+
+
+def test_rewrite_session_relative_links_resolve_to_hub_root():
+    """The relative prefix resolves to the hub root from both session kinds."""
+    from urllib.parse import urljoin
+
+    from mograder.grading.cells import HUB_ROOT_FROM_SESSION
+
+    for page in (
+        "https://h.example/live/hub/run/user/u1/L01-Intro/",
+        "https://h.example/live/hub/edit/user/u1/A1-Setup/",
+    ):
+        assert urljoin(page, HUB_ROOT_FROM_SESSION + "run/L02/") == (
+            "https://h.example/live/hub/run/L02/"
+        )
 
 
 def test_rewrite_preserves_external_links():
@@ -649,7 +671,7 @@ def test_rewrite_mixed_links():
     ]
     result = rewrite_notebook_links(lines)
     text = "".join(result)
-    assert "[L01: Intro](/run/L01-Intro/)" in text
-    assert "A1: Setup" in text
+    assert "[L01: Intro](../../../../run/L01-Intro/)" in text
+    assert "[A1: Setup](../../../../edit/A1-Setup/)" in text
     assert "A1-Setup.py" not in text
     assert "https://example.com" in text
