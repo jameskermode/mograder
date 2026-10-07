@@ -362,9 +362,14 @@ def create_hub_app(
         if (username, assignment) in session_mgr.sessions:
             await session_mgr.terminate(username, assignment)
 
+        _check_visible(request, assignment)
         archive = storage.reset_to_release(username, assignment)
         status = storage.assignment_status(username, assignment)
-        return {"status": "ok", "file_status": status, "archive": str(archive)}
+        return {
+            "status": "ok",
+            "file_status": status,
+            "archive": archive.name if archive else None,
+        }
 
     # -- Status --
 
@@ -423,12 +428,7 @@ def create_hub_app(
         nb = storage.assignment_path(username, assignment)
         if not nb.exists():
             _check_visible(request, assignment)
-            release = storage.release_path(assignment)
-            storage.ensure_dir(username, assignment)
-            import shutil
-
-            shutil.copy2(str(release), str(nb))
-            storage.mark_uploaded(username, assignment)
+            storage.fetch_release(username, assignment)
         storage.copy_support_files(username, assignment)
 
         try:
@@ -514,6 +514,7 @@ def create_hub_app(
                     "file_status": status,
                     "has_release": has_release,
                     "session_active": session_active,
+                    "updated": storage.release_updated(username, name),
                     **vis,
                 }
             )
@@ -528,6 +529,8 @@ def create_hub_app(
                     "name": name,
                     "type": "lecture",
                     "file_status": "n/a",
+                    "has_copy": storage.assignment_path(username, name).exists(),
+                    "updated": storage.release_updated(username, name),
                     "has_release": True,
                     "session_active": session_active,
                     **vis,
@@ -579,13 +582,15 @@ def create_hub_app(
         if release is None:
             raise HTTPException(status_code=404, detail="Assignment not found")
         nb = storage.assignment_path(username, assignment)
-        storage.ensure_dir(username, assignment)
-        shutil.copy2(str(release), str(nb))
-        storage.copy_support_files(username, assignment)
-        storage.mark_uploaded(username, assignment)
         if (username, assignment) in session_mgr.sessions:
             await session_mgr.terminate(username, assignment)
-        return {"status": "ok", "path": str(nb)}
+        # An existing copy is archived, never overwritten
+        archive = storage.fetch_release(username, assignment)
+        return {
+            "status": "ok",
+            "path": str(nb),
+            "archive": archive.name if archive else None,
+        }
 
     # -- Release download --
 

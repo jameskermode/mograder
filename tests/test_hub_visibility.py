@@ -285,3 +285,57 @@ class TestPublishReplaces:
         )
         assert resp.status_code == 400
         assert (hub.release / "A2" / "A2.py").read_text() == "# a2\n"
+
+
+class TestGetLatest:
+    """Fetching the release never loses the student's work."""
+
+    def _copy(self, hub, name="A1", text="# my work\n"):
+        d = hub.notebooks / "alice" / name
+        d.mkdir(parents=True, exist_ok=True)
+        (d / f"{name}.py").write_text(text)
+        return d
+
+    def test_download_archives_existing_copy(self, hub):
+        d = self._copy(hub)
+        r = hub.student.post("/download-release/alice/A1")
+        assert r.status_code == 200
+        archive = r.json()["archive"]
+        assert archive.startswith("A1.bak.")
+        assert (d / archive).read_text() == "# my work\n"
+        assert (d / "A1.py").read_text() == "# a1\n"
+
+    def test_download_without_copy(self, hub):
+        r = hub.student.post("/download-release/alice/A1")
+        assert r.status_code == 200
+        assert r.json()["archive"] is None
+        assert (hub.notebooks / "alice" / "A1" / ".fetched").exists()
+
+    def test_reset_twice_keeps_both_archives(self, hub):
+        d = self._copy(hub, text="# first\n")
+        assert hub.student.post("/reset/alice/A1").status_code == 200
+        (d / "A1.py").write_text("# second\n")
+        assert hub.student.post("/reset/alice/A1").status_code == 200
+        backups = sorted(p.read_text() for p in d.glob("A1.bak.*.py"))
+        assert backups == ["# first\n", "# second\n"]
+
+    def test_update_available_after_republish(self, hub):
+        import os
+        import time
+
+        storage = hub.app.state.storage
+        assert hub.student.post("/download-release/alice/A1").status_code == 200
+        assert storage.release_updated("alice", "A1") is False
+        release = hub.release / "A1" / "A1.py"
+        later = time.time() + 60
+        os.utime(release, (later, later))
+        assert storage.release_updated("alice", "A1") is True
+        items = {i["name"]: i for i in hub.student.get("/assignments").json()}
+        assert items["A1"]["updated"] is True
+
+    def test_lecture_listing_reports_copy(self, hub):
+        items = {i["name"]: i for i in hub.student.get("/assignments").json()}
+        assert items["L01"]["has_copy"] is False
+        self._copy(hub, name="L01", text=LECTURE)
+        items = {i["name"]: i for i in hub.student.get("/assignments").json()}
+        assert items["L01"]["has_copy"] is True

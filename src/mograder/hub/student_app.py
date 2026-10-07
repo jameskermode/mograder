@@ -57,13 +57,17 @@ def _(mo):
     get_report_path, set_report_path = mo.state("")
     get_refresh, set_refresh = mo.state(0)
     get_pending, set_pending = mo.state(None)
+    # assignment awaiting confirmation of "Get latest" (replaces the copy)
+    get_confirm, set_confirm = mo.state(None)
 
     return (
         get_action_log,
+        get_confirm,
         get_pending,
         get_refresh,
         get_report_path,
         set_action_log,
+        set_confirm,
         set_pending,
         set_refresh,
         set_report_path,
@@ -89,14 +93,24 @@ def _(
     _rel_dir = COURSE_DIR / CONFIG.hub_release_dir
     https_assignments = ()
     hub_lectures = ()
+
+    from mograder.core.auth import is_instructor as _is_instructor
+    from mograder.hub.storage import StorageManager as _StorageManager
+
+    hub_storage = _StorageManager(COURSE_DIR / CONFIG.hub_notebooks_dir, _rel_dir)
+    _instructor = _is_instructor(HUB_USER)
+
+    def hub_item_open(name, started=False):
+        """Scheduled visibility: students don't see hidden or not-yet-open
+        items, except an assignment they already have a copy of."""
+        if _instructor or started:
+            return True
+        return hub_storage.visibility(name)[0]
+
     if _rel_dir.is_dir():
         import json as _json
 
-        from mograder.core.auth import is_instructor as _is_instructor
-        from mograder.hub.storage import StorageManager as _StorageManager
-
-        _storage = _StorageManager(COURSE_DIR / CONFIG.hub_notebooks_dir, _rel_dir)
-        _instructor = _is_instructor(HUB_USER)
+        _storage = hub_storage
 
         for d in sorted(_rel_dir.iterdir()):
             if not d.is_dir() or not (d / f"{d.name}.py").is_file():
@@ -137,7 +151,7 @@ def _(
             align="center",
         )
     )
-    return (https_assignments, hub_lectures)
+    return (https_assignments, hub_item_open, hub_lectures, hub_storage)
 
 
 # --- Assignments table ---
@@ -149,6 +163,8 @@ def _(
     HUB_USER,
     Path,
     get_refresh,
+    hub_item_open,
+    hub_storage,
     https_assignments,
     mo,
     set_pending,
@@ -175,6 +191,8 @@ def _(
             _display = _a.get("name", _slug)
             _nb_path = _nb_dir / HUB_USER / _slug / f"{_slug}.py"
             _has_file = _nb_path.exists()
+            if not hub_item_open(_slug, started=_has_file):
+                continue
 
             if not _has_file:
                 _status = "not started"
@@ -194,6 +212,8 @@ def _(
                         _status = "downloaded"
                 else:
                     _status = "downloaded"
+                if hub_storage.release_updated(HUB_USER, _slug):
+                    _status += " · update available"
             _check_summary = "---"
 
             _btn_keys = []
@@ -245,6 +265,18 @@ def _(
                 )
                 _btn_keys.append(_key)
 
+                # Replaces the copy (archived first): asks for confirmation
+                _key = f"{_i}_latest"
+                _all_buttons[_key] = mo.ui.button(
+                    label="Get latest",
+                    tooltip="Replace your copy with the latest version "
+                    "(your current copy is kept as a backup)",
+                    on_change=lambda _, n=_slug: set_pending(
+                        {"action": "hub_latest_ask", "name": n}
+                    ),
+                )
+                _btn_keys.append(_key)
+
             _rows.append(
                 {
                     "Assignment": _display,
@@ -275,10 +307,14 @@ def _(
 # --- Lectures table ---
 @app.cell
 def _(
+    HUB_USER,
+    get_refresh,
     hub_lectures,
+    hub_storage,
     mo,
     set_pending,
 ):
+    _ = get_refresh()
     if not hub_lectures:
         mo.output.replace(mo.md(""))
     else:
@@ -298,18 +334,37 @@ def _(
                     {"action": "hub_edit_lecture", "lecture": n}
                 ),
             )
+            if hub_storage.assignment_path(HUB_USER, _name).exists():
+                _all_buttons[f"lec_{_i}_latest"] = mo.ui.button(
+                    label="Get latest",
+                    tooltip="Replace your copy with the latest version "
+                    "(your current copy is kept as a backup)",
+                    on_change=lambda _, n=_name: set_pending(
+                        {"action": "hub_latest", "name": n}
+                    ),
+                )
         _lec_buttons = mo.ui.dictionary(_all_buttons)
-        _rows = [
-            {
-                "Lecture": _lec["name"],
-                "Actions": mo.hstack(
-                    [_lec_buttons[f"lec_{_i}_run"], _lec_buttons[f"lec_{_i}_edit"]],
-                    gap=0.5,
-                    justify="center",
-                ),
-            }
-            for _i, _lec in enumerate(hub_lectures)
-        ]
+        _rows = []
+        for _i, _lec in enumerate(hub_lectures):
+            _name = _lec["name"]
+            _keys = [f"lec_{_i}_run", f"lec_{_i}_edit", f"lec_{_i}_latest"]
+            if not hub_storage.assignment_path(HUB_USER, _name).exists():
+                _copy = "—"
+            elif hub_storage.release_updated(HUB_USER, _name):
+                _copy = "update available"
+            else:
+                _copy = "up to date"
+            _rows.append(
+                {
+                    "Lecture": _name,
+                    "Your copy": _copy,
+                    "Actions": mo.hstack(
+                        [_lec_buttons[k] for k in _keys if k in _lec_buttons],
+                        gap=0.5,
+                        justify="center",
+                    ),
+                }
+            )
         _table = mo.ui.table(_rows, selection=None)
         mo.output.replace(mo.vstack([mo.md("### Lectures"), _table]))
     return ()
@@ -327,6 +382,7 @@ def _(
     hub_validate,
     mo,
     set_action_log,
+    set_confirm,
     set_pending,
     set_refresh,
     set_report_path,
@@ -411,6 +467,37 @@ def _(
                         set_action_log(f"Failed to start lecture: {_resp.text}")
                 except Exception as _exc:
                     set_action_log(f"Failed to start lecture: {_exc}")
+
+        elif _act == "hub_latest_ask":
+            # assignments: confirm first (the copy may be submitted work)
+            set_confirm(pending["name"])
+            set_action_log(
+                f"Replace your copy of **{pending['name']}** with the latest "
+                "version? Your current copy will be kept as a backup in the "
+                "same folder."
+            )
+
+        elif _act == "hub_latest":
+            _name = pending["name"]
+            set_confirm(None)
+            try:
+                _resp = _client.post(
+                    f"/reset/{HUB_USER}/{_name}",
+                    headers=_hub_headers,
+                    timeout=60,
+                )
+                if _resp.status_code == 200:
+                    _archive = _resp.json().get("archive")
+                    _kept = (
+                        f" Your previous copy is saved as `{_archive}`."
+                        if _archive
+                        else ""
+                    )
+                    set_action_log(f"Fetched the latest **{_name}**.{_kept}")
+                else:
+                    set_action_log(f"Failed to fetch {_name}: {_resp.text}")
+            except Exception as _exc:
+                set_action_log(f"Failed to fetch {_name}: {_exc}")
 
         elif _act == "hub_edit_lecture":
             _name = pending["lecture"]
@@ -523,9 +610,44 @@ def _(
     return (active_editors_content,)
 
 
+# --- Confirmation for "Get latest" on an assignment ---
+@app.cell
+def _(get_confirm, mo, set_action_log, set_confirm, set_pending):
+    _name = get_confirm()
+    confirm_content = None
+    if _name:
+
+        def _cancel(_):
+            set_confirm(None)
+            set_action_log("")
+
+        confirm_content = mo.hstack(
+            [
+                mo.ui.button(
+                    label="Replace my copy",
+                    kind="danger",
+                    on_change=lambda _, n=_name: set_pending(
+                        {"action": "hub_latest", "name": n}
+                    ),
+                ),
+                mo.ui.button(label="Cancel", on_change=_cancel),
+            ],
+            justify="start",
+            gap=0.5,
+        )
+    return (confirm_content,)
+
+
 # --- Activity log ---
 @app.cell
-def _(active_editors_content, dismiss_btn, get_action_log, get_report_path, mo):
+def _(
+    active_editors_content,
+    confirm_content,
+    dismiss_btn,
+    get_action_log,
+    get_report_path,
+    mo,
+):
     log_text = get_action_log()
     report_path = get_report_path()
 
@@ -541,7 +663,7 @@ def _(active_editors_content, dismiss_btn, get_action_log, get_report_path, mo):
         _parts.append(mo.callout(mo.md(log_text), kind=kind))
         if report_path:
             _parts.append(mo.md("*See report below.*"))
-        _parts.append(dismiss_btn)
+        _parts.append(confirm_content if confirm_content else dismiss_btn)
     if _parts:
         mo.output.replace(mo.vstack(_parts))
     else:

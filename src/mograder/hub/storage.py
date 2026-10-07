@@ -75,6 +75,48 @@ class StorageManager:
 
         return "not_started"
 
+    def mark_fetched(self, username: str, name: str) -> None:
+        """Touch .fetched: when the user's copy was last taken from the release."""
+        d = self.assignment_path(username, name).parent
+        d.mkdir(parents=True, exist_ok=True)
+        (d / ".fetched").touch()
+
+    def release_updated(self, username: str, name: str) -> bool:
+        """Whether the release was republished after the user's copy was taken.
+
+        Uses the .fetched marker (falling back to .uploaded for copies made
+        before it existed). False if the user has no copy or no release.
+        """
+        nb = self.assignment_path(username, name)
+        release = self.release_path(name)
+        if not nb.exists() or release is None:
+            return False
+        for marker in (".fetched", ".uploaded"):
+            m = nb.parent / marker
+            if m.exists():
+                return release.stat().st_mtime > m.stat().st_mtime
+        return False
+
+    def fetch_release(self, username: str, name: str) -> Path | None:
+        """Give the user the latest release, never losing their work.
+
+        With no copy yet, copies the release; otherwise archives the current
+        copy as ``<name>.bak.<timestamp>.py`` first (see ``reset_to_release``).
+        Returns the archive path, or None if there was no copy to archive.
+        """
+        nb = self.assignment_path(username, name)
+        if nb.exists():
+            return self.reset_to_release(username, name)
+        release = self.release_path(name)
+        if release is None:
+            raise FileNotFoundError(name)
+        self.ensure_dir(username, name)
+        shutil.copy2(str(release), str(nb))
+        self.copy_support_files(username, name)
+        self.mark_uploaded(username, name)
+        self.mark_fetched(username, name)
+        return None
+
     def mark_uploaded(self, username: str, assignment: str) -> None:
         """Touch .uploaded marker."""
         d = self.assignment_path(username, assignment).parent
@@ -187,9 +229,13 @@ class StorageManager:
         if not nb.exists():
             return None
 
-        # Archive existing
+        # Archive existing (never overwrite an earlier archive)
         ts = time.strftime("%Y%m%dT%H%M%S")
         archive = nb.with_suffix(f".bak.{ts}.py")
+        n = 1
+        while archive.exists():
+            archive = nb.with_suffix(f".bak.{ts}-{n}.py")
+            n += 1
         shutil.move(str(nb), str(archive))
 
         # Remove markers
@@ -203,6 +249,7 @@ class StorageManager:
             shutil.copy2(str(release), str(nb))
             self.copy_support_files(username, assignment)
             self.mark_uploaded(username, assignment)
+            self.mark_fetched(username, assignment)
 
         return archive
 
