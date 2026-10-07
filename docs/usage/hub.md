@@ -32,7 +32,7 @@ Students access the hub via a browser (no local install required):
 
 **Open**, **Run** and **Edit** are plain links to the deep links (`/edit/<name>`, `/run/<name>`), so the new tab opens straight from your click and is not stopped by pop-up blockers; its page starts the session. Reload the dashboard to update the status columns.
 
-Active edit sessions appear in an **Active editors** panel with links to reopen and a **Stop** button.
+Open notebooks appear in an **Active sessions** panel (viewing or editing), with links to reopen and a **Stop** button; the dashboard checks for sessions every few seconds (**Auto-refresh**), so this panel and the status columns update without a reload.
 
 !!! note
     The hub does not submit to Moodle directly. Students must export their

@@ -75,11 +75,14 @@ def _(mo):
     get_pending, set_pending = mo.state(None)
     # assignment awaiting confirmation of "Get latest" (replaces the copy)
     get_confirm, set_confirm = mo.state(None)
+    # sessions seen at the last poll: tables are rebuilt only when this changes
+    get_sessions_seen, set_sessions_seen = mo.state(None)
 
     return (
         get_action_log,
         get_confirm,
         get_pending,
+        get_sessions_seen,
         get_refresh,
         get_report_path,
         set_action_log,
@@ -87,6 +90,7 @@ def _(mo):
         set_pending,
         set_refresh,
         set_report_path,
+        set_sessions_seen,
     )
 
 
@@ -480,16 +484,30 @@ def _(mo, set_action_log, set_report_path):
     return (dismiss_btn,)
 
 
+# --- Auto-refresh: notebooks open in new tabs (plain links), so the dashboard
+# polls for sessions instead of learning about them from a button click ---
+@app.cell
+def _(mo):
+    editors_ticker = mo.ui.refresh(
+        options=["5s", "15s", "1m"], default_interval="5s", label="Auto-refresh"
+    )
+    return (editors_ticker,)
+
+
 # --- Active editors panel ---
 @app.cell
 def _(
     CONFIG,
     HUB_USER,
+    editors_ticker,
     get_refresh,
+    get_sessions_seen,
     mo,
     set_pending,
+    set_refresh,
+    set_sessions_seen,
 ):
-    _ = get_refresh()
+    _ = get_refresh(), editors_ticker.value
     active_editors_content = None
 
     import httpx as _httpx
@@ -507,6 +525,16 @@ def _(
     except Exception:
         _sessions = []
 
+    # A session opened or closed since the last poll (e.g. a notebook opened
+    # from a link): rebuild the tables so status and "Your copy" are current
+    _seen = tuple(
+        sorted((_s["assignment"], _s.get("mode", "edit")) for _s in _sessions)
+    )
+    if _seen != get_sessions_seen():
+        if get_sessions_seen() is not None:
+            set_refresh(lambda v: v + 1)
+        set_sessions_seen(_seen)
+
     if _sessions:
         _items = []
         for _s in _sessions:
@@ -519,13 +547,15 @@ def _(
                 on_change=lambda _, n=_name, m=_mode: set_pending(
                     {"action": "hub_stop_edit", "assignment": n, "mode": m}
                 ),
-                tooltip=f"Stop editor for {_name}",
+                tooltip=f"Stop this session of {_name}",
             )
+            _what = "viewing" if _mode == "run" else "editing your copy"
             _items.append(
                 mo.hstack(
                     [
                         mo.md(
-                            f'**{_name}** — <a href="{_deep_url}" target="_blank">open</a>'
+                            f"**{_name}** ({_what}) — "
+                            f'<a href="{_deep_url}" target="_blank">open</a>'
                         ),
                         _stop_btn,
                     ],
@@ -535,7 +565,7 @@ def _(
                 )
             )
         active_editors_content = mo.callout(
-            mo.vstack([mo.md("**Active editors**")] + _items), kind="info"
+            mo.vstack([mo.md("**Active sessions**")] + _items), kind="info"
         )
     return (active_editors_content,)
 
@@ -574,6 +604,7 @@ def _(
     active_editors_content,
     confirm_content,
     dismiss_btn,
+    editors_ticker,
     get_action_log,
     get_report_path,
     mo,
@@ -594,10 +625,8 @@ def _(
         if report_path:
             _parts.append(mo.md("*See report below.*"))
         _parts.append(confirm_content if confirm_content else dismiss_btn)
-    if _parts:
-        mo.output.replace(mo.vstack(_parts))
-    else:
-        mo.output.replace(mo.md(""))
+    _parts.append(mo.hstack([editors_ticker], justify="end"))
+    mo.output.replace(mo.vstack(_parts))
     return ()
 
 
