@@ -772,6 +772,20 @@ def process_file(
 _RELEASE_ARTIFACT_SUFFIXES = {".html", ".zip"}
 
 
+def is_release_aux_file(path: Path) -> bool:
+    """Whether a file next to a source notebook belongs in its release.
+
+    Data, images and helper modules do. Directories, dotfiles and build
+    artifacts do not: an HTML preview exported from the *source* notebook
+    contains the solutions, and zips are rebuilt for the release.
+    """
+    return (
+        path.is_file()
+        and not path.name.startswith(".")
+        and path.suffix not in _RELEASE_ARTIFACT_SUFFIXES
+    )
+
+
 def release_student_files(release_dir: Path) -> list[Path]:
     """Student-facing files of a release: everything except previews and zips."""
     return sorted(

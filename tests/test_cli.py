@@ -1137,3 +1137,50 @@ def test_generate_lecture_without_solutions_unchanged(tmp_path):
     assert result.exit_code == 0, result.output
     assert "stripped" not in result.output
     assert "# answer = 42" in (out / "L01" / "L01.py").read_text()
+
+
+def _source_with_preview(tmp_path, name):
+    """source/<name>/ with a notebook, a data file and an HTML preview of the source."""
+    src = tmp_path / "source" / name
+    src.mkdir(parents=True)
+    nb = src / f"{name}.py"
+    nb.write_text(
+        "import marimo\n"
+        "app = marimo.App()\n"
+        "\n"
+        "@app.cell\n"
+        "def _():\n"
+        "    ### BEGIN SOLUTION\n"
+        "    answer = 42\n"
+        "    ### END SOLUTION\n"
+        "    return\n"
+    )
+    (src / "data.csv").write_text("x\n1\n")
+    (src / f"{name}.html").write_text("<html>answer = 42</html>")  # has solutions
+    (src / ".DS_Store").write_bytes(b"\0")
+    return nb
+
+
+def test_generate_lecture_skips_source_previews(tmp_path):
+    nb = _source_with_preview(tmp_path, "L00a-Intro")
+    out = tmp_path / "release"
+    result = CliRunner().invoke(cli, ["generate", "--lecture", str(nb), "-o", str(out)])
+    assert result.exit_code == 0, result.output
+    files = sorted(p.name for p in (out / "L00a-Intro").iterdir())
+    assert "L00a-Intro.html" not in files
+    assert ".DS_Store" not in files
+    assert "data.csv" in files
+
+
+def test_generate_assignment_skips_source_previews(tmp_path, monkeypatch):
+    nb = _source_with_preview(tmp_path, "A1-Intro")
+    (tmp_path / "mograder.toml").write_text("")
+    monkeypatch.chdir(tmp_path)
+    result = CliRunner().invoke(cli, ["generate", str(nb), "--no-validate"])
+    assert result.exit_code == 0, result.output
+    rel = tmp_path / "release" / "A1-Intro"
+    files = sorted(p.name for p in rel.iterdir())
+    assert "A1-Intro.html" not in files
+    assert ".DS_Store" not in files
+    assert "data.csv" in files
+    assert "answer = 42" not in (rel / "A1-Intro.py").read_text()

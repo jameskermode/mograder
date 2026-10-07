@@ -307,7 +307,7 @@ def generate(
                 src_dir = filepath.parent
                 if src_dir.name == stem:
                     for f in src_dir.iterdir():
-                        if f.is_dir() or f == filepath or f.name.startswith("."):
+                        if f == filepath or not cells.is_release_aux_file(f):
                             continue
                         aux_dest = dest_dir / f.name
                         if (
@@ -456,7 +456,7 @@ def generate(
         for src_dir in processed_dirs:
             rel_dir = output_dir / src_dir.name if src_dir.name != "." else output_dir
             for f in src_dir.iterdir():
-                if f.is_dir():
+                if not cells.is_release_aux_file(f):
                     continue
                 if f.suffix == ".py" and f in files_set:
                     continue  # already processed as notebook
