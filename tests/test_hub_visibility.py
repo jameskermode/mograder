@@ -1,0 +1,220 @@
+"""Tests for scheduled visibility of hub items."""
+
+from __future__ import annotations
+
+import json
+from datetime import datetime, timedelta, timezone
+from types import SimpleNamespace
+from unittest.mock import AsyncMock, patch
+
+import pytest
+from click.testing import CliRunner
+from starlette.testclient import TestClient
+
+from mograder.core.auth import INSTRUCTOR_USER, make_token
+from mograder.hub.app import create_hub_app
+from mograder.hub.storage import StorageManager
+
+SECRET = "test-secret"
+LECTURE = '# /// script\n# [tool.mograder]\n# mograder-type = "lecture"\n# ///\n'
+
+
+def _iso(days: float) -> str:
+    return (datetime.now(timezone.utc) + timedelta(days=days)).isoformat()
+
+
+@pytest.fixture
+def hub(tmp_path):
+    notebooks = tmp_path / "hub-notebooks"
+    release = tmp_path / "hub-release"
+    notebooks.mkdir()
+    release.mkdir()
+    for name, text in [("A1", "# a1\n"), ("A2", "# a2\n"), ("L01", LECTURE)]:
+        d = release / name
+        d.mkdir()
+        (d / f"{name}.py").write_text(text)
+    (release / "L01" / "files.json").write_text(json.dumps({"type": "lecture"}))
+    app = create_hub_app(
+        tmp_path,
+        notebooks_dir=notebooks,
+        release_dir=release,
+        secret=SECRET,
+    )
+
+    def client(user):
+        token = make_token(SECRET, user)
+        return TestClient(
+            app,
+            raise_server_exceptions=False,
+            headers={"Authorization": f"Bearer {token}"},
+        )
+
+    return SimpleNamespace(
+        app=app,
+        notebooks=notebooks,
+        release=release,
+        student=client("alice"),
+        instructor=client(INSTRUCTOR_USER),
+    )
+
+
+def _set(hub, items, replace=False):
+    resp = hub.instructor.post("/visibility", json={"items": items, "replace": replace})
+    assert resp.status_code == 200, resp.text
+    return resp.json()
+
+
+class TestStorage:
+    def test_unlisted_items_are_visible(self, tmp_path):
+        s = StorageManager(tmp_path / "nb", tmp_path / "rel")
+        assert s.visibility("A1") == (True, None)
+
+    def test_hidden_and_dates(self, tmp_path):
+        s = StorageManager(tmp_path / "nb", tmp_path / "rel")
+        future, past = _iso(7), _iso(-7)
+        s.write_visibility(
+            {
+                "A1": {"hidden": True},
+                "A2": {"visible_from": future},
+                "A3": {"visible_from": past},
+            }
+        )
+        assert s.visibility("A1") == (False, None)
+        assert s.visibility("A2") == (False, future)
+        assert s.visibility("A3") == (True, past)
+
+
+class TestSetVisibility:
+    def test_students_cannot_set_or_read(self, hub):
+        assert hub.student.get("/visibility").status_code == 403
+        resp = hub.student.post("/visibility", json={"items": {"A1": {"hidden": True}}})
+        assert resp.status_code == 403
+
+    def test_naive_datetime_rejected(self, hub):
+        resp = hub.instructor.post(
+            "/visibility", json={"items": {"A1": {"visible_from": "2027-01-11T09:00"}}}
+        )
+        assert resp.status_code == 400
+
+    def test_bad_name_rejected(self, hub):
+        resp = hub.instructor.post("/visibility", json={"items": {"../x": {}}})
+        assert resp.status_code == 400
+
+    def test_empty_entry_makes_visible_and_replace(self, hub):
+        _set(hub, {"A1": {"hidden": True}, "A2": {"hidden": True}})
+        assert _set(hub, {"A1": {}}) == {"A2": {"hidden": True}}
+        assert _set(hub, {"L01": {"hidden": True}}, replace=True) == {
+            "L01": {"hidden": True}
+        }
+
+    def test_survives_republish(self, hub):
+        _set(hub, {"A1": {"hidden": True}})
+        resp = hub.instructor.post(
+            "/publish/A1", files={"files": ("A1.py", b"# new\n", "text/x-python")}
+        )
+        assert resp.status_code == 200
+        assert hub.instructor.get("/visibility").json() == {"A1": {"hidden": True}}
+
+
+class TestStudentAccess:
+    def test_listing_hides_closed_items(self, hub):
+        _set(hub, {"A1": {"hidden": True}, "L01": {"visible_from": _iso(3)}})
+        names = {i["name"] for i in hub.student.get("/assignments").json()}
+        assert names == {"A2"}
+
+    def test_instructor_listing_shows_all_with_state(self, hub):
+        opens = _iso(3)
+        _set(hub, {"A1": {"hidden": True}, "L01": {"visible_from": opens}})
+        items = {i["name"]: i for i in hub.instructor.get("/assignments").json()}
+        assert set(items) == {"A1", "A2", "L01"}
+        assert items["A1"]["visible"] is False
+        assert items["L01"]["visible_from"] == datetime.fromisoformat(opens).isoformat()
+        assert items["A2"]["visible"] is True
+
+    def test_open_after_date(self, hub):
+        _set(hub, {"A1": {"visible_from": _iso(-1)}})
+        names = {i["name"] for i in hub.student.get("/assignments").json()}
+        assert "A1" in names
+
+    def test_deep_links_and_downloads_blocked(self, hub):
+        _set(hub, {"A1": {"visible_from": _iso(3)}, "L01": {"hidden": True}})
+        r = hub.student.post("/start-edit-deep/A1")
+        assert r.status_code == 404
+        assert r.json()["detail"].startswith("Not available until")
+        assert hub.student.post("/start-run/L01").json()["detail"] == "Not available"
+        assert hub.student.get("/release/A1/A1.py").status_code == 404
+        assert hub.student.post("/download-release/alice/A1").status_code == 404
+        assert not (hub.notebooks / "alice" / "A1").exists()
+
+    def test_existing_copy_keeps_access(self, hub):
+        d = hub.notebooks / "alice" / "A1"
+        d.mkdir(parents=True)
+        (d / "A1.py").write_text("# my work\n")
+        _set(hub, {"A1": {"hidden": True}})
+        names = {i["name"] for i in hub.student.get("/assignments").json()}
+        assert "A1" in names
+        fake = SimpleNamespace(port=1234)
+        with patch.object(
+            hub.app.state.session_mgr, "get_or_spawn", AsyncMock(return_value=fake)
+        ):
+            assert hub.student.post("/start-edit-deep/A1").status_code == 200
+
+    def test_instructor_bypasses(self, hub):
+        _set(hub, {"A1": {"hidden": True}})
+        assert hub.instructor.get("/release/A1/A1.py").status_code == 200
+
+
+class TestScheduleCLI:
+    def _run(self, tmp_path, toml, published=("L01-Intro", "A1-Setup", "A2-Extra")):
+        from mograder.cli import cli as main
+
+        f = tmp_path / "schedule.toml"
+        f.write_text(toml)
+        calls = []
+
+        def fake_api(base, token, method, path, **kw):
+            calls.append((method, path, kw.get("json")))
+            if path == "/assignments":
+                return [
+                    {"name": n, "type": "lecture" if n[0] == "L" else "assignment"}
+                    for n in published
+                ]
+            if method == "POST":
+                return {}
+            return {}
+
+        with patch("mograder.cli._hub_api", fake_api):
+            result = CliRunner().invoke(
+                main, ["hub", "schedule", str(f), "--url", "http://hub", "--token", "t"]
+            )
+        assert result.exit_code == 0, result.output
+        posts = [c[2] for c in calls if c[0] == "POST"]
+        return posts[0] if posts else None
+
+    def test_weeks_items_and_hide_unlisted(self, tmp_path):
+        body = self._run(
+            tmp_path,
+            """
+start = 2027-01-11
+time = "09:00"
+hide_unlisted = true
+[weeks]
+1 = ["L01"]
+2 = ["A1-Setup"]
+[items]
+"A9-Later" = 2027-03-01T14:30:00
+""",
+        )
+        assert body["replace"] is True
+        items = body["items"]
+        # prefix resolved against published names; GMT in January
+        assert items["L01-Intro"] == {"visible_from": "2027-01-11T09:00:00+00:00"}
+        assert items["A1-Setup"] == {"visible_from": "2027-01-18T09:00:00+00:00"}
+        assert items["A9-Later"] == {"visible_from": "2027-03-01T14:30:00+00:00"}
+        assert items["A2-Extra"] == {"hidden": True}
+
+    def test_summer_time_offset(self, tmp_path):
+        body = self._run(tmp_path, 'start = 2027-04-05\n[weeks]\n1 = ["L01"]\n')
+        assert body["items"]["L01-Intro"] == {
+            "visible_from": "2027-04-05T09:00:00+01:00"
+        }

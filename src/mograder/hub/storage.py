@@ -93,6 +93,58 @@ class StorageManager:
         d.mkdir(parents=True, exist_ok=True)
         (d / ".submitted").touch()
 
+    # -- visibility --
+    #
+    # One JSON file at the release_dir root maps item name to
+    # {"visible_from": ISO datetime with offset} or {"hidden": true}; items
+    # not listed are visible. Kept outside the item directories so that
+    # republishing an item leaves its schedule alone, and so it can be set
+    # before the item is published.
+
+    VISIBILITY_FILE = ".visibility.json"
+
+    def read_visibility(self) -> dict[str, dict]:
+        if self.release_dir is None:
+            return {}
+        f = self.release_dir / self.VISIBILITY_FILE
+        if not f.is_file():
+            return {}
+        import json
+
+        return json.loads(f.read_text())
+
+    def write_visibility(self, data: dict[str, dict]) -> None:
+        import json
+
+        if self.release_dir is None:
+            raise ValueError("No release directory")
+        self.release_dir.mkdir(parents=True, exist_ok=True)
+        f = self.release_dir / self.VISIBILITY_FILE
+        tmp = f.with_suffix(".tmp")
+        tmp.write_text(json.dumps(data, indent=2, sort_keys=True))
+        tmp.replace(f)
+
+    def visibility(
+        self, name: str, now: float | None = None
+    ) -> tuple[bool, str | None]:
+        """Return ``(visible_to_students, visible_from)`` for an item."""
+        from datetime import datetime, timezone
+
+        entry = self.read_visibility().get(name)
+        if not entry:
+            return True, None
+        if entry.get("hidden"):
+            return False, None
+        opens = entry.get("visible_from")
+        if not opens:
+            return True, None
+        current = (
+            datetime.fromtimestamp(now, timezone.utc)
+            if now is not None
+            else datetime.now(timezone.utc)
+        )
+        return current >= datetime.fromisoformat(opens), opens
+
     # -- reset --
 
     def reset_to_release(self, username: str, assignment: str) -> Path | None:

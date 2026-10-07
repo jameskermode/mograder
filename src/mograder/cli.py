@@ -4080,14 +4080,254 @@ def hub_publish(
 
     if ssh_host:
         click.echo(f"Opening SSH tunnel to {ssh_host}:{ssh_port}...")
+    with _hub_connection(url, ssh_host, ssh_port) as base_url:
+        _do_publish(base_url)
+
+
+@contextlib.contextmanager
+def _hub_connection(url, ssh_host, ssh_port):
+    """Yield the hub base URL: via an SSH tunnel if ``ssh_host``, else ``url``."""
+    if ssh_host:
         with _ssh_tunnel(ssh_host, ssh_port) as tunnel_url:
-            click.echo(f"Tunnel open: {tunnel_url}")
-            _do_publish(tunnel_url)
+            yield tunnel_url
     elif url:
-        _do_publish(url)
+        yield url.rstrip("/")
     else:
         click.echo("Error: --url or --ssh required (or set MOGRADER_HUB_URL)", err=True)
         raise SystemExit(1)
+
+
+def _hub_connection_options(f):
+    """Shared --url/--token/--ssh/--ssh-port options for hub API commands."""
+    f = click.option(
+        "--ssh-port", type=int, default=8080, help="Remote hub port for SSH tunnel"
+    )(f)
+    f = click.option(
+        "--ssh",
+        "ssh_host",
+        envvar="MOGRADER_HUB_SSH",
+        default=None,
+        help="SSH host for tunnel (uses ~/.ssh/config, bypasses SSO proxy)",
+    )(f)
+    f = click.option(
+        "--token",
+        "hub_token",
+        envvar="MOGRADER_HUB_INSTRUCTOR_TOKEN",
+        default=None,
+        help="Instructor token for hub API",
+    )(f)
+    f = click.option(
+        "--url", envvar="MOGRADER_HUB_URL", default=None, help="Hub base URL"
+    )(f)
+    return f
+
+
+def _hub_api(base_url, hub_token, method, path, **kwargs):
+    import requests as req
+
+    if not hub_token:
+        click.echo(
+            "Error: --token required (or set MOGRADER_HUB_INSTRUCTOR_TOKEN)", err=True
+        )
+        raise SystemExit(1)
+    resp = req.request(
+        method,
+        f"{base_url}{path}",
+        headers={"Authorization": f"Bearer {hub_token}"},
+        timeout=60,
+        **kwargs,
+    )
+    if resp.status_code != 200:
+        click.echo(f"Hub request failed ({resp.status_code}): {resp.text}", err=True)
+        raise SystemExit(1)
+    return resp.json()
+
+
+def _parse_visible_from(value: str, tz_name: str) -> str:
+    """ISO date or datetime (naive = in ``tz_name``) -> ISO datetime with offset."""
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    dt = datetime.fromisoformat(value)
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=ZoneInfo(tz_name))
+    return dt.isoformat()
+
+
+def _visibility_state(entry: dict | None) -> str:
+    if not entry:
+        return "visible"
+    if entry.get("hidden"):
+        return "hidden"
+    from datetime import datetime, timezone
+
+    opens = datetime.fromisoformat(entry["visible_from"])
+    when = opens.strftime("%a %d %b %Y %H:%M")
+    return (
+        f"opens {when}"
+        if opens > datetime.now(timezone.utc)
+        else f"open (since {when})"
+    )
+
+
+def _print_visibility(items: list[dict], vis: dict) -> None:
+    names = sorted({i["name"] for i in items} | set(vis))
+    types = {i["name"]: i["type"] for i in items}
+    width = max((len(n) for n in names), default=10)
+    for n in names:
+        published = n in types
+        kind = types.get(n, "-")
+        state = _visibility_state(vis.get(n))
+        suffix = "" if published else "  (not published)"
+        click.echo(f"  {n:<{width}}  {kind:<10}  {state}{suffix}")
+
+
+def _resolve_hub_names(names: list[str], published: list[str]) -> list[str]:
+    """Exact names pass through; otherwise a unique prefix of a published item."""
+    out = []
+    for n in names:
+        if n in published:
+            out.append(n)
+            continue
+        matches = [p for p in published if p.startswith(n)]
+        if len(matches) == 1:
+            out.append(matches[0])
+        elif len(matches) > 1:
+            click.echo(f"Ambiguous name '{n}': {', '.join(matches)}", err=True)
+            raise SystemExit(1)
+        else:
+            out.append(n)  # not published yet: schedule it under this name
+    return out
+
+
+@hub.command("visibility")
+@click.argument("names", nargs=-1)
+@click.option(
+    "--from",
+    "visible_from",
+    default=None,
+    help="Visible to students from this date/time (ISO; local time unless an offset is given)",
+)
+@click.option("--hide", is_flag=True, help="Hide from students")
+@click.option("--show", is_flag=True, help="Make visible to students now")
+@click.option(
+    "--timezone",
+    "tz_name",
+    default="Europe/London",
+    show_default=True,
+    help="Time zone for --from without an offset",
+)
+@_hub_connection_options
+@click.pass_context
+def hub_visibility(
+    ctx, names, visible_from, hide, show, tz_name, url, hub_token, ssh_host, ssh_port
+):
+    """Show or set when hub items are visible to students.
+
+    With no options, lists every published item and its visibility. With
+    NAMES (exact names or unique prefixes, e.g. "L03 A3") and one of
+    --from/--hide/--show, sets their visibility. Instructors always see
+    everything; a hidden or not-yet-open item is left out of the student
+    listing and its deep links answer "Not available until ...".
+    """
+    if sum(bool(x) for x in (visible_from, hide, show)) > 1:
+        raise click.UsageError("Use only one of --from, --hide, --show")
+    setting = visible_from or hide or show
+    if setting and not names:
+        raise click.UsageError("Give the item names to change")
+
+    with _hub_connection(url, ssh_host, ssh_port) as base:
+        items = _hub_api(base, hub_token, "GET", "/assignments")
+        targets = _resolve_hub_names(list(names), [i["name"] for i in items])
+        if setting:
+            entry = (
+                {"hidden": True}
+                if hide
+                else {}
+                if show
+                else {"visible_from": _parse_visible_from(visible_from, tz_name)}
+            )
+            _hub_api(
+                base,
+                hub_token,
+                "POST",
+                "/visibility",
+                json={"items": {n: entry for n in targets}},
+            )
+        vis = _hub_api(base, hub_token, "GET", "/visibility")
+        if targets:
+            items = [i for i in items if i["name"] in targets]
+            vis = {k: v for k, v in vis.items() if k in targets}
+        _print_visibility(items, vis)
+
+
+@hub.command("schedule")
+@click.argument("schedule_file", type=click.Path(exists=True, path_type=Path))
+@click.option("--dry-run", is_flag=True, help="Show the dates without changing the hub")
+@_hub_connection_options
+@click.pass_context
+def hub_schedule(ctx, schedule_file, dry_run, url, hub_token, ssh_host, ssh_port):
+    """Set hub visibility from a weekly schedule (TOML).
+
+    \b
+    start = 2027-01-11          # Monday of week 1
+    time = "09:00"              # opening time (default 09:00)
+    timezone = "Europe/London"  # default
+    hide_unlisted = true        # hide published items not in the schedule
+    [weeks]                     # week N opens start + 7*(N-1) days
+    0 = ["L00a-ProbabilityFoundations"]
+    1 = ["L01-IntroSciMLandUQ", "A1-Intro-to-SciML"]
+    [items]                     # explicit dates override the weeks
+    "A0-HandsOnUQ" = 2027-01-08T14:00:00
+
+    The schedule replaces all existing visibility settings on the hub.
+    """
+    import tomllib
+    from datetime import date, datetime, time, timedelta
+    from zoneinfo import ZoneInfo
+
+    cfg = tomllib.loads(schedule_file.read_text())
+    tz = ZoneInfo(cfg.get("timezone", "Europe/London"))
+    start = cfg.get("start")
+    if cfg.get("weeks") and not isinstance(start, date):
+        raise click.UsageError("'start' must be a TOML date, e.g. start = 2027-01-11")
+    opening = time.fromisoformat(cfg.get("time", "09:00"))
+
+    wanted: dict[str, datetime] = {}
+    for week, names in (cfg.get("weeks") or {}).items():
+        day = start + timedelta(days=7 * (int(week) - 1))
+        for n in names:
+            wanted[n] = datetime.combine(day, opening, tzinfo=tz)
+    for n, when in (cfg.get("items") or {}).items():
+        if isinstance(when, datetime):
+            wanted[n] = when if when.tzinfo else when.replace(tzinfo=tz)
+        elif isinstance(when, date):
+            wanted[n] = datetime.combine(when, opening, tzinfo=tz)
+        else:
+            raise click.UsageError(f"[items] {n}: expected a TOML date or datetime")
+
+    with _hub_connection(url, ssh_host, ssh_port) as base:
+        items = _hub_api(base, hub_token, "GET", "/assignments")
+        published = [i["name"] for i in items]
+        resolved = dict(
+            zip(_resolve_hub_names(list(wanted), published), wanted.values())
+        )
+        entries = {n: {"visible_from": dt.isoformat()} for n, dt in resolved.items()}
+        if cfg.get("hide_unlisted"):
+            for n in published:
+                entries.setdefault(n, {"hidden": True})
+        if dry_run:
+            click.echo("Dry run: would set")
+            _print_visibility(items, entries)
+            return
+        _hub_api(
+            base,
+            hub_token,
+            "POST",
+            "/visibility",
+            json={"items": entries, "replace": True},
+        )
+        _print_visibility(items, _hub_api(base, hub_token, "GET", "/visibility"))
 
 
 @hub.command("sync-users")

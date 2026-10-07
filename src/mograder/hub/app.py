@@ -114,6 +114,71 @@ def create_hub_app(
             status_code=403, detail="Cannot access another user's resources"
         )
 
+    # -- Visibility (scheduled release) --
+
+    def _check_visible(request: Request, name: str) -> None:
+        """404 for students if *name* is hidden or not yet open (instructors pass)."""
+        user = request.scope.get("user", {})
+        if user.get("is_instructor"):
+            return
+        visible, opens = storage.visibility(name)
+        if not visible:
+            if opens:
+                from datetime import datetime
+
+                when = datetime.fromisoformat(opens).strftime("%a %d %b %Y, %H:%M")
+                detail = f"Not available until {when}"
+            else:
+                detail = "Not available"
+            raise HTTPException(status_code=404, detail=detail)
+
+    def _require_instructor(request: Request) -> None:
+        if not request.scope.get("user", {}).get("is_instructor"):
+            raise HTTPException(status_code=403, detail="Instructor access required")
+
+    @app.get("/visibility")
+    async def get_visibility(request: Request):
+        _require_instructor(request)
+        return storage.read_visibility()
+
+    @app.post("/visibility")
+    async def set_visibility(request: Request):
+        """Set visibility for items (instructor only).
+
+        Body: ``{"items": {name: {"visible_from": iso} | {"hidden": true} | {}},
+        "replace": false}``. An empty entry makes the item visible; with
+        ``replace`` the given items replace all existing entries.
+        """
+        from datetime import datetime
+
+        _require_instructor(request)
+        body = await request.json()
+        items = body.get("items", {})
+        data = {} if body.get("replace") else storage.read_visibility()
+        for name, entry in items.items():
+            if name == "user" or "/" in name or name.startswith("."):
+                raise HTTPException(status_code=400, detail=f"Invalid name: {name}")
+            entry = entry or {}
+            if entry.get("hidden"):
+                data[name] = {"hidden": True}
+            elif entry.get("visible_from"):
+                try:
+                    opens = datetime.fromisoformat(entry["visible_from"])
+                except ValueError:
+                    raise HTTPException(
+                        status_code=400, detail=f"Bad datetime for {name}"
+                    )
+                if opens.tzinfo is None:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"visible_from for {name} needs a UTC offset",
+                    )
+                data[name] = {"visible_from": opens.isoformat()}
+            else:
+                data.pop(name, None)
+        storage.write_visibility(data)
+        return data
+
     # -- Upload --
 
     @app.post("/upload/{username}/{assignment}")
@@ -352,9 +417,11 @@ def create_hub_app(
         if not storage.has_release(assignment):
             raise HTTPException(status_code=404, detail="Assignment not found")
 
-        # Auto-download if student doesn't have a copy yet
+        # Auto-download if student doesn't have a copy yet (a student who
+        # already has a copy keeps access even if the item is hidden again)
         nb = storage.assignment_path(username, assignment)
         if not nb.exists():
+            _check_visible(request, assignment)
             release = storage.release_path(assignment)
             storage.ensure_dir(username, assignment)
             import shutil
@@ -420,11 +487,22 @@ def create_hub_app(
         if not user.get("username"):
             raise HTTPException(status_code=403, detail="Authentication required")
         username = user["username"]
+        instructor = user.get("is_instructor", False)
+
+        def _vis(name, started=False):
+            """Visibility fields for the listing, or None to leave the item out."""
+            visible, opens = storage.visibility(name)
+            if not visible and not instructor and not started:
+                return None
+            return {"visible": visible, "visible_from": opens}
 
         result = []
         # Assignments
         for name in storage.list_assignments():
             status = storage.assignment_status(username, name)
+            vis = _vis(name, started=storage.assignment_path(username, name).exists())
+            if vis is None:
+                continue
             has_release = storage.has_release(name)
             session_active = (username, name) in session_mgr.sessions
             result.append(
@@ -434,10 +512,14 @@ def create_hub_app(
                     "file_status": status,
                     "has_release": has_release,
                     "session_active": session_active,
+                    **vis,
                 }
             )
         # Lectures
         for name in storage.list_lectures():
+            vis = _vis(name)
+            if vis is None:
+                continue
             session_active = (username, name) in session_mgr.sessions
             result.append(
                 {
@@ -446,6 +528,7 @@ def create_hub_app(
                     "file_status": "n/a",
                     "has_release": True,
                     "session_active": session_active,
+                    **vis,
                 }
             )
         return result
@@ -462,6 +545,7 @@ def create_hub_app(
 
         if storage.item_type(lecture) != "lecture":
             raise HTTPException(status_code=400, detail="Not a lecture")
+        _check_visible(request, lecture)
 
         try:
             session = await session_mgr.get_or_spawn_run(username, lecture)
@@ -488,6 +572,7 @@ def create_hub_app(
     @app.post("/download-release/{username}/{assignment}")
     async def download_release(request: Request, username: str, assignment: str):
         _check_owner(request, username)
+        _check_visible(request, assignment)
         release = storage.release_path(assignment)
         if release is None:
             raise HTTPException(status_code=404, detail="Assignment not found")
@@ -510,6 +595,7 @@ def create_hub_app(
 
         if ".." in filename:
             raise HTTPException(status_code=400, detail="Invalid filename")
+        _check_visible(request, assignment)
 
         if not rel_dir.is_dir():
             raise HTTPException(status_code=404, detail="No releases available")

@@ -143,6 +143,49 @@ Publishing a lecture:
 | `--lecture` | | Publish as lecture (implies `--force`) |
 | `--dry-run` | | Preview only, don't publish |
 
+### `mograder hub visibility` and `mograder hub schedule`
+
+Control when published items become visible to students. Instructors always
+see everything. For students, a hidden or not-yet-open item is left out of the
+hub listing, and its deep links (`/run/<lecture>`, `/edit/<assignment>`) and
+release downloads answer "Not available until …". A student who already has a
+copy of an assignment keeps access to it if the item is hidden again.
+Items with no setting are visible, and republishing an item keeps its setting,
+so you can update a notebook without changing when it opens.
+
+```bash
+# List published items and their visibility
+mograder hub visibility --ssh hub-host
+
+# Set individual items (exact names or unique prefixes)
+mograder hub visibility A3 L03 --from 2027-01-25T09:00 --ssh hub-host   # local time
+mograder hub visibility A3 --hide --ssh hub-host
+mograder hub visibility A3 --show --ssh hub-host
+
+# Apply a weekly schedule (replaces all visibility settings)
+mograder hub schedule schedule.toml --dry-run --ssh hub-host
+mograder hub schedule schedule.toml --ssh hub-host
+```
+
+Schedule file:
+
+```toml
+start = 2027-01-11          # Monday of week 1
+time = "09:00"              # opening time (default 09:00)
+timezone = "Europe/London"  # default; summer time is handled
+hide_unlisted = true        # hide published items that are not in the schedule
+
+[weeks]                     # week N opens on start + 7*(N-1) days
+0 = ["L00a-Probability"]
+1 = ["L01-Intro", "A1-Setup"]
+
+[items]                     # explicit dates override the weeks
+"A0-Workshop" = 2027-01-08T14:00:00
+```
+
+Settings are stored in `.visibility.json` in the hub's release directory
+(API: `GET`/`POST /visibility`, instructor only).
+
 ### `mograder hub warm-cache`
 
 Pre-populate the uv cache with notebook dependencies:
@@ -257,6 +300,8 @@ The lecture type is auto-detected from PEP 723 metadata — no `--lecture` flag 
 | GET | `/release/{name}/{filename}` | Download release file |
 | POST | `/publish/{name}` | Publish release (instructor); `?type=lecture` for lectures |
 | POST | `/warm-cache` | Warm uv cache (instructor) |
+| GET | `/visibility` | Visibility settings (instructor) |
+| POST | `/visibility` | Set visibility: `{"items": {name: {"visible_from": iso} \| {"hidden": true} \| {}}, "replace": false}` (instructor) |
 
 ## Authentication
 
