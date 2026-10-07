@@ -1,0 +1,41 @@
+/* Hub dashboard: one plain, outlined button style for the links that open
+   notebooks (Open/Run/Edit, see link_button in student_app.py) and marimo's
+   neutral buttons (Validate, Export, Submit, Get latest, ...). marimo copies
+   this file into its UI elements' shadow roots, so it reaches the buttons.
+   `.marimo > .contents > button.bg-secondary` matches mo.ui.button with the
+   default kind only: table toolbars and danger (Stop) buttons keep theirs. */
+
+a.mograder-btn,
+.marimo > .contents > button.bg-secondary {
+  display: inline-flex;
+  align-items: center;
+  box-sizing: border-box;
+  height: 1.9rem;
+  vertical-align: middle;
+  padding: 0.2rem 0.75rem;
+  border: 1px solid var(--slate-7, #cbd5e1);
+  border-radius: 6px;
+  background: var(--slate-1, #fff);
+  color: var(--slate-12, #111);
+  /* the page font from head.html, which does not reach shadow roots */
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica,
+    Arial, sans-serif;
+  font-size: 0.875rem;
+  font-weight: 400;
+  line-height: 1.5;
+  box-shadow: none;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+a.mograder-btn:hover,
+.marimo > .contents > button.bg-secondary:hover {
+  background: var(--slate-3, #f1f5f9);
+}
+
+/* marimo renders the label as markdown (a "prose" span with its own font,
+   size and line height): use the button's */
+.marimo > .contents > button.bg-secondary * {
+  font: inherit;
+  line-height: inherit;
+}
