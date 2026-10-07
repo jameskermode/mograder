@@ -1,7 +1,9 @@
 import marimo
 
 __generated_with = "0.20.0"
-app = marimo.App(width="medium", app_title="mograder hub", html_head_file="head.html")
+app = marimo.App(
+    width="medium", app_title="mograder hub", html_head_file="../head.html"
+)
 
 
 @app.cell
