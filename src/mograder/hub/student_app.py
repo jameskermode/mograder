@@ -526,6 +526,7 @@ def _(
             try:
                 _client.post(
                     f"/stop-edit/{HUB_USER}/{_name}",
+                    params={"mode": pending.get("mode", "edit")},
                     headers=_hub_headers,
                     timeout=10,
                 )
@@ -581,13 +582,13 @@ def _(
         _items = []
         for _s in _sessions:
             _name = _s["assignment"]
-            _stype = _s.get("type", "assignment")
-            _deep_url = f"run/{_name}" if _stype == "lecture" else f"edit/{_name}"
+            _mode = _s.get("mode", "edit")
+            _deep_url = f"{_mode}/{_name}"
             _stop_btn = mo.ui.button(
                 label="Stop",
                 kind="danger",
-                on_change=lambda _, n=_name: set_pending(
-                    {"action": "hub_stop_edit", "assignment": n}
+                on_change=lambda _, n=_name, m=_mode: set_pending(
+                    {"action": "hub_stop_edit", "assignment": n, "mode": m}
                 ),
                 tooltip=f"Stop editor for {_name}",
             )

@@ -103,11 +103,15 @@ class SessionManager:
         self.spawn_timeout = spawn_timeout
         self.release_dir = Path(release_dir).resolve() if release_dir else None
         self.sessions: dict[tuple[str, str], MarimoSession] = {}
+        # Lecture "run" sessions are kept apart from edit sessions: a student
+        # can have both for the same lecture (read-only view and own copy),
+        # served under different base URLs (/run/user/... vs /edit/user/...)
+        self.run_sessions: dict[tuple[str, str], MarimoSession] = {}
         self._locks: dict[tuple[str, str], asyncio.Lock] = {}
         self._sandbox_dirs: dict[str, Path | None] = {}
         self._culler_task: asyncio.Task | None = None
 
-    def _get_lock(self, key: tuple[str, str]) -> asyncio.Lock:
+    def _get_lock(self, key: tuple) -> asyncio.Lock:
         if key not in self._locks:
             self._locks[key] = asyncio.Lock()
         return self._locks[key]
@@ -117,7 +121,9 @@ class SessionManager:
 
     def _allocate_port(self) -> int:
         """Find a free port starting from base_port."""
-        used = {s.port for s in self.sessions.values()}
+        used = {s.port for s in self.sessions.values()} | {
+            s.port for s in self.run_sessions.values()
+        }
         port = self.base_port
         while port < self.base_port + 1000:
             if port in used:
@@ -376,14 +382,14 @@ class SessionManager:
         """
         key = (username, lecture)
 
-        existing = self.sessions.get(key)
+        existing = self.run_sessions.get(key)
         if existing and existing.process and existing.process.returncode is None:
             existing.last_seen = time.time()
             return existing
 
-        lock = self._get_lock(key)
+        lock = self._get_lock(("run", username, lecture))
         async with lock:
-            existing = self.sessions.get(key)
+            existing = self.run_sessions.get(key)
             if existing and existing.process and existing.process.returncode is None:
                 existing.last_seen = time.time()
                 return existing
@@ -434,13 +440,16 @@ class SessionManager:
                 notebook_path=str(nb),
                 last_seen=time.time(),
             )
-            self.sessions[key] = session
+            self.run_sessions[key] = session
             return session
 
-    async def terminate(self, username: str, assignment: str) -> bool:
-        """Kill session and remove from map."""
+    async def terminate(
+        self, username: str, assignment: str, mode: str = "edit"
+    ) -> bool:
+        """Kill a session (``mode`` "edit" or "run") and remove it from its map."""
         key = (username, assignment)
-        session = self.sessions.pop(key, None)
+        sessions = self.run_sessions if mode == "run" else self.sessions
+        session = sessions.pop(key, None)
         if session is None:
             return False
         if session.process and session.process.pid:
@@ -453,14 +462,15 @@ class SessionManager:
     async def cull_idle(self) -> None:
         """Terminate sessions that have been idle past TTL."""
         now = time.time()
-        to_cull = [
-            (u, a)
-            for (u, a), s in list(self.sessions.items())
-            if (now - s.last_seen) > self.session_ttl
-            or (s.process and s.process.returncode is not None)
-        ]
-        for u, a in to_cull:
-            await self.terminate(u, a)
+        for mode, sessions in (("edit", self.sessions), ("run", self.run_sessions)):
+            to_cull = [
+                (u, a)
+                for (u, a), s in list(sessions.items())
+                if (now - s.last_seen) > self.session_ttl
+                or (s.process and s.process.returncode is not None)
+            ]
+            for u, a in to_cull:
+                await self.terminate(u, a, mode)
 
     async def start_culler(self, interval: float = 60) -> None:
         """Background task to cull idle sessions periodically."""
@@ -475,3 +485,5 @@ class SessionManager:
         """Terminate all sessions."""
         for u, a in list(self.sessions.keys()):
             await self.terminate(u, a)
+        for u, a in list(self.run_sessions.keys()):
+            await self.terminate(u, a, "run")

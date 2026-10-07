@@ -34,14 +34,17 @@ def create_proxy_router(session_manager) -> APIRouter:
             return True
         return user.get("username") == username
 
-    def _get_session(username: str, assignment: str):
-        """Get active session or None."""
+    def _get_session(username: str, assignment: str, mode: str = "edit"):
+        """Get active session (edit, or lecture run) or None."""
         key = (username, assignment)
-        session = session_manager.sessions.get(key)
+        sessions = (
+            session_manager.run_sessions if mode == "run" else session_manager.sessions
+        )
+        session = sessions.get(key)
         if session is None:
             return None
         if session.process and session.process.returncode is not None:
-            session_manager.sessions.pop(key, None)
+            sessions.pop(key, None)
             return None
         return session
 
@@ -211,7 +214,7 @@ fetch(base + "{start_url}", {{method:"POST",credentials:"same-origin"}})
         if not _check_access(request.scope, username):
             return Response("403 Forbidden", status_code=403)
 
-        session = _get_session(username, lecture)
+        session = _get_session(username, lecture, "run")
         if session is None:
             return Response("No active lecture session", status_code=404)
 
@@ -236,7 +239,7 @@ fetch(base + "{start_url}", {{method:"POST",credentials:"same-origin"}})
             await websocket.close(code=1008)
             return
 
-        session = _get_session(username, lecture)
+        session = _get_session(username, lecture, "run")
         if session is None:
             await websocket.close(code=1008)
             return

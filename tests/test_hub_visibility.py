@@ -339,3 +339,45 @@ class TestGetLatest:
         self._copy(hub, name="L01", text=LECTURE)
         items = {i["name"]: i for i in hub.student.get("/assignments").json()}
         assert items["L01"]["has_copy"] is True
+
+
+class TestRunAndEditSessions:
+    """A lecture can have a run session and an edit session at once."""
+
+    def _fake(self, port):
+        from unittest.mock import MagicMock
+
+        from mograder.hub.models import MarimoSession
+
+        proc = MagicMock()
+        proc.returncode = None
+        proc.pid = None
+        return MarimoSession("alice", "L01", port, proc, "L01.py")
+
+    def test_sessions_kept_apart(self, hub):
+        mgr = hub.app.state.session_mgr
+        mgr.run_sessions[("alice", "L01")] = self._fake(18100)
+        mgr.sessions[("alice", "L01")] = self._fake(18101)
+        listed = {
+            s["mode"]: (s["url"], s["port"])
+            for s in hub.student.get("/sessions").json()
+        }
+        assert listed == {
+            "run": ("run/user/alice/L01/", 18100),
+            "edit": ("edit/user/alice/L01/", 18101),
+        }
+
+    def test_edit_url_never_proxies_to_run_session(self, hub):
+        mgr = hub.app.state.session_mgr
+        mgr.run_sessions[("alice", "L01")] = self._fake(18100)
+        r = hub.student.get("/edit/user/alice/L01/")
+        assert r.status_code == 404  # no edit session: not the run server
+
+    def test_stop_run_leaves_edit(self, hub):
+        mgr = hub.app.state.session_mgr
+        mgr.run_sessions[("alice", "L01")] = self._fake(18100)
+        mgr.sessions[("alice", "L01")] = self._fake(18101)
+        r = hub.student.post("/stop-edit/alice/L01", params={"mode": "run"})
+        assert r.json()["terminated"] is True
+        assert ("alice", "L01") not in mgr.run_sessions
+        assert ("alice", "L01") in mgr.sessions

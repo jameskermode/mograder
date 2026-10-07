@@ -448,7 +448,8 @@ def create_hub_app(
     @app.post("/stop-edit/{username}/{assignment}")
     async def stop_edit(request: Request, username: str, assignment: str):
         _check_owner(request, username)
-        killed = await session_mgr.terminate(username, assignment)
+        mode = "run" if request.query_params.get("mode") == "run" else "edit"
+        killed = await session_mgr.terminate(username, assignment, mode)
         return {"status": "ok", "terminated": killed}
 
     # -- List active sessions for current user --
@@ -460,25 +461,28 @@ def create_hub_app(
         if not username:
             raise HTTPException(status_code=403, detail="Authentication required")
         result = []
-        for (u, a), s in list(session_mgr.sessions.items()):
-            if u != username and not user.get("is_instructor"):
-                continue
-            alive = s.process is not None and s.process.returncode is None
-            if not alive:
-                continue
-            # Determine URL based on whether this is a lecture or assignment
-            is_lecture = storage.item_type(a) == "lecture"
-            session_url = f"run/user/{u}/{a}/" if is_lecture else f"edit/user/{u}/{a}/"
-            result.append(
-                {
-                    "username": u,
-                    "assignment": a,
-                    "port": s.port,
-                    "url": session_url,
-                    "type": "lecture" if is_lecture else "assignment",
-                    "last_seen": s.last_seen,
-                }
-            )
+        for mode, sessions in (
+            ("edit", session_mgr.sessions),
+            ("run", session_mgr.run_sessions),
+        ):
+            for (u, a), s in list(sessions.items()):
+                if u != username and not user.get("is_instructor"):
+                    continue
+                alive = s.process is not None and s.process.returncode is None
+                if not alive:
+                    continue
+                is_lecture = storage.item_type(a) == "lecture"
+                result.append(
+                    {
+                        "username": u,
+                        "assignment": a,
+                        "port": s.port,
+                        "url": f"{mode}/user/{u}/{a}/",
+                        "type": "lecture" if is_lecture else "assignment",
+                        "mode": mode,
+                        "last_seen": s.last_seen,
+                    }
+                )
         return result
 
     # -- List assignments --
@@ -506,7 +510,10 @@ def create_hub_app(
             if vis is None:
                 continue
             has_release = storage.has_release(name)
-            session_active = (username, name) in session_mgr.sessions
+            session_active = (username, name) in session_mgr.sessions or (
+                username,
+                name,
+            ) in session_mgr.run_sessions
             result.append(
                 {
                     "name": name,
@@ -523,7 +530,10 @@ def create_hub_app(
             vis = _vis(name)
             if vis is None:
                 continue
-            session_active = (username, name) in session_mgr.sessions
+            session_active = (username, name) in session_mgr.sessions or (
+                username,
+                name,
+            ) in session_mgr.run_sessions
             result.append(
                 {
                     "name": name,
