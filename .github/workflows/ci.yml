@@ -6,6 +6,13 @@ on:
   pull_request:
     branches: [main]
 
+# One run at a time per branch: the demo deploy, link check and demo student
+# test share the live demo server, so overlapping runs (e.g. quick successive
+# pushes) saw it mid-rebuild. Superseded PR runs are cancelled.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   test:
     runs-on: ${{ matrix.os }}
