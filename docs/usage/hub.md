@@ -23,13 +23,14 @@ Students access the hub via a browser (no local install required):
 
 1. Navigate to the hub URL provided by your instructor
 2. Log in via university SSO (automatic via reverse proxy)
-3. Click **Download** to fetch an assignment
-4. Click **Edit** to open the marimo editor in a new tab
-5. Work on the assignment — changes are saved automatically
-6. Click **Validate** to run checks and see results
-7. Click **Export** to download the completed `.py` file
-8. Upload the exported file to Moodle for submission
-9. Click **Reset** to restore the original release version (your work is archived)
+3. Click **Open**: the marimo editor opens in a new tab with your own copy (fetched from the release the first time, reopened afterwards)
+4. Work on the assignment — changes are saved automatically
+5. Click **Validate** to run checks and see results
+6. Click **Export** to download the completed `.py` file
+7. Upload the exported file to Moodle for submission
+8. Click **Get latest** (after confirming) to replace your copy with the current release (your work is archived)
+
+**Open**, **Run** and **Edit** are plain links to the deep links (`/edit/<name>`, `/run/<name>`), so the new tab opens straight from your click and is not stopped by pop-up blockers; its page starts the session. Reload the dashboard to update the status columns.
 
 Active edit sessions appear in an **Active editors** panel with links to reopen and a **Stop** button.
 

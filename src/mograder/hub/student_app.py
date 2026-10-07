@@ -14,8 +14,6 @@ def _():
 
     from mograder._brand import logo_html as brand_logo_html, version_html
     from mograder.student.common import (
-        hub_download,
-        hub_start_edit,
         hub_submit,
         hub_validate,
         load_student_config,
@@ -35,16 +33,34 @@ def _():
 
     HUB_USER = _hub_username()
 
+    def link_button(label, href, tooltip=""):
+        """A link styled as a button, opening a new tab.
+
+        Opening a notebook is a plain link to the hub's deep link (/run/<name>,
+        /edit/<name>), whose page starts the session and redirects: a tab
+        opened by the user's own click is not stopped by pop-up blockers,
+        unlike one opened by code after a server round trip.
+        """
+        import html as _html
+
+        return mo.Html(
+            f'<a href="{_html.escape(href)}" target="_blank" rel="noopener" '
+            f'title="{_html.escape(tooltip)}" style="display:inline-block;'
+            "padding:0.2rem 0.75rem;border:1px solid var(--slate-7,#cbd5e1);"
+            "border-radius:6px;background:var(--slate-1,#fff);"
+            "color:var(--slate-12,#111);font-size:0.875rem;line-height:1.5;"
+            f'text-decoration:none;white-space:nowrap">{_html.escape(label)}</a>'
+        )
+
     return (
         COURSE_DIR,
         CONFIG,
         HUB_USER,
         Path,
         brand_logo_html,
-        hub_download,
-        hub_start_edit,
         hub_submit,
         hub_validate,
+        link_button,
         mo,
         version_html,
     )
@@ -166,6 +182,7 @@ def _(
     hub_item_open,
     hub_storage,
     https_assignments,
+    link_button,
     mo,
     set_pending,
 ):
@@ -217,27 +234,16 @@ def _(
             _check_summary = "---"
 
             _btn_keys = []
-
-            if not _has_file:
-                _key = f"{_i}_download"
-                _all_buttons[_key] = mo.ui.button(
-                    label="Download",
-                    on_change=lambda _, n=_slug: set_pending(
-                        {"action": "hub_download", "assignment": n}
-                    ),
-                )
-                _btn_keys.append(_key)
+            # Open: the deep link fetches the student's copy on first use and
+            # reopens it afterwards (never overwriting it)
+            _open = link_button(
+                "Open",
+                f"edit/{_slug}",
+                "Open your copy in a new tab"
+                + ("" if _has_file else " (fetched the first time)"),
+            )
 
             if _has_file:
-                _key = f"{_i}_edit"
-                _all_buttons[_key] = mo.ui.button(
-                    label="Edit",
-                    on_change=lambda _, n=_slug: set_pending(
-                        {"action": "hub_edit", "assignment": n}
-                    ),
-                )
-                _btn_keys.append(_key)
-
                 _key = f"{_i}_validate"
                 _all_buttons[_key] = mo.ui.button(
                     label="Validate",
@@ -283,6 +289,7 @@ def _(
                     "Status": _status,
                     "Checks": _check_summary,
                     "btn_keys": _btn_keys,
+                    "open": _open,
                 }
             )
 
@@ -291,10 +298,8 @@ def _(
         _display_rows = []
         for _row in _rows:
             _keys = _row.pop("btn_keys")
-            _btns = [buttons[k] for k in _keys]
-            _row["Actions"] = (
-                mo.hstack(_btns, gap=0.5, justify="center") if _btns else mo.md("")
-            )
+            _btns = [_row.pop("open")] + [buttons[k] for k in _keys]
+            _row["Actions"] = mo.hstack(_btns, gap=0.5, justify="center")
             _display_rows.append(_row)
 
         if _display_rows:
@@ -311,6 +316,7 @@ def _(
     get_refresh,
     hub_lectures,
     hub_storage,
+    link_button,
     mo,
     set_pending,
 ):
@@ -321,19 +327,6 @@ def _(
         _all_buttons = {}
         for _i, _lec in enumerate(hub_lectures):
             _name = _lec["name"]
-            _all_buttons[f"lec_{_i}_run"] = mo.ui.button(
-                label="Run",
-                on_change=lambda _, n=_name: set_pending(
-                    {"action": "hub_run_lecture", "lecture": n}
-                ),
-            )
-            # Edit: the student's own copy, to change settings and explore
-            _all_buttons[f"lec_{_i}_edit"] = mo.ui.button(
-                label="Edit",
-                on_change=lambda _, n=_name: set_pending(
-                    {"action": "hub_edit_lecture", "lecture": n}
-                ),
-            )
             if hub_storage.assignment_path(HUB_USER, _name).exists():
                 _all_buttons[f"lec_{_i}_latest"] = mo.ui.button(
                     label="Get latest",
@@ -347,7 +340,12 @@ def _(
         _rows = []
         for _i, _lec in enumerate(hub_lectures):
             _name = _lec["name"]
-            _keys = [f"lec_{_i}_run", f"lec_{_i}_edit", f"lec_{_i}_latest"]
+            _links = [
+                link_button("Run", f"run/{_name}", "View the lecture in a new tab"),
+                # the student's own copy, to change settings and explore
+                link_button("Edit", f"edit/{_name}", "Edit your own copy in a new tab"),
+            ]
+            _keys = [f"lec_{_i}_latest"]
             if not hub_storage.assignment_path(HUB_USER, _name).exists():
                 _copy = "—"
             elif hub_storage.release_updated(HUB_USER, _name):
@@ -359,7 +357,7 @@ def _(
                     "Lecture": _name,
                     "Your copy": _copy,
                     "Actions": mo.hstack(
-                        [_lec_buttons[k] for k in _keys if k in _lec_buttons],
+                        _links + [_lec_buttons[k] for k in _keys if k in _lec_buttons],
                         gap=0.5,
                         justify="center",
                     ),
@@ -376,8 +374,6 @@ def _(
     CONFIG,
     HUB_USER,
     get_pending,
-    hub_download,
-    hub_start_edit,
     hub_submit,
     hub_validate,
     mo,
@@ -396,29 +392,7 @@ def _(
         _client = _httpx.Client(base_url=f"http://127.0.0.1:{CONFIG.hub_port}")
         _hub_headers = {"X-Remote-User": HUB_USER}
 
-        if _act == "hub_download":
-            _name = pending["assignment"]
-            _result = hub_download(_client, HUB_USER, _name, _hub_headers)
-            set_action_log(_result.message)
-            set_refresh(lambda v: v + 1)
-
-        elif _act == "hub_edit":
-            _name = pending["assignment"]
-            with mo.status.spinner(
-                title=f"Starting editor for {_name}...",
-                remove_on_exit=True,
-            ):
-                _result = hub_start_edit(_client, HUB_USER, _name, _hub_headers)
-                if _result.success:
-                    # Use deep link URL — works behind reverse proxies
-                    set_action_log(
-                        f"Editing **{_name}** — "
-                        f'<a href="edit/{_name}" target="_blank">open editor</a>'
-                    )
-                else:
-                    set_action_log(_result.message)
-
-        elif _act == "hub_validate":
+        if _act == "hub_validate":
             _name = pending["assignment"]
             with mo.status.spinner(
                 title=f"Validating {_name}...",
@@ -444,29 +418,6 @@ def _(
             ):
                 _result = hub_submit(_client, HUB_USER, _name, _hub_headers)
                 set_action_log(_result.message)
-
-        elif _act == "hub_run_lecture":
-            _name = pending["lecture"]
-            with mo.status.spinner(
-                title=f"Starting {_name}...",
-                remove_on_exit=True,
-            ):
-                try:
-                    _resp = _client.post(
-                        f"/start-run/{_name}",
-                        headers=_hub_headers,
-                        timeout=120,
-                    )
-                    if _resp.status_code == 200:
-                        # Use deep link URL — works behind reverse proxies
-                        set_action_log(
-                            f"Viewing **{_name}** — "
-                            f'<a href="run/{_name}" target="_blank">open lecture</a>'
-                        )
-                    else:
-                        set_action_log(f"Failed to start lecture: {_resp.text}")
-                except Exception as _exc:
-                    set_action_log(f"Failed to start lecture: {_exc}")
 
         elif _act == "hub_latest_ask":
             # assignments: confirm first (the copy may be submitted work)
@@ -498,28 +449,6 @@ def _(
                     set_action_log(f"Failed to fetch {_name}: {_resp.text}")
             except Exception as _exc:
                 set_action_log(f"Failed to fetch {_name}: {_exc}")
-
-        elif _act == "hub_edit_lecture":
-            _name = pending["lecture"]
-            with mo.status.spinner(
-                title=f"Opening your copy of {_name}...",
-                remove_on_exit=True,
-            ):
-                try:
-                    _resp = _client.post(
-                        f"/start-edit-deep/{_name}",
-                        headers=_hub_headers,
-                        timeout=120,
-                    )
-                    if _resp.status_code == 200:
-                        set_action_log(
-                            f"Editing your copy of **{_name}** — "
-                            f'<a href="edit/{_name}" target="_blank">open editor</a>'
-                        )
-                    else:
-                        set_action_log(f"Failed to open lecture: {_resp.text}")
-                except Exception as _exc:
-                    set_action_log(f"Failed to open lecture: {_exc}")
 
         elif _act == "hub_stop_edit":
             _name = pending["assignment"]
