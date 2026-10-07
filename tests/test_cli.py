@@ -1102,3 +1102,38 @@ def test_validate_fix_no_release_shows_instructions(
     runner = CliRunner()
     result = runner.invoke(cli, ["validate", "--fix", str(nb)])
     assert "Cannot fix" in result.output
+
+
+def test_generate_lecture_strips_solutions(tmp_path):
+    """Lectures with exercises have their solution blocks stripped."""
+    nb = tmp_path / "L00c-Intro.py"
+    nb.write_text(
+        "import marimo\n"
+        "app = marimo.App()\n"
+        "\n"
+        "@app.cell\n"
+        "def _():\n"
+        "    ### BEGIN SOLUTION\n"
+        "    answer = 42\n"
+        "    ### END SOLUTION\n"
+        "    return\n"
+    )
+    out = tmp_path / "release"
+    result = CliRunner().invoke(cli, ["generate", "--lecture", str(nb), "-o", str(out)])
+    assert result.exit_code == 0, result.output
+    assert "1 solution blocks stripped" in result.output
+    text = (out / "L00c-Intro" / "L00c-Intro.py").read_text()
+    assert "answer = 42" not in text
+    assert "BEGIN SOLUTION" not in text
+    assert '# mograder-type = "lecture"' in text
+
+
+def test_generate_lecture_without_solutions_unchanged(tmp_path):
+    """Lectures without solution markers are not stripped."""
+    nb = tmp_path / "L01.py"
+    nb.write_text("import marimo\napp = marimo.App()\n# answer = 42\n")
+    out = tmp_path / "release"
+    result = CliRunner().invoke(cli, ["generate", "--lecture", str(nb), "-o", str(out)])
+    assert result.exit_code == 0, result.output
+    assert "stripped" not in result.output
+    assert "# answer = 42" in (out / "L01" / "L01.py").read_text()

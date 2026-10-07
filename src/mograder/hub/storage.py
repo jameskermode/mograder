@@ -147,6 +147,37 @@ class StorageManager:
 
     # -- reset --
 
+    def copy_support_files(self, username: str, name: str) -> list[str]:
+        """Copy a release's supporting files (data, images, helper modules)
+        into the user's directory, next to their copy of the notebook.
+
+        The notebook itself, previews (.html), zips and manifests are left
+        out, and existing files are never overwritten (the student may have
+        changed them). Edit sessions run in the user's directory, so without
+        these files notebook-relative paths would fail. Returns the names
+        copied.
+        """
+        if self.release_dir is None:
+            return []
+        src = self.release_dir / name
+        if not src.is_dir():
+            return []
+        dest = self.ensure_dir(username, name)
+        copied = []
+        for f in sorted(src.iterdir()):
+            if (
+                not f.is_file()
+                or f.name.startswith(".")
+                or f.name in (f"{name}.py", "files.json")
+                or f.suffix in (".html", ".zip")
+            ):
+                continue
+            target = dest / f.name
+            if not target.exists():
+                shutil.copy2(f, target)
+                copied.append(f.name)
+        return copied
+
     def reset_to_release(self, username: str, assignment: str) -> Path | None:
         """Archive existing notebook and optionally copy from release.
 
@@ -170,6 +201,7 @@ class StorageManager:
         release = self.release_path(assignment)
         if release is not None:
             shutil.copy2(str(release), str(nb))
+            self.copy_support_files(username, assignment)
             self.mark_uploaded(username, assignment)
 
         return archive

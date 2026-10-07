@@ -34,7 +34,7 @@ The `--lecture` flag:
 - **Copies auxiliary files** — images, data files, and helper `.py` modules from the source directory (when the notebook lives in its own subdirectory)
 - **Builds a release zip** when there are multiple files
 
-Unlike assignment generation, lecture generation skips solution stripping, validation, and cell hash injection (none of these apply to lectures).
+Unlike assignment generation, lecture generation skips validation and cell hash injection. Lectures normally have no solutions; a lecture with exercises (solution blocks marked as in an assignment, e.g. workshop-style notes) has them stripped, so the hub copy does not give the answers away.
 
 ### Source directory layout
 

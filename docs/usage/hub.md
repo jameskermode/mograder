@@ -45,6 +45,9 @@ If the instructor has published lectures to the hub, they appear in a **Lectures
 2. The lecture runs in read-only mode with code visible (`marimo run --include-code`)
 3. Each student gets their own isolated session (widget state is not shared)
 4. Cross-notebook links within lectures navigate directly to other published lectures
+5. Click **Edit** for your own editable copy of the lecture (deep link `/edit/<lecture>`), to change settings and explore; it is kept between visits
+
+When a student's copy of an assignment or lecture is created, the release's supporting files (data, images, helper modules) are copied next to it, since edit sessions run in the student's directory. Existing files are never overwritten, and missing ones are filled in when an editor starts.
 
 Lecture sessions are per-user and subject to the same idle timeout as assignment edit sessions.
 

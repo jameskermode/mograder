@@ -257,8 +257,12 @@ def generate(
         from .grading.cells import (
             _inject_type_metadata,
             build_release_zip,
+            convert_markdown_cells,
+            count_markers,
             rewrite_notebook_links,
+            strip_hidden_tests,
             strip_layout_metadata,
+            strip_solutions,
         )
 
         for arg in assignments:
@@ -276,13 +280,25 @@ def generate(
             lines = strip_layout_metadata(lines)
             lines = rewrite_notebook_links(lines)
             lines = _inject_type_metadata(lines, "lecture")
+            # Lectures with exercises (e.g. workshop-style induction notes):
+            # strip their solutions as for an assignment
+            n_solutions = count_markers(lines)
+            if n_solutions:
+                lines = strip_solutions(lines)
+                lines = strip_hidden_tests(lines)
+                lines = convert_markdown_cells(lines)
+            note = (
+                f"lecture, {n_solutions} solution blocks stripped"
+                if n_solutions
+                else "lecture"
+            )
 
             dest = dest_dir / filepath.name
             if dry_run:
-                click.echo(f"DRY-RUN: {_rel(filepath)} → {_rel(dest)} (lecture)")
+                click.echo(f"DRY-RUN: {_rel(filepath)} → {_rel(dest)} ({note})")
             else:
                 dest.write_text("".join(lines))
-                click.echo(f"OK: {_rel(filepath)} → {_rel(dest)} (lecture)")
+                click.echo(f"OK: {_rel(filepath)} → {_rel(dest)} ({note})")
 
                 # Copy auxiliary files only if the notebook lives in its own
                 # subdirectory (like assignments in source/name/).  Lectures

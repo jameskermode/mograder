@@ -388,6 +388,7 @@ def create_hub_app(
         nb = storage.assignment_path(username, assignment)
         if not nb.exists():
             raise HTTPException(status_code=404, detail="Notebook not found")
+        storage.copy_support_files(username, assignment)
         try:
             session = await session_mgr.get_or_spawn(username, assignment)
             return {
@@ -428,6 +429,7 @@ def create_hub_app(
 
             shutil.copy2(str(release), str(nb))
             storage.mark_uploaded(username, assignment)
+        storage.copy_support_files(username, assignment)
 
         try:
             session = await session_mgr.get_or_spawn(username, assignment)
@@ -579,6 +581,7 @@ def create_hub_app(
         nb = storage.assignment_path(username, assignment)
         storage.ensure_dir(username, assignment)
         shutil.copy2(str(release), str(nb))
+        storage.copy_support_files(username, assignment)
         storage.mark_uploaded(username, assignment)
         if (username, assignment) in session_mgr.sessions:
             await session_mgr.terminate(username, assignment)

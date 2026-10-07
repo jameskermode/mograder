@@ -218,3 +218,49 @@ hide_unlisted = true
         assert body["items"]["L01-Intro"] == {
             "visible_from": "2027-04-05T09:00:00+01:00"
         }
+
+
+class TestSupportFiles:
+    """Student copies get the release's data and images (edit sessions run there)."""
+
+    def _release_with_data(self, hub):
+        d = hub.release / "A1"
+        (d / "data.csv").write_text("x\n1\n")
+        (d / "fig.png").write_bytes(b"png")
+        (d / "A1.html").write_text("<html>")
+        (d / "A1.zip").write_bytes(b"zip")
+        (d / "files.json").write_text("{}")
+
+    def test_copy_support_files(self, hub):
+        self._release_with_data(hub)
+        storage = hub.app.state.storage
+        assert storage.copy_support_files("alice", "A1") == ["data.csv", "fig.png"]
+        mine = hub.notebooks / "alice" / "A1" / "data.csv"
+        mine.write_text("changed\n")
+        assert storage.copy_support_files("alice", "A1") == []
+        assert mine.read_text() == "changed\n"  # never overwritten
+
+    def test_deep_link_copies_support_files(self, hub):
+        self._release_with_data(hub)
+        fake = SimpleNamespace(port=1234)
+        with patch.object(
+            hub.app.state.session_mgr, "get_or_spawn", AsyncMock(return_value=fake)
+        ):
+            assert hub.student.post("/start-edit-deep/A1").status_code == 200
+        names = sorted(
+            p.name
+            for p in (hub.notebooks / "alice" / "A1").iterdir()
+            if not p.name.startswith(".")
+        )
+        assert names == ["A1.py", "data.csv", "fig.png"]
+
+    def test_lecture_edit_copy(self, hub):
+        """Lectures can be opened as the student's own editable copy."""
+        fake = SimpleNamespace(port=1234)
+        with patch.object(
+            hub.app.state.session_mgr, "get_or_spawn", AsyncMock(return_value=fake)
+        ):
+            r = hub.student.post("/start-edit-deep/L01")
+        assert r.status_code == 200
+        assert r.json()["url"] == "edit/user/alice/L01/"
+        assert (hub.notebooks / "alice" / "L01" / "L01.py").read_text() == LECTURE

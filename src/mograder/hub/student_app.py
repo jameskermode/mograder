@@ -92,6 +92,12 @@ def _(
     if _rel_dir.is_dir():
         import json as _json
 
+        from mograder.core.auth import is_instructor as _is_instructor
+        from mograder.hub.storage import StorageManager as _StorageManager
+
+        _storage = _StorageManager(COURSE_DIR / CONFIG.hub_notebooks_dir, _rel_dir)
+        _instructor = _is_instructor(HUB_USER)
+
         for d in sorted(_rel_dir.iterdir()):
             if not d.is_dir() or not (d / f"{d.name}.py").is_file():
                 continue
@@ -102,6 +108,16 @@ def _(
                     _type = _json.loads(_manifest.read_text()).get("type", "assignment")
                 except Exception:
                     pass
+            # Scheduled visibility: students do not see hidden or not-yet-open
+            # items (an assignment they already have a copy of stays listed)
+            _open, _ = _storage.visibility(d.name)
+            if not _open and not _instructor:
+                try:
+                    _started = _storage.assignment_path(HUB_USER, d.name).exists()
+                except ValueError:
+                    _started = False
+                if _type == "lecture" or not _started:
+                    continue
             if _type == "lecture":
                 hub_lectures += ({"name": d.name},)
             else:
@@ -267,19 +283,33 @@ def _(
         mo.output.replace(mo.md(""))
     else:
         _all_buttons = {}
-        _rows = []
         for _i, _lec in enumerate(hub_lectures):
             _name = _lec["name"]
-            _key = f"lec_{_i}_run"
-            _all_buttons[_key] = mo.ui.button(
+            _all_buttons[f"lec_{_i}_run"] = mo.ui.button(
                 label="Run",
                 on_change=lambda _, n=_name: set_pending(
                     {"action": "hub_run_lecture", "lecture": n}
                 ),
             )
-            _rows.append({"Lecture": _name, "Actions": _all_buttons[_key]})
-
+            # Edit: the student's own copy, to change settings and explore
+            _all_buttons[f"lec_{_i}_edit"] = mo.ui.button(
+                label="Edit",
+                on_change=lambda _, n=_name: set_pending(
+                    {"action": "hub_edit_lecture", "lecture": n}
+                ),
+            )
         _lec_buttons = mo.ui.dictionary(_all_buttons)
+        _rows = [
+            {
+                "Lecture": _lec["name"],
+                "Actions": mo.hstack(
+                    [_lec_buttons[f"lec_{_i}_run"], _lec_buttons[f"lec_{_i}_edit"]],
+                    gap=0.5,
+                    justify="center",
+                ),
+            }
+            for _i, _lec in enumerate(hub_lectures)
+        ]
         _table = mo.ui.table(_rows, selection=None)
         mo.output.replace(mo.vstack([mo.md("### Lectures"), _table]))
     return ()
@@ -381,6 +411,28 @@ def _(
                         set_action_log(f"Failed to start lecture: {_resp.text}")
                 except Exception as _exc:
                     set_action_log(f"Failed to start lecture: {_exc}")
+
+        elif _act == "hub_edit_lecture":
+            _name = pending["lecture"]
+            with mo.status.spinner(
+                title=f"Opening your copy of {_name}...",
+                remove_on_exit=True,
+            ):
+                try:
+                    _resp = _client.post(
+                        f"/start-edit-deep/{_name}",
+                        headers=_hub_headers,
+                        timeout=120,
+                    )
+                    if _resp.status_code == 200:
+                        set_action_log(
+                            f"Editing your copy of **{_name}** — "
+                            f'<a href="edit/{_name}" target="_blank">open editor</a>'
+                        )
+                    else:
+                        set_action_log(f"Failed to open lecture: {_resp.text}")
+                except Exception as _exc:
+                    set_action_log(f"Failed to open lecture: {_exc}")
 
         elif _act == "hub_stop_edit":
             _name = pending["assignment"]
