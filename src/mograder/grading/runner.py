@@ -379,6 +379,7 @@ def run_notebook(
     rlimit_as: int = 1 << 30,
     isolate_cwd: bool = False,
     use_bubblewrap: bool = False,
+    support_dir: Path | None = None,
 ) -> NotebookResult:
     """Execute a notebook and return its check results.
 
@@ -389,6 +390,12 @@ def run_notebook(
     If *safety_check* is True, the notebook source is scanned for
     dangerous patterns (denied imports, eval/exec, etc.) before execution.
     If unsafe patterns are found, execution is skipped.
+
+    With *isolate_cwd*, the notebook runs in a fresh temporary directory; the
+    supporting files of *support_dir* (the assignment's source or release
+    directory: data, images, helper modules) are copied next to it, so
+    notebook-relative data paths work. The source notebook itself (which
+    contains the solutions), HTML previews and zips are never copied.
     """
     result = NotebookResult(path=notebook_path)
 
@@ -422,6 +429,12 @@ def run_notebook(
         # code cannot write files next to other submissions.
         if isolate_cwd:
             isolate_dir = Path(tempfile.mkdtemp(prefix="mograder_iso_"))
+            if support_dir is not None and support_dir.is_dir():
+                from mograder.grading.cells import is_release_aux_file
+
+                for f in support_dir.iterdir():
+                    if f.name != f"{support_dir.name}.py" and is_release_aux_file(f):
+                        shutil.copy2(f, isolate_dir / f.name)
             shutil.copy2(notebook_abs, isolate_dir / notebook_abs.name)
             notebook_abs = (isolate_dir / notebook_abs.name).resolve()
             notebook_cwd = isolate_dir
@@ -621,6 +634,7 @@ def run_batch(
     rlimit_as: int = 1 << 30,
     isolate_cwd: bool = False,
     use_bubblewrap: bool = False,
+    support_dir: Path | None = None,
 ) -> list[NotebookResult]:
     """Run notebooks in parallel and return results sorted by filename."""
     results: list[NotebookResult] = []
@@ -643,6 +657,7 @@ def run_batch(
                 rlimit_as,
                 isolate_cwd,
                 use_bubblewrap,
+                support_dir,
             ): nb
             for nb in notebooks
         }

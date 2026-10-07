@@ -1188,6 +1188,8 @@ def autograde(
         rlimit_as=_rlimit_as,
         isolate_cwd=True,
         use_bubblewrap=config.use_bubblewrap,
+        # data files etc. next to the source notebook (students submit only .py)
+        support_dir=source_path.parent if source_path else None,
     )
 
     # Mark hidden check results

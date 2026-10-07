@@ -693,3 +693,40 @@ def test_maybe_bwrap_cmd_fallback_when_missing():
         result = _maybe_bwrap_cmd(cmd, Path("/tmp"), True)
 
     assert result == cmd
+
+
+def test_isolated_run_gets_support_files_but_not_solution(tmp_path):
+    """Autograde isolation copies the assignment's data files, never the source."""
+    import sys
+
+    from mograder.grading.runner import run_notebook
+
+    support = tmp_path / "source" / "hw1"
+    support.mkdir(parents=True)
+    (support / "data.txt").write_text("42\n")
+    (support / "hw1.py").write_text("# source notebook with solutions\n")
+    (support / "hw1.html").write_text("<html>preview with solutions</html>")
+    sub = tmp_path / "submitted"
+    sub.mkdir()
+    nb = sub / "alice.py"
+    nb.write_text(
+        "import marimo\n"
+        "app = marimo.App()\n\n"
+        "@app.cell\n"
+        "def _():\n"
+        "    from pathlib import Path\n"
+        "    here = Path(__file__).parent\n"
+        "    assert (here / 'data.txt').read_text().strip() == '42'\n"
+        "    assert not (here / 'hw1.py').exists()\n"
+        "    assert not (here / 'hw1.html').exists()\n"
+        "    return\n"
+    )
+    result = run_notebook(
+        nb,
+        sandbox_dir=Path(sys.prefix),
+        isolate_cwd=True,
+        support_dir=support,
+        timeout=120,
+    )
+    # a failed assert in the cell is reported as export_error
+    assert result.export_ok and not result.export_error, result.export_error
