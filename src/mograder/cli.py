@@ -1915,11 +1915,12 @@ def moodle_upload_feedback(
 @click.option("--open/--no-open", default=True, help="Open Moodle edit page in browser")
 @click.pass_context
 def moodle_upload(ctx, assignment, files, course_id, url, token, dry_run, open):
-    """Prepare release files for upload to a Moodle assignment.
+    """Prepare the release attachment for a Moodle assignment.
 
-    Files are zipped into <assignment>.zip and the Moodle assignment
-    edit page is opened for manual attachment.
-    If no FILES are given, auto-discovers from release/<assignment>/.
+    With no FILES, attaches the release zip that ``generate`` built in
+    release/<assignment>/ (notebook plus data files), or the notebook alone
+    when there are no data files. With FILES, zips them into
+    <assignment>.zip. Opens the Moodle edit page for manual attachment.
     """
     import webbrowser
     import zipfile
@@ -1937,49 +1938,55 @@ def moodle_upload(ctx, assignment, files, course_id, url, token, dry_run, open):
 
     match = find_assignment(client, cid, assignment)
 
-    # Auto-discover release files if none given
-    if not files:
+    if files:
+        # Explicit files: zip them for attachment
+        attachment = Path(f"{assignment}.zip")
+        if not dry_run:
+            with zipfile.ZipFile(attachment, "w", zipfile.ZIP_DEFLATED) as zf:
+                for f in files:
+                    zf.write(f, Path(f).name)
+        contents = list(files)
+    else:
+        # The release zip built by `generate` (or the notebook alone)
+        from mograder.grading.cells import release_attachment, release_student_files
+
         release_dir = Path(config.release_dir) / assignment
         if not release_dir.is_dir():
             raise click.UsageError(
                 f"No files specified and release directory not found: {release_dir}"
             )
-        files = sorted(f for f in release_dir.iterdir() if f.is_file())
-        if not files:
-            raise click.UsageError(f"No files found in {release_dir}")
-
-    # Build zip in current directory
-    zip_name = f"{assignment}.zip"
-    zip_path = Path(zip_name)
-    with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
-        for f in files:
-            zf.write(f, Path(f).name)
+        attachment = release_attachment(release_dir)
+        if attachment is None:
+            raise click.UsageError(f"No release notebook found in {release_dir}")
+        contents = release_student_files(release_dir)
 
     if dry_run:
         click.echo(
-            f"Would create {zip_name} for '{match['name']}' (cmid={match['cmid']}):"
+            f"Would attach {_rel(attachment)} to '{match['name']}' "
+            f"(cmid={match['cmid']}), containing:"
         )
-        for f in files:
-            click.echo(f"  {_rel(f)}")
-        zip_path.unlink()
+        for f in contents:
+            click.echo(f"  {_rel(Path(f))}")
         return
 
-    click.echo(f"Created {zip_name} ({len(files)} file(s)):")
-    for f in files:
-        click.echo(f"  {_rel(f)}")
+    click.echo(f"Attachment: {_rel(attachment)} ({len(contents)} file(s)):")
+    for f in contents:
+        click.echo(f"  {_rel(Path(f))}")
 
     # Build edit URL and open in browser
     cmid = match.get("cmid")
     if cmid:
         edit_url = f"{url}/course/modedit.php?update={cmid}"
-        click.echo(f"\nUpload {zip_name} to the 'Additional files' section:")
+        click.echo(
+            f"\nReplace the 'Additional files' on Moodle with {attachment.name}:"
+        )
         click.echo(f"  {edit_url}")
         if open:
             webbrowser.open(edit_url)
     else:
         click.echo(
             "\nNo cmid found — open the assignment edit page manually "
-            f"and upload {zip_name} to 'Additional files'.",
+            f"and upload {attachment.name} to 'Additional files'.",
             err=True,
         )
 
@@ -4004,16 +4011,32 @@ def hub_publish(
             for f in match.files:
                 transport.download_file(f["url"], tmpdir / f["filename"])
 
-            # Compare byte-for-byte
-            remote_files = {p.name: p for p in tmpdir.iterdir() if p.is_file()}
+            # Compare the student-facing files byte-for-byte; a release zip
+            # attached on Moodle is compared by its contents
+            import zipfile
+
+            from mograder.grading.cells import release_student_files
+
+            remote = {}
+            for p in tmpdir.iterdir():
+                if p.suffix == ".zip":
+                    with zipfile.ZipFile(p) as zf:
+                        for info in zf.infolist():
+                            if not info.is_dir():
+                                remote[Path(info.filename).name] = zf.read(info)
+                elif p.is_file() and p.suffix != ".html":
+                    remote[p.name] = p.read_bytes()
+            local = {
+                f.name: f.read_bytes() for f in release_student_files(assignment_dir)
+            }
             mismatches = []
-            for name, local_path in sorted(local_files.items()):
-                if name not in remote_files:
+            for name in sorted(local):
+                if name not in remote:
                     mismatches.append(f"  {name}: missing on Moodle")
-                elif local_path.read_bytes() != remote_files[name].read_bytes():
+                elif local[name] != remote[name]:
                     mismatches.append(f"  {name}: content differs")
-            for name in sorted(remote_files):
-                if name not in local_files:
+            for name in sorted(remote):
+                if name not in local:
                     mismatches.append(f"  {name}: extra on Moodle (not local)")
 
             if mismatches:

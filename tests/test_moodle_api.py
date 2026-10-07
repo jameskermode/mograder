@@ -1202,9 +1202,9 @@ class TestMoodleUploadCLI:
                 ["moodle", "upload", "Demo", str(f1), "-c", "1", "--dry-run"],
             )
         assert result.exit_code == 0, result.output
-        assert "Would create Demo.zip" in result.output
+        assert "Would attach Demo.zip" in result.output
         assert "notebook.py" in result.output
-        # Dry run should clean up the zip
+        # Dry run should not create the zip
         assert not (tmp_path / "Demo.zip").exists()
 
     def test_explicit_files_zipped(self, monkeypatch, tmp_path):
@@ -1237,7 +1237,7 @@ class TestMoodleUploadCLI:
                 ["moodle", "upload", "Demo", str(f1), str(f2), "-c", "1"],
             )
         assert result.exit_code == 0, result.output
-        assert "Created Demo.zip" in result.output
+        assert "Attachment: Demo.zip" in result.output
         assert "modedit.php?update=42" in result.output
         # Verify zip was created with both files
         zip_path = tmp_path / "Demo.zip"
@@ -1247,7 +1247,6 @@ class TestMoodleUploadCLI:
         zip_path.unlink()
 
     def test_auto_discover_release_files(self, monkeypatch, tmp_path):
-        import zipfile
 
         _mock_config(monkeypatch)
         monkeypatch.chdir(tmp_path)
@@ -1278,11 +1277,39 @@ class TestMoodleUploadCLI:
                 ["moodle", "upload", "Demo", "-c", "1"],
             )
         assert result.exit_code == 0, result.output
-        zip_path = tmp_path / "Demo.zip"
-        assert zip_path.exists()
-        with zipfile.ZipFile(zip_path) as zf:
-            assert zf.namelist() == ["notebook.py"]
-        zip_path.unlink()
+        # A single release file is attached as it is, without a zip
+        assert "Attachment: release/Demo/notebook.py" in result.output
+        assert not (tmp_path / "Demo.zip").exists()
+        assert not (release_dir / "Demo.zip").exists()
+
+    def test_auto_discover_builds_release_zip(self, monkeypatch, tmp_path):
+        import zipfile
+
+        _mock_config(monkeypatch)
+        monkeypatch.chdir(tmp_path)
+        release_dir = tmp_path / "release" / "Demo"
+        release_dir.mkdir(parents=True)
+        (release_dir / "Demo.py").write_text("print('hello')")
+        (release_dir / "data.csv").write_text("x\n1\n")
+        (release_dir / "Demo.html").write_text("<html></html>")
+        assignment = {
+            "id": 10,
+            "cmid": 42,
+            "name": "Demo",
+            "duedate": 0,
+            "introattachments": [],
+        }
+        with (
+            patch(
+                "mograder.transport.moodle_api.MoodleAPIClient.get_assignments",
+                return_value=[assignment],
+            ),
+            patch("webbrowser.open"),
+        ):
+            result = CliRunner().invoke(cli, ["moodle", "upload", "Demo", "-c", "1"])
+        assert result.exit_code == 0, result.output
+        with zipfile.ZipFile(release_dir / "Demo.zip") as zf:
+            assert sorted(zf.namelist()) == ["Demo.py", "data.csv"]
 
     def test_no_open(self, monkeypatch, tmp_path):
         _mock_config(monkeypatch)

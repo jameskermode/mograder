@@ -50,16 +50,16 @@ Downloads each student's latest `.py` submission, named by username.
 
 ## Upload release files (instructor)
 
-Zip release files and open the Moodle assignment edit page for manual attachment:
+Pick the release attachment and open the Moodle assignment edit page for manual attachment:
 
 ```bash
-mograder moodle upload "HW1"                    # auto-discovers from release/HW1/
-mograder moodle upload "HW1" file1.py data.csv  # explicit files
-mograder moodle upload "HW1" --dry-run          # preview without creating zip
-mograder moodle upload "HW1" --no-open          # create zip without opening browser
+mograder moodle upload "HW1"                    # attaches release/HW1/HW1.zip, or HW1.py if no data files
+mograder moodle upload "HW1" file1.py data.csv  # explicit files, zipped into ./HW1.zip
+mograder moodle upload "HW1" --dry-run          # show the attachment and its contents
+mograder moodle upload "HW1" --no-open          # don't open the browser
 ```
 
-Files are zipped into `<assignment>.zip` in the current directory. If no files are given, all files in `release/<assignment>/` are included. The Moodle assignment edit page is opened automatically so you can attach the zip as an introattachment.
+With no files given, the attachment is the release zip that `mograder generate` builds in `release/<assignment>/` (the notebook plus its data files; previews and other zips are left out), or the notebook alone when there are no data files. Students' downloads extract the zip next to the notebook. The Moodle assignment edit page is opened so you can replace the "Additional files" attachment. `mograder hub publish` then checks the hub release against this attachment (a zip is compared by its contents).
 
 ## Upload feedback (instructor)
 

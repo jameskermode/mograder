@@ -769,6 +769,38 @@ def process_file(
     return True
 
 
+_RELEASE_ARTIFACT_SUFFIXES = {".html", ".zip"}
+
+
+def release_student_files(release_dir: Path) -> list[Path]:
+    """Student-facing files of a release: everything except previews and zips."""
+    return sorted(
+        f
+        for f in release_dir.iterdir()
+        if f.is_file()
+        and not f.name.startswith(".")
+        and f.suffix not in _RELEASE_ARTIFACT_SUFFIXES
+    )
+
+
+def release_attachment(release_dir: Path) -> Path | None:
+    """The file to attach to the Moodle assignment for a release.
+
+    The release zip built by ``generate`` when there are data files (built
+    here, reproducibly, if missing), else the single notebook file. Students'
+    downloads extract a zip next to the notebook.
+    """
+    zip_path = release_dir / f"{release_dir.name}.zip"
+    if zip_path.is_file():
+        return zip_path
+    files = release_student_files(release_dir)
+    if not files:
+        return None
+    if len(files) == 1:
+        return files[0]
+    return build_release_zip(release_dir)
+
+
 def build_release_zip(release_dir: Path) -> Path | None:
     """Create a zip of student-facing release files, excluding artifacts.
 

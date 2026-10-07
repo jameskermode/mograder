@@ -244,3 +244,115 @@ def test_hub_publish_moodle_match(tmp_path, monkeypatch):
     assert result.exit_code == 0, result.output
     assert "Moodle verification: OK" in result.output
     assert "Published 2 files" in result.output
+
+
+def _publish_against_moodle_zip(tmp_path, monkeypatch, zip_members):
+    """Run hub publish where Moodle holds a release zip with *zip_members*."""
+    import zipfile
+
+    assignment_dir = _setup_publish_dir(tmp_path)
+    # generate also leaves a preview and the release zip next to the files
+    (assignment_dir / "hw1.html").write_text("<html></html>")
+    with zipfile.ZipFile(assignment_dir / "hw1.zip", "w") as zf:
+        zf.writestr("hw1.py", "# code\n")
+        zf.writestr("data.csv", "a,b\n1,2\n")
+    monkeypatch.chdir(tmp_path)
+
+    mock_transport = MagicMock()
+    mock_assignment = MagicMock()
+    mock_assignment.name = "hw1"
+    mock_assignment.files = [{"filename": "hw1.zip", "url": "http://moodle/hw1.zip"}]
+    mock_transport.list_assignments.return_value = [mock_assignment]
+
+    def mock_download(url, dest):
+        with zipfile.ZipFile(dest, "w") as zf:
+            for name, text in zip_members.items():
+                zf.writestr(name, text)
+        return dest
+
+    mock_transport.download_file.side_effect = mock_download
+    mock_resp = MagicMock()
+    mock_resp.status_code = 200
+    mock_resp.json.return_value = {"status": "ok", "files": []}
+    with (
+        patch("mograder.cli._build_moodle_transport", return_value=mock_transport),
+        patch("requests.post", return_value=mock_resp),
+    ):
+        return CliRunner().invoke(
+            cli,
+            [
+                "hub",
+                "publish",
+                "hw1",
+                "--url",
+                "http://localhost:8080",
+                "--token",
+                "fake-token",
+                "--no-warm",
+            ],
+        )
+
+
+def test_hub_publish_moodle_zip_match(tmp_path, monkeypatch):
+    """A release zip on Moodle is compared by its contents."""
+    result = _publish_against_moodle_zip(
+        tmp_path, monkeypatch, {"hw1.py": "# code\n", "data.csv": "a,b\n1,2\n"}
+    )
+    assert result.exit_code == 0, result.output
+    assert "Moodle verification: OK" in result.output
+
+
+def test_hub_publish_moodle_zip_stale(tmp_path, monkeypatch):
+    """An out-of-date zip on Moodle fails verification."""
+    result = _publish_against_moodle_zip(
+        tmp_path, monkeypatch, {"hw1.py": "# old code\n", "data.csv": "a,b\n1,2\n"}
+    )
+    assert result.exit_code == 1
+    assert "hw1.py: content differs" in result.output
+
+
+def test_moodle_upload_attaches_release_zip(tmp_path, monkeypatch):
+    """moodle upload attaches the release zip from generate, not a re-zip."""
+    import zipfile
+
+    assignment_dir = _setup_publish_dir(tmp_path)
+    (assignment_dir / "hw1.html").write_text("<html></html>")
+    with zipfile.ZipFile(assignment_dir / "hw1.zip", "w") as zf:
+        zf.writestr("hw1.py", "# code\n")
+    (tmp_path / "mograder.toml").write_text("[moodle]\ncourse_id = 1\n")
+    monkeypatch.chdir(tmp_path)
+    match = {"name": "hw1", "cmid": 42}
+    with (
+        patch(
+            "mograder.transport.moodle_api.resolve_credentials",
+            return_value=("http://moodle", "tok"),
+        ),
+        patch("mograder.transport.moodle_api.find_assignment", return_value=match),
+    ):
+        result = CliRunner().invoke(cli, ["moodle", "upload", "hw1", "--dry-run"])
+    assert result.exit_code == 0, result.output
+    assert "release/hw1/hw1.zip" in result.output
+    assert "hw1.html" not in result.output
+    assert not (tmp_path / "hw1.zip").exists()
+
+
+def test_moodle_upload_single_notebook(tmp_path, monkeypatch):
+    """With no data files, the notebook itself is the attachment."""
+    release = tmp_path / "release" / "hw2"
+    release.mkdir(parents=True)
+    (release / "hw2.py").write_text("# code\n")
+    (tmp_path / "mograder.toml").write_text("[moodle]\ncourse_id = 1\n")
+    monkeypatch.chdir(tmp_path)
+    with (
+        patch(
+            "mograder.transport.moodle_api.resolve_credentials",
+            return_value=("http://moodle", "tok"),
+        ),
+        patch(
+            "mograder.transport.moodle_api.find_assignment",
+            return_value={"name": "hw2", "cmid": 7},
+        ),
+    ):
+        result = CliRunner().invoke(cli, ["moodle", "upload", "hw2", "--dry-run"])
+    assert result.exit_code == 0, result.output
+    assert "release/hw2/hw2.py" in result.output
