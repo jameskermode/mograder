@@ -4296,19 +4296,15 @@ def hub_visibility(
 def hub_schedule(ctx, schedule_file, dry_run, url, hub_token, ssh_host, ssh_port):
     """Set hub visibility from a weekly schedule (TOML).
 
-    \b
-    start = 2027-01-11          # Monday of week 1
-    time = "09:00"              # opening time (default 09:00)
-    timezone = "Europe/London"  # default
-    hide_unlisted = true        # hide published items not in the schedule
-    [weeks]                     # week N opens start + 7*(N-1) days
-    0 = ["L00a-ProbabilityFoundations"]
-    1 = ["L01-IntroSciMLandUQ", "A1-Intro-to-SciML"]
-    [items]                     # explicit dates override the weeks
-    "A0-HandsOnUQ" = 2027-01-08T14:00:00
+    The file gives ``start`` (TOML date of the Monday of week 1), optional
+    ``time`` (default 09:00), ``timezone`` (default Europe/London) and
+    ``hide_unlisted``; a ``weeks`` table mapping week numbers to item names
+    (week N opens on start + 7*(N-1) days); and an optional ``items`` table of
+    explicit dates. See docs/usage/hub.md for an example.
 
     The schedule replaces all existing visibility settings on the hub.
     """
+
     import tomllib
     from datetime import date, datetime, time, timedelta
     from zoneinfo import ZoneInfo

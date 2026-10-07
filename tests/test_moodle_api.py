@@ -1,5 +1,6 @@
 """Tests for mograder.transport.moodle_api — Moodle REST API client and CLI commands."""
 
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import click
@@ -1278,7 +1279,7 @@ class TestMoodleUploadCLI:
             )
         assert result.exit_code == 0, result.output
         # A single release file is attached as it is, without a zip
-        assert "Attachment: release/Demo/notebook.py" in result.output
+        assert f"Attachment: {Path('release/Demo/notebook.py')}" in result.output
         assert not (tmp_path / "Demo.zip").exists()
         assert not (release_dir / "Demo.zip").exists()
 

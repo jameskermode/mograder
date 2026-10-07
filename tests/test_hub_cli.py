@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 from click.testing import CliRunner
@@ -251,6 +252,9 @@ def _publish_against_moodle_zip(tmp_path, monkeypatch, zip_members):
     import zipfile
 
     assignment_dir = _setup_publish_dir(tmp_path)
+    # exact bytes (write_text would give CRLF on Windows)
+    (assignment_dir / "hw1.py").write_bytes(b"# code\n")
+    (assignment_dir / "data.csv").write_bytes(b"a,b\n1,2\n")
     # generate also leaves a preview and the release zip next to the files
     (assignment_dir / "hw1.html").write_text("<html></html>")
     with zipfile.ZipFile(assignment_dir / "hw1.zip", "w") as zf:
@@ -331,7 +335,7 @@ def test_moodle_upload_attaches_release_zip(tmp_path, monkeypatch):
     ):
         result = CliRunner().invoke(cli, ["moodle", "upload", "hw1", "--dry-run"])
     assert result.exit_code == 0, result.output
-    assert "release/hw1/hw1.zip" in result.output
+    assert str(Path("release/hw1/hw1.zip")) in result.output
     assert "hw1.html" not in result.output
     assert not (tmp_path / "hw1.zip").exists()
 
@@ -355,4 +359,4 @@ def test_moodle_upload_single_notebook(tmp_path, monkeypatch):
     ):
         result = CliRunner().invoke(cli, ["moodle", "upload", "hw2", "--dry-run"])
     assert result.exit_code == 0, result.output
-    assert "release/hw2/hw2.py" in result.output
+    assert str(Path("release/hw2/hw2.py")) in result.output
