@@ -49,6 +49,8 @@ If the instructor has published lectures to the hub, they appear in a **Lectures
 5. Click **Edit** for your own editable copy of the lecture (deep link `/edit/<lecture>`), to change settings and explore; it is kept between visits
 6. Once you have a copy, **Get latest** replaces it with the current version (after the instructor republishes a lecture, the table shows "update available"); your previous copy is kept as `<lecture>.bak.<timestamp>.py`
 
+**Edit sessions run the notebook when they open** (as `marimo run` does), so a workshop notebook runs up to the first exercise not yet attempted. The hub sets `runtime.auto_instantiate = true` in the student's marimo user config for the notebook, unless the student has set it themselves; marimo ignores this setting in a notebook's own header.
+
 **Your work is never overwritten.** Opening an assignment or lecture again reopens your existing copy; the release is copied only when you have none. **Get latest** (and Download, if you already have a copy) first saves your copy as `<name>.bak.<timestamp>.py` in the same folder, then fetches the release; for assignments it asks for confirmation first. The table marks copies taken before the item was last republished ("update available").
 
 When a student's copy of an assignment or lecture is created, the release's supporting files (data, images, helper modules) are copied next to it, since edit sessions run in the student's directory. Existing files are never overwritten, and missing ones are filled in when an editor starts.

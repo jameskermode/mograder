@@ -162,11 +162,49 @@ class SessionManager:
         self._sandbox_dirs[assignment] = None
         return None
 
+    @staticmethod
+    def _ensure_autorun_config(config_home: Path) -> None:
+        """Make marimo run the notebook when an edit session opens.
+
+        marimo's default (``runtime.auto_instantiate = false``) opens edit
+        sessions without running anything; workshops are written to run up
+        to the first exercise not yet attempted, so the hub turns autorun on
+        in the student's marimo user config. A value the student has set
+        (e.g. turned off in marimo's settings) is left alone. marimo ignores
+        this setting in a notebook's own header, so it is set here.
+        """
+        import re
+        import tomllib
+
+        cfg = config_home / "marimo" / "marimo.toml"
+        text = cfg.read_text() if cfg.is_file() else ""
+        try:
+            data = tomllib.loads(text)
+        except tomllib.TOMLDecodeError:
+            return  # leave a file we cannot parse alone
+        runtime = data.get("runtime", {})
+        if "auto_instantiate" in runtime:
+            return
+        if "runtime" in data:
+            text = re.sub(
+                r"^\[runtime\][ \t]*$",
+                "[runtime]\nauto_instantiate = true",
+                text,
+                count=1,
+                flags=re.M,
+            )
+        else:
+            text = text.rstrip() + ("\n\n" if text.strip() else "")
+            text += "[runtime]\nauto_instantiate = true\n"
+        cfg.parent.mkdir(parents=True, exist_ok=True)
+        cfg.write_text(text)
+
     def _build_env(self, username: str, notebook_path: Path) -> dict[str, str]:
         """Build environment for student marimo process."""
         student_dir = notebook_path.parent
         env = {}
         env["XDG_CONFIG_HOME"] = str(student_dir / ".config")
+        self._ensure_autorun_config(student_dir / ".config")
         env["XDG_DATA_HOME"] = str(student_dir / ".local" / "share")
         env["MOGRADER_DASHBOARD"] = "1"
         # Ensure uv is on PATH for marimo --sandbox mode

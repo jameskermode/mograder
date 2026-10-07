@@ -215,3 +215,45 @@ import numpy as np
 
         deps = parse_pep723_deps("import numpy as np\n")
         assert deps == []
+
+
+class TestEditAutorun:
+    """Edit sessions run the notebook on open (marimo user config)."""
+
+    def _cfg(self, tmp_path, text=None):
+        import tomllib
+
+        from mograder.hub.spawner import SessionManager
+
+        f = tmp_path / ".config" / "marimo" / "marimo.toml"
+        if text is not None:
+            f.parent.mkdir(parents=True)
+            f.write_text(text)
+        SessionManager._ensure_autorun_config(tmp_path / ".config")
+        return tomllib.loads(f.read_text())
+
+    def test_new_or_empty_config(self, tmp_path):
+        assert self._cfg(tmp_path)["runtime"]["auto_instantiate"] is True
+        assert self._cfg(tmp_path / "b", "")["runtime"]["auto_instantiate"] is True
+
+    def test_keeps_other_settings(self, tmp_path):
+        data = self._cfg(tmp_path, '[display]\ntheme = "dark"\n')
+        assert data["display"]["theme"] == "dark"
+        assert data["runtime"]["auto_instantiate"] is True
+
+    def test_existing_runtime_table(self, tmp_path):
+        data = self._cfg(tmp_path, '[runtime]\non_cell_change = "lazy"\n')
+        assert data["runtime"] == {"auto_instantiate": True, "on_cell_change": "lazy"}
+
+    def test_student_choice_kept(self, tmp_path):
+        data = self._cfg(tmp_path, "[runtime]\nauto_instantiate = false\n")
+        assert data["runtime"]["auto_instantiate"] is False
+
+    def test_unparseable_left_alone(self, tmp_path):
+        from mograder.hub.spawner import SessionManager
+
+        f = tmp_path / ".config" / "marimo" / "marimo.toml"
+        f.parent.mkdir(parents=True)
+        f.write_text("not = [valid")
+        SessionManager._ensure_autorun_config(tmp_path / ".config")
+        assert f.read_text() == "not = [valid"
