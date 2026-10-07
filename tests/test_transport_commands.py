@@ -96,7 +96,7 @@ class TestDoFetch:
         do_fetch(transport, "HW1", tmp_path)
         # .py extracted from zip
         assert (tmp_path / "hw1.py").exists()
-        assert (tmp_path / "hw1.py").read_text() == "# code"
+        assert (tmp_path / "hw1.py").read_text(encoding="utf-8") == "# code"
         # Cached for integrity
         cache = tmp_path / ".mograder" / "release" / "HW1" / "hw1.py"
         assert cache.exists()
@@ -106,7 +106,7 @@ class TestDoSubmit:
     def test_submit(self, tmp_path, capsys):
         transport = _mock_transport()
         nb = tmp_path / "sol.py"
-        nb.write_text("code")
+        nb.write_text("code", encoding="utf-8")
         do_submit(transport, nb, "HW1")
         transport.submit_file.assert_called_once_with("HW1", nb)
         captured = capsys.readouterr()
@@ -115,7 +115,7 @@ class TestDoSubmit:
     def test_submit_dry_run(self, tmp_path, capsys):
         transport = _mock_transport()
         nb = tmp_path / "sol.py"
-        nb.write_text("code")
+        nb.write_text("code", encoding="utf-8")
         do_submit(transport, nb, "HW1", dry_run=True)
         transport.submit_file.assert_not_called()
         captured = capsys.readouterr()
@@ -124,7 +124,7 @@ class TestDoSubmit:
     def test_submit_rejects_non_py(self, tmp_path):
         transport = _mock_transport()
         nb = tmp_path / "sol.ipynb"
-        nb.write_text("{}")
+        nb.write_text("{}", encoding="utf-8")
         with pytest.raises(click.UsageError, match="Only .py"):
             do_submit(transport, nb, "HW1")
 

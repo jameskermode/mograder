@@ -13,7 +13,7 @@ def server(tmp_path):
     """Start a server with a test assignment directory."""
     hw1_dir = tmp_path / "hw1" / "files"
     hw1_dir.mkdir(parents=True)
-    (hw1_dir / "homework.py").write_text("# HW1 starter code")
+    (hw1_dir / "homework.py").write_text("# HW1 starter code", encoding="utf-8")
 
     srv, thread = run_server_background(tmp_path, port=0)
     port = srv.server_address[1]
@@ -28,7 +28,7 @@ class TestFetch:
         result = fetch(base_url, "hw1", str(dest))
         assert len(result) == 1
         assert result[0].name == "homework.py"
-        assert result[0].read_text() == "# HW1 starter code"
+        assert result[0].read_text(encoding="utf-8") == "# HW1 starter code"
 
     def test_fetch_unknown_assignment(self, server, tmp_path):
         base_url, _, _ = server
@@ -40,12 +40,12 @@ class TestSubmit:
     def test_submit_file(self, server, tmp_path):
         base_url, root, _ = server
         f = tmp_path / "solution.py"
-        f.write_text("print('hi')")
+        f.write_text("print('hi')", encoding="utf-8")
         result = submit(base_url, "hw1", str(f), "alice")
         assert result == "ok"
         # submitted_dir defaults to root; symlink created there
         assert (root / "hw1" / "alice.py").exists()
-        assert (root / "hw1" / "alice.py").read_text() == "print('hi')"
+        assert (root / "hw1" / "alice.py").read_text(encoding="utf-8") == "print('hi')"
 
     def test_submit_missing_file(self, server, tmp_path):
         base_url, _, _ = server
@@ -66,7 +66,7 @@ class TestStatus:
         base_url, root, _ = server
         sub_dir = root / "hw1"
         sub_dir.mkdir(parents=True, exist_ok=True)
-        (sub_dir / "alice_20260310T200800.py").write_text("code")
+        (sub_dir / "alice_20260310T200800.py").write_text("code", encoding="utf-8")
         os.symlink("alice_20260310T200800.py", sub_dir / "alice.py")
 
         s = status(base_url, "hw1", "alice")
@@ -78,10 +78,11 @@ class TestStatus:
         base_url, root, _ = server
         sub_dir = root / "hw1"
         sub_dir.mkdir(parents=True, exist_ok=True)
-        (sub_dir / "alice_20260310T200800.py").write_text("code")
+        (sub_dir / "alice_20260310T200800.py").write_text("code", encoding="utf-8")
         os.symlink("alice_20260310T200800.py", sub_dir / "alice.py")
         (root / "hw1" / "grades.json").write_text(
-            json.dumps([{"username": "alice", "grade": "90", "feedback": "Great!"}])
+            json.dumps([{"username": "alice", "grade": "90", "feedback": "Great!"}]),
+            encoding="utf-8",
         )
 
         s = status(base_url, "hw1", "alice")

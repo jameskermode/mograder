@@ -222,13 +222,13 @@ def test_build_solution_cell():
 def test_process_workshop_e2e(tmp_path):
     source = tmp_path / "source" / "workshop" / "workshop.py"
     source.parent.mkdir(parents=True)
-    source.write_text(_SOURCE_NOTEBOOK)
+    source.write_text(_SOURCE_NOTEBOOK, encoding="utf-8")
 
     output_dir = tmp_path / "release" / "workshop"
     result = process_workshop(source, output_dir, salt="test123")
 
     assert result.exists()
-    content = result.read_text()
+    content = result.read_text(encoding="utf-8")
 
     # Solutions should be stripped
     assert "### BEGIN SOLUTION" not in content
@@ -258,28 +258,28 @@ def test_process_workshop_e2e(tmp_path):
 def test_write_keys_empty(tmp_path):
     path = tmp_path / "keys.json"
     write_keys(["Q1", "Q2"], "salt", path, which="empty")
-    assert json.loads(path.read_text()) == {}
+    assert json.loads(path.read_text(encoding="utf-8")) == {}
 
 
 def test_write_keys_all(tmp_path):
     path = tmp_path / "keys.json"
     write_keys(["Q1", "Q2"], "testsalt", path, which="all")
-    keys = json.loads(path.read_text())
+    keys = json.loads(path.read_text(encoding="utf-8"))
     assert keys == {"Q1": "testsalt", "Q2": "testsalt"}
 
 
 def test_release_key(tmp_path):
     path = tmp_path / "keys.json"
-    path.write_text("{}\n")
+    path.write_text("{}\n", encoding="utf-8")
     release_key(path, "Q1", "mysalt")
-    keys = json.loads(path.read_text())
+    keys = json.loads(path.read_text(encoding="utf-8"))
     assert keys == {"Q1": "mysalt"}
 
 
 def test_release_key_new_file(tmp_path):
     path = tmp_path / "keys.json"
     release_key(path, "Q1", "mysalt")
-    keys = json.loads(path.read_text())
+    keys = json.loads(path.read_text(encoding="utf-8"))
     assert keys == {"Q1": "mysalt"}
 
 
@@ -295,7 +295,7 @@ def test_workshop_encrypt_cli(tmp_path):
 
     source = tmp_path / "source" / "ws" / "ws.py"
     source.parent.mkdir(parents=True)
-    source.write_text(_SOURCE_NOTEBOOK)
+    source.write_text(_SOURCE_NOTEBOOK, encoding="utf-8")
 
     output_dir = tmp_path / "release" / "ws"
     runner = CliRunner()
@@ -314,7 +314,7 @@ def test_workshop_release_key_cli(tmp_path):
     from mograder.cli import cli
 
     keys_file = tmp_path / "keys.json"
-    keys_file.write_text("{}\n")
+    keys_file.write_text("{}\n", encoding="utf-8")
 
     runner = CliRunner()
     result = runner.invoke(
@@ -322,7 +322,7 @@ def test_workshop_release_key_cli(tmp_path):
         ["workshop", "release-key", str(keys_file), "Q1", "--salt", "mysalt"],
     )
     assert result.exit_code == 0, result.output
-    keys = json.loads(keys_file.read_text())
+    keys = json.loads(keys_file.read_text(encoding="utf-8"))
     assert keys == {"Q1": "mysalt"}
 
 
@@ -353,14 +353,16 @@ def _make_workshop_server(tmp_path, secret="testsecret"):
 
     keys_all = {"Q1": "salt1", "Q2": "salt2", "Q3": "salt3"}
     keys_path = tmp_path / "keys.json"
-    keys_path.write_text("{}\n")
+    keys_path.write_text("{}\n", encoding="utf-8")
 
     # Write a minimal index.html
-    (tmp_path / "index.html").write_text("<html>student notebook</html>")
+    (tmp_path / "index.html").write_text(
+        "<html>student notebook</html>", encoding="utf-8"
+    )
 
     # Write dashboard.html
     dashboard_html = generate_dashboard_html(list(keys_all.keys()))
-    (tmp_path / "dashboard.html").write_text(dashboard_html)
+    (tmp_path / "dashboard.html").write_text(dashboard_html, encoding="utf-8")
 
     server = create_workshop_server(
         export_dir=tmp_path,
@@ -408,7 +410,7 @@ def test_workshop_server_release(tmp_path):
         assert data["released"]["Q2"] is False
 
         # Verify keys.json on disk
-        keys = json.loads(keys_path.read_text())
+        keys = json.loads(keys_path.read_text(encoding="utf-8"))
         assert "Q1" in keys
         assert "Q2" not in keys
 
@@ -441,7 +443,7 @@ def test_workshop_server_release_all(tmp_path):
         assert all(data["released"].values())
 
         # Verify keys.json has all keys
-        keys = json.loads(keys_path.read_text())
+        keys = json.loads(keys_path.read_text(encoding="utf-8"))
         assert set(keys.keys()) == {"Q1", "Q2", "Q3"}
 
         # Lock all
@@ -543,18 +545,20 @@ def test_process_workshop_handles_a_wrapped_cell_signature(tmp_path):
     import ast
 
     source = tmp_path / "notebook.py"
-    source.write_text(_WRAPPED_SIGNATURE_NOTEBOOK)
+    source.write_text(_WRAPPED_SIGNATURE_NOTEBOOK, encoding="utf-8")
 
     output = process_workshop(source, tmp_path / "out", salt="s")
 
-    ast.parse(output.read_text())
+    ast.parse(output.read_text(encoding="utf-8"))
 
 
 def test_wrapped_signature_still_captures_the_check_result(tmp_path):
     source = tmp_path / "notebook.py"
-    source.write_text(_WRAPPED_SIGNATURE_NOTEBOOK)
+    source.write_text(_WRAPPED_SIGNATURE_NOTEBOOK, encoding="utf-8")
 
-    generated = process_workshop(source, tmp_path / "out", salt="s").read_text()
+    generated = process_workshop(source, tmp_path / "out", salt="s").read_text(
+        encoding="utf-8"
+    )
 
     assert "check_passed_Q1 = False" in generated
     assert 'check_passed_Q1 = "success" in getattr(_result, "text", "")' in generated
@@ -577,9 +581,11 @@ def test_solution_cell_never_names_check_passed(tmp_path):
     import re
 
     source = tmp_path / "notebook.py"
-    source.write_text(_WRAPPED_SIGNATURE_NOTEBOOK)
+    source.write_text(_WRAPPED_SIGNATURE_NOTEBOOK, encoding="utf-8")
 
-    generated = process_workshop(source, tmp_path / "out", salt="s").read_text()
+    generated = process_workshop(source, tmp_path / "out", salt="s").read_text(
+        encoding="utf-8"
+    )
 
     reveal = [
         block
@@ -602,9 +608,11 @@ def test_check_cell_publishes_its_flag_into_the_state(tmp_path):
     marimo renders; after it, the check output disappears.
     """
     source = tmp_path / "notebook.py"
-    source.write_text(_WRAPPED_SIGNATURE_NOTEBOOK)
+    source.write_text(_WRAPPED_SIGNATURE_NOTEBOOK, encoding="utf-8")
 
-    generated = process_workshop(source, tmp_path / "out", salt="s").read_text()
+    generated = process_workshop(source, tmp_path / "out", salt="s").read_text(
+        encoding="utf-8"
+    )
 
     assert 'set_check_passed(lambda d: {**d, "Q1": check_passed_Q1})' in generated
     assert generated.count("get_check_passed, set_check_passed = mo.state({})") == 1
@@ -618,9 +626,11 @@ def test_the_generated_notebook_still_parses_with_the_state_wiring(tmp_path):
     import ast
 
     source = tmp_path / "notebook.py"
-    source.write_text(_WRAPPED_SIGNATURE_NOTEBOOK)
+    source.write_text(_WRAPPED_SIGNATURE_NOTEBOOK, encoding="utf-8")
 
-    generated = process_workshop(source, tmp_path / "out", salt="s").read_text()
+    generated = process_workshop(source, tmp_path / "out", salt="s").read_text(
+        encoding="utf-8"
+    )
 
     tree = ast.parse(generated)
 
@@ -691,9 +701,11 @@ def test_bare_return_in_the_exercises_cell_is_the_one_augmented(tmp_path):
     import ast
 
     source = tmp_path / "notebook.py"
-    source.write_text(_BARE_RETURN_NOTEBOOK)
+    source.write_text(_BARE_RETURN_NOTEBOOK, encoding="utf-8")
 
-    generated = process_workshop(source, tmp_path / "out", salt="s").read_text()
+    generated = process_workshop(source, tmp_path / "out", salt="s").read_text(
+        encoding="utf-8"
+    )
     ast.parse(generated)
 
     exercises_cell = generated.split("EXERCISES = ")[1].split("@app.cell")[0]

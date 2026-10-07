@@ -23,7 +23,7 @@ def test_write_sidecar_writes_jsonl(tmp_path):
         _write_sidecar("Q1: Foo", "success", [])
         _write_sidecar("Q2: Bar", "danger", ["x must be > 0", "y is missing"])
 
-    lines = sidecar.read_text().strip().splitlines()
+    lines = sidecar.read_text(encoding="utf-8").strip().splitlines()
     assert len(lines) == 2
 
     r1 = json.loads(lines[0])
@@ -58,7 +58,9 @@ def test_read_sidecar_parses_jsonl(tmp_path):
         {"label": "Q1: Foo", "status": "success", "details": []},
         {"label": "Ex1: Bar", "status": "danger", "details": ["fail msg"]},
     ]
-    sidecar.write_text("\n".join(json.dumps(r) for r in records) + "\n")
+    sidecar.write_text(
+        "\n".join(json.dumps(r) for r in records) + "\n", encoding="utf-8"
+    )
 
     results = _read_sidecar(sidecar)
     assert len(results) == 2
@@ -73,7 +75,7 @@ def test_read_sidecar_parses_jsonl(tmp_path):
 def test_read_sidecar_empty_file(tmp_path):
     """_read_sidecar returns empty list for empty file."""
     sidecar = tmp_path / "results.jsonl"
-    sidecar.write_text("")
+    sidecar.write_text("", encoding="utf-8")
     assert _read_sidecar(sidecar) == []
 
 
@@ -88,7 +90,8 @@ def test_read_sidecar_skips_bad_lines(tmp_path):
     sidecar.write_text(
         '{"label": "Q1: Foo", "status": "success", "details": []}\n'
         "not valid json\n"
-        '{"label": "Q2: Bar", "status": "warn", "details": []}\n'
+        '{"label": "Q2: Bar", "status": "warn", "details": []}\n',
+        encoding="utf-8",
     )
     results = _read_sidecar(sidecar)
     assert len(results) == 2
@@ -97,7 +100,7 @@ def test_read_sidecar_skips_bad_lines(tmp_path):
 def test_run_notebook_prefers_sidecar(tmp_path):
     """run_notebook uses sidecar results when available."""
     nb = tmp_path / "test.py"
-    nb.write_text("# notebook")
+    nb.write_text("# notebook", encoding="utf-8")
 
     sidecar_records = [
         {"label": "Jensen: Inequality", "status": "success", "details": []},
@@ -107,14 +110,14 @@ def test_run_notebook_prefers_sidecar(tmp_path):
         # Write sidecar file
         sidecar_path = kwargs.get("env", {}).get("MOGRADER_SIDECAR_PATH")
         if sidecar_path:
-            with open(sidecar_path, "w") as f:
+            with open(sidecar_path, "w", encoding="utf-8") as f:
                 for rec in sidecar_records:
                     f.write(json.dumps(rec) + "\n")
 
         # Write HTML output
         out_idx = cmd.index("-o")
         html_path = Path(cmd[out_idx + 1])
-        html_path.write_text("<html>no callouts</html>")
+        html_path.write_text("<html>no callouts</html>", encoding="utf-8")
 
         result = MagicMock()
         result.returncode = 0
@@ -132,7 +135,7 @@ def test_run_notebook_prefers_sidecar(tmp_path):
 def test_run_notebook_falls_back_to_html(tmp_path):
     """run_notebook falls back to HTML parsing when sidecar is empty."""
     nb = tmp_path / "test.py"
-    nb.write_text("# notebook")
+    nb.write_text("# notebook", encoding="utf-8")
 
     html_content = (
         "<html>"
@@ -143,7 +146,7 @@ def test_run_notebook_falls_back_to_html(tmp_path):
     def mock_run(cmd, **kwargs):
         out_idx = cmd.index("-o")
         html_path = Path(cmd[out_idx + 1])
-        html_path.write_text(html_content)
+        html_path.write_text(html_content, encoding="utf-8")
 
         result = MagicMock()
         result.returncode = 0
@@ -198,7 +201,7 @@ def test_validate_sidecar_with_no_rlimits(tmp_path):
     """Real notebook execution produces sidecar results when rlimits are
     disabled (the trusted-code path used by validate/generate)."""
     nb = tmp_path / "smoke.py"
-    nb.write_text(_MINIMAL_NOTEBOOK)
+    nb.write_text(_MINIMAL_NOTEBOOK, encoding="utf-8")
 
     result = run_notebook(
         nb,
@@ -234,7 +237,7 @@ def test_validate_sidecar_with_default_rlimits(tmp_path):
     (--no-sandbox) so is not affected.
     """
     nb = tmp_path / "smoke.py"
-    nb.write_text(_MINIMAL_NOTEBOOK)
+    nb.write_text(_MINIMAL_NOTEBOOK, encoding="utf-8")
 
     result = run_notebook(nb, timeout=120)
 

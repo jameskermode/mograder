@@ -16,7 +16,7 @@ def test_hub_config_defaults():
 
 def test_hub_config_defaults_from_file(tmp_path):
     """Loading config without [hub] section returns defaults."""
-    (tmp_path / "mograder.toml").write_text("")
+    (tmp_path / "mograder.toml").write_text("", encoding="utf-8")
     config = load_config(tmp_path)
     assert config.hub_port == 8080
     assert config.hub_notebooks_dir == "hub-notebooks"
@@ -35,7 +35,8 @@ def test_hub_config_from_toml(tmp_path):
         'release_dir = "releases"\n'
         "session_ttl = 7200\n"
         'trusted_header = "X-Forwarded-User"\n'
-        'uv_cache_dir = "/shared/uv-cache"\n'
+        'uv_cache_dir = "/shared/uv-cache"\n',
+        encoding="utf-8",
     )
     config = load_config(tmp_path)
     assert config.hub_port == 9090
@@ -48,7 +49,9 @@ def test_hub_config_from_toml(tmp_path):
 
 def test_hub_config_partial(tmp_path):
     """Partial [hub] section uses defaults for missing keys."""
-    (tmp_path / "mograder.toml").write_text("[hub]\nport = 3000\nsession_ttl = 1800\n")
+    (tmp_path / "mograder.toml").write_text(
+        "[hub]\nport = 3000\nsession_ttl = 1800\n", encoding="utf-8"
+    )
     config = load_config(tmp_path)
     assert config.hub_port == 3000
     assert config.hub_notebooks_dir == "hub-notebooks"  # default
@@ -61,7 +64,7 @@ def test_hub_config_partial(tmp_path):
 def test_hub_config_coexists_with_other_sections(tmp_path):
     """[hub] section coexists with other sections."""
     (tmp_path / "mograder.toml").write_text(
-        "[defaults]\njobs = 8\n\n[hub]\nport = 9090\n"
+        "[defaults]\njobs = 8\n\n[hub]\nport = 9090\n", encoding="utf-8"
     )
     config = load_config(tmp_path)
     assert config.jobs == 8

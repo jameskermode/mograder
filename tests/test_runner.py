@@ -22,7 +22,7 @@ from mograder.grading.runner import (
 
 
 SAMPLE_HTML_PATH = Path(__file__).parent / "fixtures" / "sample_export.html"
-SAMPLE_HTML = SAMPLE_HTML_PATH.read_text()
+SAMPLE_HTML = SAMPLE_HTML_PATH.read_text(encoding="utf-8")
 
 
 def _mock_subprocess_success(tmp_path):
@@ -31,7 +31,7 @@ def _mock_subprocess_success(tmp_path):
     def mock_run(cmd, **kwargs):
         # Write HTML to the -o path
         out_path = Path(cmd[cmd.index("-o") + 1])
-        out_path.write_text(SAMPLE_HTML)
+        out_path.write_text(SAMPLE_HTML, encoding="utf-8")
         result = MagicMock()
         result.returncode = 0
         result.stderr = ""
@@ -42,7 +42,7 @@ def _mock_subprocess_success(tmp_path):
 
 def test_run_notebook_success(tmp_path):
     nb = tmp_path / "student.py"
-    nb.write_text("# notebook")
+    nb.write_text("# notebook", encoding="utf-8")
 
     with patch(
         "mograder.grading.runner.subprocess.run",
@@ -57,7 +57,7 @@ def test_run_notebook_success(tmp_path):
 
 def test_run_notebook_export_failure(tmp_path):
     nb = tmp_path / "bad.py"
-    nb.write_text("# bad")
+    nb.write_text("# bad", encoding="utf-8")
 
     def mock_run(cmd, **kwargs):
         result = MagicMock()
@@ -77,7 +77,7 @@ def test_run_notebook_export_failure(tmp_path):
 
 def test_run_notebook_timeout(tmp_path):
     nb = tmp_path / "slow.py"
-    nb.write_text("# slow")
+    nb.write_text("# slow", encoding="utf-8")
 
     with patch(
         "mograder.grading.runner.subprocess.run",
@@ -93,7 +93,7 @@ def test_run_notebook_silent_failure_flagged(tmp_path):
     """rc=0 with zero-byte HTML is surfaced as an explicit error, not treated
     as success with empty checks."""
     nb = tmp_path / "silent.py"
-    nb.write_text("# silent")
+    nb.write_text("# silent", encoding="utf-8")
 
     def mock_run(cmd, **kwargs):
         result = MagicMock()
@@ -101,7 +101,7 @@ def test_run_notebook_silent_failure_flagged(tmp_path):
         result.stderr = ""
         # Leave the output file empty (0 bytes) — the common silent-hang case
         out_path = Path(cmd[cmd.index("-o") + 1])
-        out_path.write_text("")
+        out_path.write_text("", encoding="utf-8")
         return result
 
     with patch("mograder.grading.runner.subprocess.run", side_effect=mock_run):
@@ -116,14 +116,14 @@ def test_run_notebook_silent_failure_mentions_rlimit_as(tmp_path):
     names it so the operator knows where to look.  Requires a sandbox_dir
     so RLIMIT_AS is actually in the effective rlimits (--no-sandbox mode)."""
     nb = tmp_path / "silent.py"
-    nb.write_text("# silent")
+    nb.write_text("# silent", encoding="utf-8")
     fake_sandbox = tmp_path / "venv"
 
     def mock_run(cmd, **kwargs):
         result = MagicMock()
         result.returncode = 0
         result.stderr = ""
-        Path(cmd[cmd.index("-o") + 1]).write_text("")
+        Path(cmd[cmd.index("-o") + 1]).write_text("", encoding="utf-8")
         return result
 
     with patch("mograder.grading.runner.subprocess.run", side_effect=mock_run):
@@ -139,7 +139,7 @@ def test_run_notebook_silent_failure_mentions_rlimit_as(tmp_path):
 def test_run_notebook_timeout_mentions_rlimit_as(tmp_path):
     """Timeout error also surfaces a low rlimit_as as the likely cause."""
     nb = tmp_path / "slow.py"
-    nb.write_text("# slow")
+    nb.write_text("# slow", encoding="utf-8")
     fake_sandbox = tmp_path / "venv"
 
     with patch(
@@ -156,7 +156,7 @@ def test_run_notebook_timeout_mentions_rlimit_as(tmp_path):
 
 def test_run_notebook_saves_html(tmp_path):
     nb = tmp_path / "student.py"
-    nb.write_text("# notebook")
+    nb.write_text("# notebook", encoding="utf-8")
     html_dir = tmp_path / "html"
     html_dir.mkdir()
 
@@ -174,7 +174,7 @@ def test_run_batch(tmp_path):
     nbs = []
     for name in ["alice.py", "bob.py"]:
         nb = tmp_path / name
-        nb.write_text("# notebook")
+        nb.write_text("# notebook", encoding="utf-8")
         nbs.append(nb)
 
     with patch(
@@ -302,7 +302,7 @@ def test_run_batch_on_progress_called(tmp_path):
     nbs = []
     for name in ["alice.py", "bob.py", "carol.py"]:
         nb = tmp_path / name
-        nb.write_text("# notebook")
+        nb.write_text("# notebook", encoding="utf-8")
         nbs.append(nb)
 
     progress_calls = []
@@ -326,7 +326,7 @@ def test_run_batch_on_progress_called(tmp_path):
 
 def test_build_zip(tmp_path):
     nb = tmp_path / "alice.py"
-    nb.write_text("# notebook")
+    nb.write_text("# notebook", encoding="utf-8")
     results = [
         NotebookResult(
             path=nb,
@@ -347,7 +347,7 @@ def test_build_zip(tmp_path):
 def test_run_notebook_with_sandbox_dir(tmp_path):
     """When sandbox_dir is provided, run_notebook uses its python and --no-sandbox."""
     nb = tmp_path / "student.py"
-    nb.write_text("# notebook")
+    nb.write_text("# notebook", encoding="utf-8")
 
     # Create a fake sandbox dir structure (cross-platform venv layout)
     sandbox_dir = tmp_path / ".venv"
@@ -370,7 +370,7 @@ def test_run_notebook_with_sandbox_dir(tmp_path):
 def test_run_notebook_without_sandbox_uses_sys_executable(tmp_path):
     """Without sandbox_dir, run_notebook uses sys.executable and no --no-sandbox."""
     nb = tmp_path / "student.py"
-    nb.write_text("# notebook")
+    nb.write_text("# notebook", encoding="utf-8")
 
     with patch(
         "mograder.grading.runner.subprocess.run",
@@ -388,7 +388,7 @@ def test_run_batch_passes_sandbox_dir(tmp_path):
     nbs = []
     for name in ["alice.py", "bob.py"]:
         nb = tmp_path / name
-        nb.write_text("# notebook")
+        nb.write_text("# notebook", encoding="utf-8")
         nbs.append(nb)
 
     sandbox_dir = tmp_path / ".venv"
@@ -412,7 +412,7 @@ def test_run_batch_passes_sandbox_dir(tmp_path):
 def test_create_shared_sandbox_returns_none_without_deps(tmp_path):
     """create_shared_sandbox returns None when uv export fails or returns empty."""
     nb = tmp_path / "simple.py"
-    nb.write_text("# no deps")
+    nb.write_text("# no deps", encoding="utf-8")
 
     def mock_run(cmd, **kwargs):
         result = MagicMock()
@@ -430,7 +430,7 @@ def test_create_shared_sandbox_returns_none_without_deps(tmp_path):
 def test_create_shared_sandbox_reuses_existing_venv(tmp_path):
     """create_shared_sandbox skips venv creation if venv python already exists."""
     nb = tmp_path / "notebook.py"
-    nb.write_text("# has deps")
+    nb.write_text("# has deps", encoding="utf-8")
 
     # Pre-create the venv structure (cross-platform)
     venv_dir = tmp_path / ".venv"
@@ -519,7 +519,7 @@ def test_read_sidecar_with_weights(tmp_path):
         "earned_weight": 3.0,
         "total_weight": 5.0,
     }
-    sidecar.write_text(json.dumps(record) + "\n")
+    sidecar.write_text(json.dumps(record) + "\n", encoding="utf-8")
 
     from mograder.grading.runner import _read_sidecar
 
@@ -535,7 +535,7 @@ def test_read_sidecar_backward_compat(tmp_path):
 
     sidecar = tmp_path / "sidecar.jsonl"
     record = {"label": "Q1: Foo", "status": "success", "details": []}
-    sidecar.write_text(json.dumps(record) + "\n")
+    sidecar.write_text(json.dumps(record) + "\n", encoding="utf-8")
 
     from mograder.grading.runner import _read_sidecar
 
@@ -592,14 +592,14 @@ def test_serialize_results_without_marks():
 def test_run_notebook_isolate_cwd(tmp_path):
     """When isolate_cwd=True, the subprocess runs in a temp dir, not the notebook's parent."""
     nb = tmp_path / "student.py"
-    nb.write_text("# notebook")
+    nb.write_text("# notebook", encoding="utf-8")
 
     captured_cwd = []
 
     def mock_run(cmd, **kwargs):
         captured_cwd.append(kwargs.get("cwd"))
         out_path = Path(cmd[cmd.index("-o") + 1])
-        out_path.write_text(SAMPLE_HTML)
+        out_path.write_text(SAMPLE_HTML, encoding="utf-8")
         result = MagicMock()
         result.returncode = 0
         result.stderr = ""
@@ -619,7 +619,7 @@ def test_run_notebook_isolate_cwd(tmp_path):
 def test_run_notebook_isolate_cwd_cleanup_on_failure(tmp_path):
     """Temp dir is cleaned up even when the subprocess fails."""
     nb = tmp_path / "student.py"
-    nb.write_text("# notebook")
+    nb.write_text("# notebook", encoding="utf-8")
 
     captured_cwd = []
 
@@ -703,9 +703,13 @@ def test_isolated_run_gets_support_files_but_not_solution(tmp_path):
 
     support = tmp_path / "source" / "hw1"
     support.mkdir(parents=True)
-    (support / "data.txt").write_text("42\n")
-    (support / "hw1.py").write_text("# source notebook with solutions\n")
-    (support / "hw1.html").write_text("<html>preview with solutions</html>")
+    (support / "data.txt").write_text("42\n", encoding="utf-8")
+    (support / "hw1.py").write_text(
+        "# source notebook with solutions\n", encoding="utf-8"
+    )
+    (support / "hw1.html").write_text(
+        "<html>preview with solutions</html>", encoding="utf-8"
+    )
     sub = tmp_path / "submitted"
     sub.mkdir()
     nb = sub / "alice.py"

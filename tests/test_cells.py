@@ -385,11 +385,11 @@ def test_write_marker_feedback(tmp_path):
     checks = _make_checks()
     injected = inject_grading_cells(lines, checks)
     nb_path = tmp_path / "test.py"
-    nb_path.write_text("".join(injected))
+    nb_path.write_text("".join(injected), encoding="utf-8")
 
     write_marker_feedback(nb_path, 75, "Good work.\nNeeds improvement on Q2.")
 
-    modified = nb_path.read_text().splitlines(keepends=True)
+    modified = nb_path.read_text(encoding="utf-8").splitlines(keepends=True)
     mark, feedback = parse_marker_feedback(modified)
     assert mark == 75
     assert "Good work." in feedback
@@ -402,12 +402,12 @@ def test_write_marker_feedback_roundtrip(tmp_path):
     checks = _make_checks()
     injected = inject_grading_cells(lines, checks)
     nb_path = tmp_path / "test.py"
-    nb_path.write_text("".join(injected))
+    nb_path.write_text("".join(injected), encoding="utf-8")
 
     # First write
     write_marker_feedback(nb_path, 60, "Initial feedback")
     mark, feedback = parse_marker_feedback(
-        nb_path.read_text().splitlines(keepends=True)
+        nb_path.read_text(encoding="utf-8").splitlines(keepends=True)
     )
     assert mark == 60
     assert feedback == "Initial feedback"
@@ -415,7 +415,7 @@ def test_write_marker_feedback_roundtrip(tmp_path):
     # Overwrite with multiline
     write_marker_feedback(nb_path, 85, "Updated.\nMultiline now.")
     mark, feedback = parse_marker_feedback(
-        nb_path.read_text().splitlines(keepends=True)
+        nb_path.read_text(encoding="utf-8").splitlines(keepends=True)
     )
     assert mark == 85
     assert "Updated." in feedback
@@ -427,7 +427,7 @@ def test_write_marker_feedback_no_marker(tmp_path):
     import pytest
 
     nb_path = tmp_path / "plain.py"
-    nb_path.write_text("x = 1\n")
+    nb_path.write_text("x = 1\n", encoding="utf-8")
 
     with pytest.raises(ValueError, match="MOGRADER"):
         write_marker_feedback(nb_path, 50, "feedback")
@@ -439,14 +439,14 @@ def test_write_marker_feedback_none_mark(tmp_path):
     checks = _make_checks()
     injected = inject_grading_cells(lines, checks)
     nb_path = tmp_path / "test.py"
-    nb_path.write_text("".join(injected))
+    nb_path.write_text("".join(injected), encoding="utf-8")
 
     # First set a mark
     write_marker_feedback(nb_path, 70, "Some feedback")
     # Then reset
     write_marker_feedback(nb_path, None, "")
     mark, feedback = parse_marker_feedback(
-        nb_path.read_text().splitlines(keepends=True)
+        nb_path.read_text(encoding="utf-8").splitlines(keepends=True)
     )
     assert mark is None
 

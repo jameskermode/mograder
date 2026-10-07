@@ -43,7 +43,7 @@ class TestLoadOrCreateSecret:
             assert mode == 0o600, f"Expected 0o600, got {oct(mode)}"
 
     def test_reads_existing(self, tmp_path):
-        (tmp_path / ".mograder-secret").write_text("mysecret\n")
+        (tmp_path / ".mograder-secret").write_text("mysecret\n", encoding="utf-8")
         assert load_or_create_secret(tmp_path) == "mysecret"
 
     def test_idempotent(self, tmp_path):
@@ -172,7 +172,7 @@ class TestTokenCommand:
 
     def test_secret_file(self, tmp_path):
         secret_file = tmp_path / "secret.txt"
-        secret_file.write_text("filesecret\n")
+        secret_file.write_text("filesecret\n", encoding="utf-8")
         runner = CliRunner()
         result = runner.invoke(
             cli, ["token", "--secret-file", str(secret_file), "alice"]
@@ -191,7 +191,7 @@ class TestTokenCommand:
         assert verify_token("stdinsecret", token_str) == "alice"
 
     def test_default_secret_from_cwd(self, tmp_path, monkeypatch):
-        (tmp_path / ".mograder-secret").write_text("cwdsecret\n")
+        (tmp_path / ".mograder-secret").write_text("cwdsecret\n", encoding="utf-8")
         monkeypatch.chdir(tmp_path)
         runner = CliRunner()
         result = runner.invoke(cli, ["token", "alice"])
@@ -210,7 +210,7 @@ class TestTokenCommand:
 
     def test_error_multiple_secret_sources(self, tmp_path):
         secret_file = tmp_path / "s.txt"
-        secret_file.write_text("x\n")
+        secret_file.write_text("x\n", encoding="utf-8")
         runner = CliRunner()
         result = runner.invoke(
             cli, ["token", "--secret", "x", "--secret-file", str(secret_file), "alice"]

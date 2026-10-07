@@ -58,7 +58,7 @@ class TestReleasePath:
         """release_path returns path when release file exists."""
         rd = sm.release_dir / "hw1"
         rd.mkdir(parents=True)
-        (rd / "hw1.py").write_text("# release")
+        (rd / "hw1.py").write_text("# release", encoding="utf-8")
         assert sm.release_path("hw1") == rd / "hw1.py"
 
     def test_release_path_missing(self, sm):
@@ -72,7 +72,7 @@ class TestReleasePath:
     def test_has_release_true(self, sm):
         rd = sm.release_dir / "hw1"
         rd.mkdir(parents=True)
-        (rd / "hw1.py").write_text("# release")
+        (rd / "hw1.py").write_text("# release", encoding="utf-8")
         assert sm.has_release("hw1") is True
 
     def test_has_release_false(self, sm):
@@ -96,7 +96,7 @@ class TestAssignmentStatus:
         """File + .uploaded marker → uploaded."""
         d = sm.ensure_dir("alice", "hw1")
         nb = d / "hw1.py"
-        nb.write_text("# student code")
+        nb.write_text("# student code", encoding="utf-8")
         sm.mark_uploaded("alice", "hw1")
         assert sm.assignment_status("alice", "hw1") == "uploaded"
 
@@ -104,18 +104,18 @@ class TestAssignmentStatus:
         """File mtime > .uploaded mtime → modified."""
         d = sm.ensure_dir("alice", "hw1")
         nb = d / "hw1.py"
-        nb.write_text("# student code")
+        nb.write_text("# student code", encoding="utf-8")
         sm.mark_uploaded("alice", "hw1")
         # Touch notebook to make it newer
         time.sleep(0.05)
-        nb.write_text("# modified code")
+        nb.write_text("# modified code", encoding="utf-8")
         assert sm.assignment_status("alice", "hw1") == "modified"
 
     def test_exported(self, sm):
         """Export marker mtime >= file mtime → exported."""
         d = sm.ensure_dir("alice", "hw1")
         nb = d / "hw1.py"
-        nb.write_text("# student code")
+        nb.write_text("# student code", encoding="utf-8")
         sm.mark_uploaded("alice", "hw1")
         time.sleep(0.05)
         sm.mark_exported("alice", "hw1")
@@ -125,19 +125,19 @@ class TestAssignmentStatus:
 class TestMarkers:
     def test_mark_uploaded_creates_marker(self, sm):
         d = sm.ensure_dir("alice", "hw1")
-        (d / "hw1.py").write_text("# code")
+        (d / "hw1.py").write_text("# code", encoding="utf-8")
         sm.mark_uploaded("alice", "hw1")
         assert (d / ".uploaded").exists()
 
     def test_mark_exported_creates_marker(self, sm):
         d = sm.ensure_dir("alice", "hw1")
-        (d / "hw1.py").write_text("# code")
+        (d / "hw1.py").write_text("# code", encoding="utf-8")
         sm.mark_exported("alice", "hw1")
         assert (d / ".exported").exists()
 
     def test_mark_submitted_creates_marker(self, sm):
         d = sm.ensure_dir("alice", "hw1")
-        (d / "hw1.py").write_text("# code")
+        (d / "hw1.py").write_text("# code", encoding="utf-8")
         sm.mark_submitted("alice", "hw1")
         assert (d / ".submitted").exists()
 
@@ -148,28 +148,28 @@ class TestReset:
         # Set up release
         rd = sm.release_dir / "hw1"
         rd.mkdir(parents=True)
-        (rd / "hw1.py").write_text("# release version")
+        (rd / "hw1.py").write_text("# release version", encoding="utf-8")
 
         # Set up student file
         d = sm.ensure_dir("alice", "hw1")
         nb = d / "hw1.py"
-        nb.write_text("# student modified")
+        nb.write_text("# student modified", encoding="utf-8")
         sm.mark_uploaded("alice", "hw1")
 
         result = sm.reset_to_release("alice", "hw1")
         assert result is not None
         # New file should be the release version
-        assert nb.read_text() == "# release version"
+        assert nb.read_text(encoding="utf-8") == "# release version"
         # A backup should exist
         baks = list(d.glob("*.bak.*.py"))
         assert len(baks) == 1
-        assert baks[0].read_text() == "# student modified"
+        assert baks[0].read_text(encoding="utf-8") == "# student modified"
 
     def test_reset_archive_only(self, sm_no_release):
         """No release → archive only, file removed."""
         d = sm_no_release.ensure_dir("alice", "hw1")
         nb = d / "hw1.py"
-        nb.write_text("# student work")
+        nb.write_text("# student work", encoding="utf-8")
 
         result = sm_no_release.reset_to_release("alice", "hw1")
         # Returns the archive path
@@ -188,9 +188,9 @@ class TestListAssignments:
     def test_list_assignments(self, sm):
         """list_assignments returns directory names from release_dir."""
         (sm.release_dir / "hw1").mkdir()
-        (sm.release_dir / "hw1" / "hw1.py").write_text("# hw1")
+        (sm.release_dir / "hw1" / "hw1.py").write_text("# hw1", encoding="utf-8")
         (sm.release_dir / "hw2").mkdir()
-        (sm.release_dir / "hw2" / "hw2.py").write_text("# hw2")
+        (sm.release_dir / "hw2" / "hw2.py").write_text("# hw2", encoding="utf-8")
         result = sm.list_assignments()
         assert sorted(result) == ["hw1", "hw2"]
 
@@ -203,11 +203,11 @@ class TestListAssignments:
         import json
 
         (sm.release_dir / "hw1").mkdir()
-        (sm.release_dir / "hw1" / "hw1.py").write_text("# hw1")
+        (sm.release_dir / "hw1" / "hw1.py").write_text("# hw1", encoding="utf-8")
         (sm.release_dir / "L01").mkdir()
-        (sm.release_dir / "L01" / "L01.py").write_text("# lecture")
+        (sm.release_dir / "L01" / "L01.py").write_text("# lecture", encoding="utf-8")
         (sm.release_dir / "L01" / "files.json").write_text(
-            json.dumps({"files": ["L01.py"], "type": "lecture"})
+            json.dumps({"files": ["L01.py"], "type": "lecture"}), encoding="utf-8"
         )
         assert sm.list_assignments() == ["hw1"]
 
@@ -219,9 +219,9 @@ class TestLectures:
 
         d = sm.release_dir / "L01"
         d.mkdir()
-        (d / "L01.py").write_text("# lecture")
+        (d / "L01.py").write_text("# lecture", encoding="utf-8")
         (d / "files.json").write_text(
-            json.dumps({"files": ["L01.py"], "type": "lecture"})
+            json.dumps({"files": ["L01.py"], "type": "lecture"}), encoding="utf-8"
         )
         assert sm.item_type("L01") == "lecture"
 
@@ -230,7 +230,8 @@ class TestLectures:
         d = sm.release_dir / "L01"
         d.mkdir()
         (d / "L01.py").write_text(
-            'import marimo\n\n# /// script\n# mograder-type = "lecture"\n# ///\n\napp = marimo.App()\n'
+            'import marimo\n\n# /// script\n# mograder-type = "lecture"\n# ///\n\napp = marimo.App()\n',
+            encoding="utf-8",
         )
         assert sm.item_type("L01") == "lecture"
 
@@ -238,7 +239,9 @@ class TestLectures:
         """item_type defaults to 'assignment' when no metadata."""
         d = sm.release_dir / "hw1"
         d.mkdir()
-        (d / "hw1.py").write_text("import marimo\napp = marimo.App()\n")
+        (d / "hw1.py").write_text(
+            "import marimo\napp = marimo.App()\n", encoding="utf-8"
+        )
         assert sm.item_type("hw1") == "assignment"
 
     def test_list_lectures(self, sm):
@@ -246,16 +249,16 @@ class TestLectures:
         import json
 
         (sm.release_dir / "hw1").mkdir()
-        (sm.release_dir / "hw1" / "hw1.py").write_text("# hw1")
+        (sm.release_dir / "hw1" / "hw1.py").write_text("# hw1", encoding="utf-8")
         (sm.release_dir / "L01").mkdir()
-        (sm.release_dir / "L01" / "L01.py").write_text("# lecture")
+        (sm.release_dir / "L01" / "L01.py").write_text("# lecture", encoding="utf-8")
         (sm.release_dir / "L01" / "files.json").write_text(
-            json.dumps({"files": ["L01.py"], "type": "lecture"})
+            json.dumps({"files": ["L01.py"], "type": "lecture"}), encoding="utf-8"
         )
         assert sm.list_lectures() == ["L01"]
 
     def test_list_lectures_empty(self, sm):
         """list_lectures returns empty when no lectures."""
         (sm.release_dir / "hw1").mkdir()
-        (sm.release_dir / "hw1" / "hw1.py").write_text("# hw1")
+        (sm.release_dir / "hw1" / "hw1.py").write_text("# hw1", encoding="utf-8")
         assert sm.list_lectures() == []

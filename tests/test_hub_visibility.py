@@ -32,8 +32,10 @@ def hub(tmp_path):
     for name, text in [("A1", "# a1\n"), ("A2", "# a2\n"), ("L01", LECTURE)]:
         d = release / name
         d.mkdir()
-        (d / f"{name}.py").write_text(text)
-    (release / "L01" / "files.json").write_text(json.dumps({"type": "lecture"}))
+        (d / f"{name}.py").write_text(text, encoding="utf-8")
+    (release / "L01" / "files.json").write_text(
+        json.dumps({"type": "lecture"}), encoding="utf-8"
+    )
     app = create_hub_app(
         tmp_path,
         notebooks_dir=notebooks,
@@ -149,7 +151,7 @@ class TestStudentAccess:
     def test_existing_copy_keeps_access(self, hub):
         d = hub.notebooks / "alice" / "A1"
         d.mkdir(parents=True)
-        (d / "A1.py").write_text("# my work\n")
+        (d / "A1.py").write_text("# my work\n", encoding="utf-8")
         _set(hub, {"A1": {"hidden": True}})
         names = {i["name"] for i in hub.student.get("/assignments").json()}
         assert "A1" in names
@@ -169,7 +171,7 @@ class TestScheduleCLI:
         from mograder.cli import cli as main
 
         f = tmp_path / "schedule.toml"
-        f.write_text(toml)
+        f.write_text(toml, encoding="utf-8")
         calls = []
 
         def fake_api(base, token, method, path, **kw):
@@ -225,20 +227,20 @@ class TestSupportFiles:
 
     def _release_with_data(self, hub):
         d = hub.release / "A1"
-        (d / "data.csv").write_text("x\n1\n")
+        (d / "data.csv").write_text("x\n1\n", encoding="utf-8")
         (d / "fig.png").write_bytes(b"png")
-        (d / "A1.html").write_text("<html>")
+        (d / "A1.html").write_text("<html>", encoding="utf-8")
         (d / "A1.zip").write_bytes(b"zip")
-        (d / "files.json").write_text("{}")
+        (d / "files.json").write_text("{}", encoding="utf-8")
 
     def test_copy_support_files(self, hub):
         self._release_with_data(hub)
         storage = hub.app.state.storage
         assert storage.copy_support_files("alice", "A1") == ["data.csv", "fig.png"]
         mine = hub.notebooks / "alice" / "A1" / "data.csv"
-        mine.write_text("changed\n")
+        mine.write_text("changed\n", encoding="utf-8")
         assert storage.copy_support_files("alice", "A1") == []
-        assert mine.read_text() == "changed\n"  # never overwritten
+        assert mine.read_text(encoding="utf-8") == "changed\n"  # never overwritten
 
     def test_deep_link_copies_support_files(self, hub):
         self._release_with_data(hub)
@@ -263,13 +265,17 @@ class TestSupportFiles:
             r = hub.student.post("/start-edit-deep/L01")
         assert r.status_code == 200
         assert r.json()["url"] == "edit/user/alice/L01/"
-        assert (hub.notebooks / "alice" / "L01" / "L01.py").read_text() == LECTURE
+        assert (hub.notebooks / "alice" / "L01" / "L01.py").read_text(
+            encoding="utf-8"
+        ) == LECTURE
 
 
 class TestPublishReplaces:
     def test_republish_removes_stale_files(self, hub):
         d = hub.release / "A1"
-        (d / "A1.html").write_text("<html>old preview with solutions</html>")
+        (d / "A1.html").write_text(
+            "<html>old preview with solutions</html>", encoding="utf-8"
+        )
         (d / ".venv").mkdir()
         resp = hub.instructor.post(
             "/publish/A1", files={"files": ("A1.py", b"# new\n", "text/x-python")}
@@ -284,7 +290,7 @@ class TestPublishReplaces:
             "/publish/A1", files={"files": ("../A2/A2.py", b"x", "text/x-python")}
         )
         assert resp.status_code == 400
-        assert (hub.release / "A2" / "A2.py").read_text() == "# a2\n"
+        assert (hub.release / "A2" / "A2.py").read_text(encoding="utf-8") == "# a2\n"
 
 
 class TestGetLatest:
@@ -293,7 +299,7 @@ class TestGetLatest:
     def _copy(self, hub, name="A1", text="# my work\n"):
         d = hub.notebooks / "alice" / name
         d.mkdir(parents=True, exist_ok=True)
-        (d / f"{name}.py").write_text(text)
+        (d / f"{name}.py").write_text(text, encoding="utf-8")
         return d
 
     def test_download_archives_existing_copy(self, hub):
@@ -302,8 +308,8 @@ class TestGetLatest:
         assert r.status_code == 200
         archive = r.json()["archive"]
         assert archive.startswith("A1.bak.")
-        assert (d / archive).read_text() == "# my work\n"
-        assert (d / "A1.py").read_text() == "# a1\n"
+        assert (d / archive).read_text(encoding="utf-8") == "# my work\n"
+        assert (d / "A1.py").read_text(encoding="utf-8") == "# a1\n"
 
     def test_download_without_copy(self, hub):
         r = hub.student.post("/download-release/alice/A1")
@@ -314,9 +320,9 @@ class TestGetLatest:
     def test_reset_twice_keeps_both_archives(self, hub):
         d = self._copy(hub, text="# first\n")
         assert hub.student.post("/reset/alice/A1").status_code == 200
-        (d / "A1.py").write_text("# second\n")
+        (d / "A1.py").write_text("# second\n", encoding="utf-8")
         assert hub.student.post("/reset/alice/A1").status_code == 200
-        backups = sorted(p.read_text() for p in d.glob("A1.bak.*.py"))
+        backups = sorted(p.read_text(encoding="utf-8") for p in d.glob("A1.bak.*.py"))
         assert backups == ["# first\n", "# second\n"]
 
     def test_update_available_after_republish(self, hub):

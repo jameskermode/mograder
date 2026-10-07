@@ -177,13 +177,13 @@ class TestBwrapFilesystem:
         probe = tmp_path / "probe.txt"
         script = f"""\
 import pathlib
-pathlib.Path({str(probe)!r}).write_text('hello from bwrap')
+pathlib.Path({str(probe)!r}).write_text('hello from bwrap', encoding="utf-8")
 print('OK')
 """
         r = _run_in_bwrap(script, tmp_path)
         assert r.returncode == 0, r.stderr
         assert r.stdout.strip() == "OK"
-        assert probe.read_text() == "hello from bwrap"
+        assert probe.read_text(encoding="utf-8") == "hello from bwrap"
 
     def test_cannot_write_outside_cwd(self, tmp_path):
         """Files outside cwd (but on the same filesystem) are read-only."""
@@ -215,7 +215,7 @@ print('OK')
         try:
             script = textwrap.dedent("""\
                 from pathlib import Path
-                Path('/tmp/mograder_bwrap_isolation_check').write_text('inside')
+                Path('/tmp/mograder_bwrap_isolation_check').write_text('inside', encoding="utf-8")
                 print('OK')
             """)
             r = _run_in_bwrap(script, tmp_path)
@@ -284,7 +284,7 @@ class TestBwrapRoBindExtra:
         # Create a directory with a file that should be readable.
         extra_dir = tmp_path / "extra_data"
         extra_dir.mkdir()
-        (extra_dir / "secret.txt").write_text("shared-data")
+        (extra_dir / "secret.txt").write_text("shared-data", encoding="utf-8")
 
         # The cwd is a different directory.
         work = tmp_path / "work"

@@ -63,6 +63,6 @@ def test_corrupted_json_returns_none(tmp_path):
     from mograder.core._token_cache import TokenCache
 
     p = tmp_path / "cache.json"
-    p.write_text("not json{{{")
+    p.write_text("not json{{{", encoding="utf-8")
     cache = TokenCache(p)
     assert cache.load(match_key="url", match_value="x") is None

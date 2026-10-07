@@ -52,14 +52,14 @@ class TestSaveAndLoad:
     def test_load_corrupt_json(self, course_dir):
         cache_dir = course_dir / ".mograder" / "check_cache"
         cache_dir.mkdir(parents=True)
-        (cache_dir / "bad.py.json").write_text("{corrupt")
+        (cache_dir / "bad.py.json").write_text("{corrupt", encoding="utf-8")
         assert load_cached_results(course_dir, "bad.py") is None
 
 
 class TestIsStale:
     def test_fresh(self, course_dir, notebook_result, tmp_path):
         nb = tmp_path / "hw1.py"
-        nb.write_text("# notebook")
+        nb.write_text("# notebook", encoding="utf-8")
         mtime = nb.stat().st_mtime
         save_cached_results(course_dir, "hw1.py", notebook_result, mtime)
         cached = load_cached_results(course_dir, "hw1.py")
@@ -67,7 +67,7 @@ class TestIsStale:
 
     def test_modified(self, course_dir, notebook_result, tmp_path):
         nb = tmp_path / "hw1.py"
-        nb.write_text("# notebook")
+        nb.write_text("# notebook", encoding="utf-8")
         # Cache with an older mtime
         save_cached_results(course_dir, "hw1.py", notebook_result, 0.0)
         cached = load_cached_results(course_dir, "hw1.py")
@@ -75,7 +75,7 @@ class TestIsStale:
 
     def test_missing_key(self, tmp_path):
         nb = tmp_path / "hw1.py"
-        nb.write_text("# notebook")
+        nb.write_text("# notebook", encoding="utf-8")
         assert is_cache_stale({}, nb)
 
 

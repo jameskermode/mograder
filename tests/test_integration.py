@@ -29,9 +29,9 @@ SCRIPT_HEADER_RE = re.compile(r"^# /// script\n(# .*\n)*# ///\n+", re.MULTILINE)
 
 def _strip_script_header(path: Path) -> None:
     """Remove PEP 723 script header from a notebook file."""
-    text = path.read_text()
+    text = path.read_text(encoding="utf-8")
     text = SCRIPT_HEADER_RE.sub("", text, count=1)
-    path.write_text(text)
+    path.write_text(text, encoding="utf-8")
 
 
 @pytest.fixture()
@@ -50,7 +50,8 @@ def course(tmp_path):
     # Relaxed rlimits for CI runners where the user may already have many
     # processes (NPROC is per-user, not per-process).
     (tmp_path / "mograder.toml").write_text(
-        "[rlimits]\nnproc = 0\n"  # 0 = no limit
+        "[rlimits]\nnproc = 0\n",  # 0 = no limit
+        encoding="utf-8",
     )
 
     return tmp_path

@@ -18,7 +18,9 @@ def course_dir(tmp_path):
     # Create release directory with one assignment
     release = tmp_path / "release" / "ES98E-A1-Intro-to-SciML"
     release.mkdir(parents=True)
-    (release / "ES98E-A1-Intro-to-SciML.py").write_text("# A1 starter code")
+    (release / "ES98E-A1-Intro-to-SciML.py").write_text(
+        "# A1 starter code", encoding="utf-8"
+    )
 
     return tmp_path
 
@@ -85,14 +87,15 @@ class TestListAssignments:
         # Create WASM export on disk
         wasm = course_dir / ".mograder" / "wasm" / "A1"
         wasm.mkdir(parents=True)
-        (wasm / "index.html").write_text("<html>wasm</html>")
+        (wasm / "index.html").write_text("<html>wasm</html>", encoding="utf-8")
 
         # Create a WASM-compatible source notebook (no blocklisted deps)
         src = course_dir / "source" / "ES98E-A1-Intro-to-SciML"
         src.mkdir(parents=True)
         (src / "ES98E-A1-Intro-to-SciML.py").write_text(
             '# /// script\n# dependencies = [\n#     "numpy",\n#     "marimo",\n# ]\n# ///\n'
-            "import marimo\napp = marimo.App()\n"
+            "import marimo\napp = marimo.App()\n",
+            encoding="utf-8",
         )
 
         app = create_student_api(course_dir, config)
@@ -106,14 +109,15 @@ class TestListAssignments:
         # Create WASM export on disk
         wasm = course_dir / ".mograder" / "wasm" / "A1"
         wasm.mkdir(parents=True)
-        (wasm / "index.html").write_text("<html>wasm</html>")
+        (wasm / "index.html").write_text("<html>wasm</html>", encoding="utf-8")
 
         # Create a source notebook with blocklisted deps
         src = course_dir / "source" / "ES98E-A1-Intro-to-SciML"
         src.mkdir(parents=True)
         (src / "ES98E-A1-Intro-to-SciML.py").write_text(
             '# /// script\n# dependencies = [\n#     "jax",\n#     "torch",\n# ]\n# ///\n'
-            "import marimo\napp = marimo.App()\n"
+            "import marimo\napp = marimo.App()\n",
+            encoding="utf-8",
         )
 
         app = create_student_api(course_dir, config)
@@ -133,7 +137,7 @@ class TestListAssignments:
         # A1 has release files
         release_a1 = tmp_path / "release" / "ES98E-A1-Intro"
         release_a1.mkdir(parents=True)
-        (release_a1 / "A1.py").write_text("# A1")
+        (release_a1 / "A1.py").write_text("# A1", encoding="utf-8")
 
         # A2 has no release dir
         config = _make_config(

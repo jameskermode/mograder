@@ -16,8 +16,8 @@ def server(tmp_path):
     # Set up directory structure
     hw1_dir = tmp_path / "hw1" / "files"
     hw1_dir.mkdir(parents=True)
-    (hw1_dir / "homework.py").write_text("# HW1 starter code")
-    (hw1_dir / "data.csv").write_text("a,b\n1,2\n")
+    (hw1_dir / "homework.py").write_text("# HW1 starter code", encoding="utf-8")
+    (hw1_dir / "data.csv").write_text("a,b\n1,2\n", encoding="utf-8")
 
     srv, thread = run_server_background(tmp_path, port=0)
     port = srv.server_address[1]
@@ -30,7 +30,7 @@ def auth_server(tmp_path):
     """Start a server with authentication enabled."""
     hw1_dir = tmp_path / "hw1" / "files"
     hw1_dir.mkdir(parents=True)
-    (hw1_dir / "homework.py").write_text("# HW1 starter code")
+    (hw1_dir / "homework.py").write_text("# HW1 starter code", encoding="utf-8")
 
     secret = generate_secret()
     srv, thread = run_server_background(tmp_path, port=0, secret=secret)
@@ -53,7 +53,9 @@ class TestListAssignments:
     def test_manifest_file(self, server):
         base_url, tmp_path, _ = server
         manifest = [{"name": "custom", "id": "99", "files": []}]
-        (tmp_path / "assignments.json").write_text(json.dumps(manifest))
+        (tmp_path / "assignments.json").write_text(
+            json.dumps(manifest), encoding="utf-8"
+        )
         resp = requests.get(f"{base_url}/assignments")
         data = resp.json()
         assert len(data) == 1
@@ -103,7 +105,7 @@ class TestSubmittedDir:
         root = tmp_path / "root"
         hw1_dir = root / "hw1" / "files"
         hw1_dir.mkdir(parents=True)
-        (hw1_dir / "homework.py").write_text("# starter")
+        (hw1_dir / "homework.py").write_text("# starter", encoding="utf-8")
 
         submitted = tmp_path / "submitted"
         srv, thread = run_server_background(root, port=0, submitted_dir=submitted)
@@ -144,7 +146,7 @@ class TestSubmittedDir:
         root = tmp_path / "root"
         hw1_dir = root / "hw1" / "files"
         hw1_dir.mkdir(parents=True)
-        (hw1_dir / "homework.py").write_text("# starter")
+        (hw1_dir / "homework.py").write_text("# starter", encoding="utf-8")
 
         submitted = tmp_path / "submitted"
         srv, thread = run_server_background(root, port=0, submitted_dir=submitted)
@@ -227,7 +229,7 @@ class TestUploadGrades:
 
         grades_file = tmp_path / "hw1" / "grades.json"
         assert grades_file.exists()
-        saved = json.loads(grades_file.read_text())
+        saved = json.loads(grades_file.read_text(encoding="utf-8"))
         assert len(saved) == 1
         assert saved[0]["grade"] == 85
 
@@ -262,7 +264,8 @@ class TestStatus:
         )
         grades_path = tmp_path / "hw1" / "grades.json"
         grades_path.write_text(
-            json.dumps([{"username": "alice", "grade": "90", "feedback": "Great!"}])
+            json.dumps([{"username": "alice", "grade": "90", "feedback": "Great!"}]),
+            encoding="utf-8",
         )
 
         resp = requests.get(f"{base_url}/assignments/hw1/status?user=alice")
@@ -516,7 +519,7 @@ def reg_server(tmp_path):
     """Start a server with auth + enrollment code enabled."""
     hw1_dir = tmp_path / "hw1" / "files"
     hw1_dir.mkdir(parents=True)
-    (hw1_dir / "homework.py").write_text("# HW1")
+    (hw1_dir / "homework.py").write_text("# HW1", encoding="utf-8")
     secret = generate_secret()
     enrollment_code = "test-enroll-123"
     srv, thread = run_server_background(
@@ -631,8 +634,8 @@ def release_server(tmp_path):
     release = tmp_path / "release"
     hw1_release = release / "hw1"
     hw1_release.mkdir(parents=True)
-    (hw1_release / "homework.py").write_text("# HW1 flat layout")
-    (hw1_release / "data.csv").write_text("x,y\n3,4\n")
+    (hw1_release / "homework.py").write_text("# HW1 flat layout", encoding="utf-8")
+    (hw1_release / "data.csv").write_text("x,y\n3,4\n", encoding="utf-8")
 
     submitted = tmp_path / "submitted"
     grades = tmp_path / "grades"
@@ -664,7 +667,7 @@ class TestReleaseDirAutoDiscover:
         release = tmp_path / "release"
         hw1_release = release / "hw1"
         hw1_release.mkdir(parents=True)
-        (hw1_release / "homework.py").write_text("# code")
+        (hw1_release / "homework.py").write_text("# code", encoding="utf-8")
         (hw1_release / "hw1.zip").write_bytes(b"PK\x03\x04fake")
 
         srv, thread = run_server_background(root, port=0, release_dir=release)
@@ -787,7 +790,7 @@ class TestGradesDir:
         assert resp.status_code == 200
         grades_file = grades_dir / "hw1" / "grades.json"
         assert grades_file.exists()
-        saved = json.loads(grades_file.read_text())
+        saved = json.loads(grades_file.read_text(encoding="utf-8"))
         assert saved[0]["grade"] == 88
 
     def test_status_reads_from_grades_dir(self, release_server):
@@ -844,8 +847,12 @@ class TestFeedbackUpload:
         assert "bob.html" in data["files"]
 
         fb_dir = tmp_path / "hw1" / "feedback"
-        assert (fb_dir / "alice.html").read_text() == "<h1>Feedback for Alice</h1>"
-        assert (fb_dir / "bob.html").read_text() == "<h1>Feedback for Bob</h1>"
+        assert (fb_dir / "alice.html").read_text(
+            encoding="utf-8"
+        ) == "<h1>Feedback for Alice</h1>"
+        assert (fb_dir / "bob.html").read_text(
+            encoding="utf-8"
+        ) == "<h1>Feedback for Bob</h1>"
 
     def test_upload_feedback_requires_instructor(self, auth_server):
         """Non-instructor cannot upload feedback."""
@@ -863,7 +870,9 @@ class TestFeedbackUpload:
         base_url, tmp_path, _ = server
         fb_dir = tmp_path / "hw1" / "feedback"
         fb_dir.mkdir(parents=True)
-        (fb_dir / "alice.html").write_text("<h1>Alice's feedback</h1>")
+        (fb_dir / "alice.html").write_text(
+            "<h1>Alice's feedback</h1>", encoding="utf-8"
+        )
 
         resp = requests.get(
             f"{base_url}/assignments/hw1/feedback/alice",
@@ -876,7 +885,7 @@ class TestFeedbackUpload:
         base_url, tmp_path, _, secret = auth_server
         fb_dir = tmp_path / "hw1" / "feedback"
         fb_dir.mkdir(parents=True)
-        (fb_dir / "bob.html").write_text("<h1>Bob's feedback</h1>")
+        (fb_dir / "bob.html").write_text("<h1>Bob's feedback</h1>", encoding="utf-8")
 
         alice_token = make_token(secret, "alice")
         resp = requests.get(
@@ -910,7 +919,7 @@ class TestFeedbackUpload:
         # Add feedback file
         fb_dir = tmp_path / "hw1" / "feedback"
         fb_dir.mkdir(parents=True)
-        (fb_dir / "alice.html").write_text("<h1>Feedback</h1>")
+        (fb_dir / "alice.html").write_text("<h1>Feedback</h1>", encoding="utf-8")
 
         resp = requests.get(f"{base_url}/assignments/hw1/status?user=alice")
         data = resp.json()

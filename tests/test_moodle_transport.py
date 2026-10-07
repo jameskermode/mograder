@@ -49,7 +49,7 @@ class TestSubmitFile:
     def test_submit_uploads_and_finalizes(self, tmp_path):
         transport, client = _make_transport()
         nb = tmp_path / "sol.py"
-        nb.write_text("code")
+        nb.write_text("code", encoding="utf-8")
 
         with patch(
             "mograder.transport.moodle_transport.find_assignment",

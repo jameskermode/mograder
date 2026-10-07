@@ -56,7 +56,7 @@ def test_scan_course_empty(tmp_path):
 def test_scan_course_source_only(tmp_path):
     src = tmp_path / "source" / "hw1"
     src.mkdir(parents=True)
-    (src / "hw1.py").write_text(_minimal_notebook())
+    (src / "hw1.py").write_text(_minimal_notebook(), encoding="utf-8")
 
     result = scan_course(tmp_path)
     assert len(result) == 1
@@ -68,9 +68,13 @@ def test_scan_course_source_only(tmp_path):
 
 def test_scan_course_source_and_release(tmp_path):
     (tmp_path / "source" / "hw1").mkdir(parents=True)
-    (tmp_path / "source" / "hw1" / "hw1.py").write_text(_minimal_notebook())
+    (tmp_path / "source" / "hw1" / "hw1.py").write_text(
+        _minimal_notebook(), encoding="utf-8"
+    )
     (tmp_path / "release" / "hw1").mkdir(parents=True)
-    (tmp_path / "release" / "hw1" / "hw1.py").write_text(_minimal_notebook())
+    (tmp_path / "release" / "hw1" / "hw1.py").write_text(
+        _minimal_notebook(), encoding="utf-8"
+    )
 
     result = scan_course(tmp_path)
     assert len(result) == 1
@@ -82,26 +86,30 @@ def test_scan_course_full_pipeline(tmp_path):
     name = "hw1"
     # Source + release
     (tmp_path / "source" / name).mkdir(parents=True)
-    (tmp_path / "source" / name / f"{name}.py").write_text(_minimal_notebook())
+    (tmp_path / "source" / name / f"{name}.py").write_text(
+        _minimal_notebook(), encoding="utf-8"
+    )
     (tmp_path / "release" / name).mkdir(parents=True)
-    (tmp_path / "release" / name / f"{name}.py").write_text(_minimal_notebook())
+    (tmp_path / "release" / name / f"{name}.py").write_text(
+        _minimal_notebook(), encoding="utf-8"
+    )
 
     # 3 submitted
     sub_dir = tmp_path / "submitted" / name
     sub_dir.mkdir(parents=True)
     for s in ["alice", "bob", "carol"]:
-        (sub_dir / f"{s}.py").write_text(_minimal_notebook())
+        (sub_dir / f"{s}.py").write_text(_minimal_notebook(), encoding="utf-8")
 
     # 2 autograded (1 graded, 1 not)
     auto_dir = tmp_path / "autograded" / name
     auto_dir.mkdir(parents=True)
-    (auto_dir / "alice.py").write_text(_make_autograded(graded=True))
-    (auto_dir / "bob.py").write_text(_make_autograded(graded=False))
+    (auto_dir / "alice.py").write_text(_make_autograded(graded=True), encoding="utf-8")
+    (auto_dir / "bob.py").write_text(_make_autograded(graded=False), encoding="utf-8")
 
     # 1 feedback
     fb_dir = tmp_path / "feedback" / name
     fb_dir.mkdir(parents=True)
-    (fb_dir / "alice.html").write_text("<html></html>")
+    (fb_dir / "alice.html").write_text("<html></html>", encoding="utf-8")
 
     result = scan_course(tmp_path)
     assert len(result) == 1
@@ -129,18 +137,18 @@ def test_scan_course_pending_counts_stale(tmp_path):
     auto_dir.mkdir(parents=True)
 
     # alice: fresh autograded output, submitted before → up to date
-    (sub_dir / "alice.py").write_text(_minimal_notebook())
-    (auto_dir / "alice.py").write_text(_make_autograded(graded=False))
+    (sub_dir / "alice.py").write_text(_minimal_notebook(), encoding="utf-8")
+    (auto_dir / "alice.py").write_text(_make_autograded(graded=False), encoding="utf-8")
     time.sleep(0.05)
     # bob: submitted AFTER autograded → stale, pending
-    (auto_dir / "bob.py").write_text(_make_autograded(graded=False))
+    (auto_dir / "bob.py").write_text(_make_autograded(graded=False), encoding="utf-8")
     time.sleep(0.05)
-    (sub_dir / "bob.py").write_text(_minimal_notebook())
+    (sub_dir / "bob.py").write_text(_minimal_notebook(), encoding="utf-8")
     # Make bob's autograded older than bob's submission explicitly
     old = time.time() - 60
     os.utime(auto_dir / "bob.py", (old, old))
     # carol: no autograded yet → pending
-    (sub_dir / "carol.py").write_text(_minimal_notebook())
+    (sub_dir / "carol.py").write_text(_minimal_notebook(), encoding="utf-8")
 
     result = scan_course(tmp_path)
     assert len(result) == 1
@@ -153,7 +161,9 @@ def test_scan_course_pending_counts_stale(tmp_path):
 def test_scan_course_multiple_assignments(tmp_path):
     for name in ["hw2", "hw1", "hw3"]:
         (tmp_path / "source" / name).mkdir(parents=True)
-        (tmp_path / "source" / name / f"{name}.py").write_text(_minimal_notebook())
+        (tmp_path / "source" / name / f"{name}.py").write_text(
+            _minimal_notebook(), encoding="utf-8"
+        )
 
     result = scan_course(tmp_path)
     assert len(result) == 3
@@ -167,11 +177,11 @@ def test_scan_submissions_ungraded(tmp_path):
     name = "hw1"
     sub_dir = tmp_path / "submitted" / name
     sub_dir.mkdir(parents=True)
-    (sub_dir / "alice.py").write_text(_minimal_notebook())
+    (sub_dir / "alice.py").write_text(_minimal_notebook(), encoding="utf-8")
 
     auto_dir = tmp_path / "autograded" / name
     auto_dir.mkdir(parents=True)
-    (auto_dir / "alice.py").write_text(_make_autograded(graded=False))
+    (auto_dir / "alice.py").write_text(_make_autograded(graded=False), encoding="utf-8")
 
     result = scan_submissions(tmp_path, name)
     assert len(result) == 1
@@ -185,11 +195,13 @@ def test_scan_submissions_graded(tmp_path):
     name = "hw1"
     sub_dir = tmp_path / "submitted" / name
     sub_dir.mkdir(parents=True)
-    (sub_dir / "alice.py").write_text(_minimal_notebook())
+    (sub_dir / "alice.py").write_text(_minimal_notebook(), encoding="utf-8")
 
     auto_dir = tmp_path / "autograded" / name
     auto_dir.mkdir(parents=True)
-    (auto_dir / "alice.py").write_text(_make_autograded(graded=True, mark=72))
+    (auto_dir / "alice.py").write_text(
+        _make_autograded(graded=True, mark=72), encoding="utf-8"
+    )
 
     result = scan_submissions(tmp_path, name)
     assert len(result) == 1
@@ -203,7 +215,7 @@ def test_scan_submissions_graded_with_marks(tmp_path):
     auto_dir = tmp_path / "autograded" / name
     auto_dir.mkdir(parents=True)
     (auto_dir / "alice.py").write_text(
-        _make_autograded_with_marks(graded=True, manual_mark=70)
+        _make_autograded_with_marks(graded=True, manual_mark=70), encoding="utf-8"
     )
 
     result = scan_submissions(tmp_path, name)
@@ -218,11 +230,11 @@ def test_scan_submissions_with_feedback(tmp_path):
     name = "hw1"
     auto_dir = tmp_path / "autograded" / name
     auto_dir.mkdir(parents=True)
-    (auto_dir / "alice.py").write_text(_make_autograded(graded=True))
+    (auto_dir / "alice.py").write_text(_make_autograded(graded=True), encoding="utf-8")
 
     fb_dir = tmp_path / "feedback" / name
     fb_dir.mkdir(parents=True)
-    (fb_dir / "alice.html").write_text("<html></html>")
+    (fb_dir / "alice.html").write_text("<html></html>", encoding="utf-8")
 
     result = scan_submissions(tmp_path, name)
     assert len(result) == 1
@@ -239,7 +251,9 @@ def test_scan_submissions_multiple_students(tmp_path):
     auto_dir = tmp_path / "autograded" / name
     auto_dir.mkdir(parents=True)
     for s in ["carol", "alice", "bob"]:
-        (auto_dir / f"{s}.py").write_text(_make_autograded(graded=False))
+        (auto_dir / f"{s}.py").write_text(
+            _make_autograded(graded=False), encoding="utf-8"
+        )
 
     result = scan_submissions(tmp_path, name)
     assert len(result) == 3
@@ -344,8 +358,10 @@ def test_collect_student_marks_basic(tmp_path):
     name = "hw1"
     auto_dir = tmp_path / "autograded" / name
     auto_dir.mkdir(parents=True)
-    (auto_dir / "alice.py").write_text(_make_autograded(graded=True, mark=72))
-    (auto_dir / "bob.py").write_text(_make_autograded(graded=False))
+    (auto_dir / "alice.py").write_text(
+        _make_autograded(graded=True, mark=72), encoding="utf-8"
+    )
+    (auto_dir / "bob.py").write_text(_make_autograded(graded=False), encoding="utf-8")
 
     assignments = [AssignmentInfo(name=name)]
     result = collect_student_marks(tmp_path, assignments)
@@ -362,11 +378,13 @@ def test_collect_student_marks_multiple_assignments(tmp_path):
     for aname in ["hw1", "hw2"]:
         auto_dir = tmp_path / "autograded" / aname
         auto_dir.mkdir(parents=True)
-        (auto_dir / "alice.py").write_text(_make_autograded(graded=True, mark=80))
+        (auto_dir / "alice.py").write_text(
+            _make_autograded(graded=True, mark=80), encoding="utf-8"
+        )
 
     # bob only in hw1
     (tmp_path / "autograded" / "hw1" / "bob.py").write_text(
-        _make_autograded(graded=True, mark=60)
+        _make_autograded(graded=True, mark=60), encoding="utf-8"
     )
 
     assignments = [AssignmentInfo(name="hw1"), AssignmentInfo(name="hw2")]
@@ -385,7 +403,7 @@ def test_collect_student_marks_with_per_question_marks(tmp_path):
     auto_dir = tmp_path / "autograded" / name
     auto_dir.mkdir(parents=True)
     (auto_dir / "alice.py").write_text(
-        _make_autograded_with_marks(graded=True, manual_mark=70)
+        _make_autograded_with_marks(graded=True, manual_mark=70), encoding="utf-8"
     )
 
     assignments = [AssignmentInfo(name=name)]
@@ -418,7 +436,7 @@ def test_get_max_marks_from_source(tmp_path):
     checks = [CheckResult("Q1: Foo", "success")]
     marks = {"Q1": 10, "Analysis": 90}
     injected = inject_grading_cells(lines, checks, marks=marks)
-    src_path.write_text("".join(injected))
+    src_path.write_text("".join(injected), encoding="utf-8")
 
     assignments = [AssignmentInfo(name="hw1", source_path=src_path, has_source=True)]
     result = get_max_marks(tmp_path, assignments)
@@ -432,7 +450,7 @@ def test_get_max_marks_no_marks_cell(tmp_path):
     src_dir = tmp_path / "source" / "hw1"
     src_dir.mkdir(parents=True)
     src_path = src_dir / "hw1.py"
-    src_path.write_text(_minimal_notebook())
+    src_path.write_text(_minimal_notebook(), encoding="utf-8")
 
     assignments = [AssignmentInfo(name="hw1", source_path=src_path, has_source=True)]
     result = get_max_marks(tmp_path, assignments)
@@ -592,9 +610,13 @@ def test_scan_course_custom_dirs(tmp_path):
     # Use custom dir names
     dn = DirNames(source="src", release="rel", submitted="sub", autograded="graded")
     (tmp_path / "src" / "hw1").mkdir(parents=True)
-    (tmp_path / "src" / "hw1" / "hw1.py").write_text(_minimal_notebook())
+    (tmp_path / "src" / "hw1" / "hw1.py").write_text(
+        _minimal_notebook(), encoding="utf-8"
+    )
     (tmp_path / "sub" / "hw1").mkdir(parents=True)
-    (tmp_path / "sub" / "hw1" / "alice.py").write_text(_minimal_notebook())
+    (tmp_path / "sub" / "hw1" / "alice.py").write_text(
+        _minimal_notebook(), encoding="utf-8"
+    )
 
     result = scan_course(tmp_path, dir_names=dn)
     assert len(result) == 1
@@ -612,10 +634,12 @@ def test_scan_submissions_custom_dirs(tmp_path):
 
     dn = DirNames(submitted="sub", autograded="graded", feedback="fb")
     (tmp_path / "sub" / "hw1").mkdir(parents=True)
-    (tmp_path / "sub" / "hw1" / "alice.py").write_text(_minimal_notebook())
+    (tmp_path / "sub" / "hw1" / "alice.py").write_text(
+        _minimal_notebook(), encoding="utf-8"
+    )
     (tmp_path / "graded" / "hw1").mkdir(parents=True)
     (tmp_path / "graded" / "hw1" / "alice.py").write_text(
-        _make_autograded(graded=True, mark=80)
+        _make_autograded(graded=True, mark=80), encoding="utf-8"
     )
 
     result = scan_submissions(tmp_path, "hw1", dir_names=dn)
@@ -636,7 +660,7 @@ def test_collect_student_marks_custom_dirs(tmp_path):
     name = "hw1"
     (tmp_path / "graded" / name).mkdir(parents=True)
     (tmp_path / "graded" / name / "alice.py").write_text(
-        _make_autograded(graded=True, mark=72)
+        _make_autograded(graded=True, mark=72), encoding="utf-8"
     )
 
     assignments = [AssignmentInfo(name=name)]
@@ -657,11 +681,13 @@ def test_scan_course_with_gradebook(tmp_path):
 
     name = "hw1"
     (tmp_path / "source" / name).mkdir(parents=True)
-    (tmp_path / "source" / name / f"{name}.py").write_text(_minimal_notebook())
+    (tmp_path / "source" / name / f"{name}.py").write_text(
+        _minimal_notebook(), encoding="utf-8"
+    )
     auto_dir = tmp_path / "autograded" / name
     auto_dir.mkdir(parents=True)
-    (auto_dir / "alice.py").write_text(_make_autograded(graded=False))
-    (auto_dir / "bob.py").write_text(_make_autograded(graded=False))
+    (auto_dir / "alice.py").write_text(_make_autograded(graded=False), encoding="utf-8")
+    (auto_dir / "bob.py").write_text(_make_autograded(graded=False), encoding="utf-8")
 
     with Gradebook(tmp_path / "gradebook.db") as gb:
         gb.upsert_assignment(name)
@@ -682,7 +708,7 @@ def test_scan_submissions_with_gradebook(tmp_path):
     name = "hw1"
     auto_dir = tmp_path / "autograded" / name
     auto_dir.mkdir(parents=True)
-    (auto_dir / "alice.py").write_text(_make_autograded(graded=False))
+    (auto_dir / "alice.py").write_text(_make_autograded(graded=False), encoding="utf-8")
 
     with Gradebook(tmp_path / "gradebook.db") as gb:
         gb.upsert_assignment(name)

@@ -13,7 +13,7 @@ def transport_server(tmp_path):
     """Start server + create transport (no auth)."""
     hw1_dir = tmp_path / "hw1" / "files"
     hw1_dir.mkdir(parents=True)
-    (hw1_dir / "homework.py").write_text("# starter code")
+    (hw1_dir / "homework.py").write_text("# starter code", encoding="utf-8")
 
     srv, thread = run_server_background(tmp_path, port=0)
     port = srv.server_address[1]
@@ -28,7 +28,7 @@ def auth_transport_server(tmp_path):
     """Start server with auth + create transport with valid token."""
     hw1_dir = tmp_path / "hw1" / "files"
     hw1_dir.mkdir(parents=True)
-    (hw1_dir / "homework.py").write_text("# starter code")
+    (hw1_dir / "homework.py").write_text("# starter code", encoding="utf-8")
 
     secret = generate_secret()
     srv, thread = run_server_background(tmp_path, port=0, secret=secret)
@@ -64,14 +64,14 @@ class TestHTTPSTransportDownload:
         dest = tmp_path / "output" / "homework.py"
         transport.download_file(url, dest)
         assert dest.exists()
-        assert "starter code" in dest.read_text()
+        assert "starter code" in dest.read_text(encoding="utf-8")
 
 
 class TestHTTPSTransportSubmit:
     def test_submit_file(self, transport_server, tmp_path):
         transport, server_root = transport_server
         nb = tmp_path / "solution.py"
-        nb.write_text("print('answer')")
+        nb.write_text("print('answer')", encoding="utf-8")
         transport.submit_file("hw1", nb)
         # submitted_dir defaults to root; symlink created there
         assert (server_root / "hw1" / "alice.py").exists()
@@ -85,7 +85,7 @@ class TestHTTPSTransportGetSubmissions:
         sub_dir.mkdir(parents=True, exist_ok=True)
         import os
 
-        (sub_dir / "bob_20260310T195000.py").write_text("code")
+        (sub_dir / "bob_20260310T195000.py").write_text("code", encoding="utf-8")
         os.symlink("bob_20260310T195000.py", sub_dir / "bob.py")
 
         subs = transport.get_submissions("hw1")
@@ -113,7 +113,7 @@ class TestHTTPSTransportGetStatus:
     def test_status_after_submit(self, transport_server, tmp_path):
         transport, _ = transport_server
         nb = tmp_path / "solution.py"
-        nb.write_text("print('answer')")
+        nb.write_text("print('answer')", encoding="utf-8")
         transport.submit_file("hw1", nb)
         status = transport.get_status("hw1")
         assert status.status == "submitted"
@@ -130,7 +130,7 @@ class TestHTTPSTransportAuth:
     def test_student_can_submit_with_token(self, auth_transport_server, tmp_path):
         student, _, server_root, _ = auth_transport_server
         nb = tmp_path / "solution.py"
-        nb.write_text("print('answer')")
+        nb.write_text("print('answer')", encoding="utf-8")
         student.submit_file("hw1", nb)
         assert (server_root / "hw1" / "alice.py").exists()
 
@@ -145,7 +145,7 @@ class TestHTTPSTransportAuth:
         _, instructor, server_root, _ = auth_transport_server
         sub_dir = server_root / "hw1"
         sub_dir.mkdir(parents=True, exist_ok=True)
-        (sub_dir / "bob_20260310T195000.py").write_text("code")
+        (sub_dir / "bob_20260310T195000.py").write_text("code", encoding="utf-8")
         os.symlink("bob_20260310T195000.py", sub_dir / "bob.py")
         subs = instructor.get_submissions("hw1")
         assert len(subs) == 1
@@ -181,7 +181,7 @@ def release_transport_server(tmp_path):
     release = tmp_path / "release"
     hw1_release = release / "hw1"
     hw1_release.mkdir(parents=True)
-    (hw1_release / "homework.py").write_text("# flat starter code")
+    (hw1_release / "homework.py").write_text("# flat starter code", encoding="utf-8")
 
     submitted = tmp_path / "submitted"
     grades = tmp_path / "grades"
@@ -210,7 +210,7 @@ class TestHTTPSTransportReleaseDir:
         dest = tmp_path / "output" / "homework.py"
         transport.download_file(url, dest)
         assert dest.exists()
-        assert "flat starter code" in dest.read_text()
+        assert "flat starter code" in dest.read_text(encoding="utf-8")
 
     def test_grades_in_separate_dir(self, release_transport_server):
         transport, _, grades_dir = release_transport_server

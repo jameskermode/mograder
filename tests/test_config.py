@@ -11,7 +11,7 @@ def test_load_config_no_file(tmp_path):
 
 def test_load_config_empty_file(tmp_path):
     """Empty mograder.toml returns all defaults."""
-    (tmp_path / "mograder.toml").write_text("")
+    (tmp_path / "mograder.toml").write_text("", encoding="utf-8")
     config = load_config(tmp_path)
     assert config == DEFAULT_CONFIG
 
@@ -19,7 +19,7 @@ def test_load_config_empty_file(tmp_path):
 def test_load_config_partial_moodle_only(tmp_path):
     """Only [moodle] section; rest defaults."""
     (tmp_path / "mograder.toml").write_text(
-        '[moodle]\ncsv = "grading.csv"\nmatch_column = "ID number"\n'
+        '[moodle]\ncsv = "grading.csv"\nmatch_column = "ID number"\n', encoding="utf-8"
     )
     config = load_config(tmp_path)
     assert config.moodle_csv == "grading.csv"
@@ -32,7 +32,9 @@ def test_load_config_partial_moodle_only(tmp_path):
 
 def test_load_config_partial_defaults_only(tmp_path):
     """Only [defaults] section."""
-    (tmp_path / "mograder.toml").write_text("[defaults]\njobs = 8\ntimeout = 600\n")
+    (tmp_path / "mograder.toml").write_text(
+        "[defaults]\njobs = 8\ntimeout = 600\n", encoding="utf-8"
+    )
     config = load_config(tmp_path)
     assert config.jobs == 8
     assert config.timeout == 600
@@ -43,7 +45,7 @@ def test_load_config_partial_defaults_only(tmp_path):
 def test_load_config_partial_dirs_only(tmp_path):
     """Only [dirs] section."""
     (tmp_path / "mograder.toml").write_text(
-        '[dirs]\nsource = "src"\nautograded = "graded"\n'
+        '[dirs]\nsource = "src"\nautograded = "graded"\n', encoding="utf-8"
     )
     config = load_config(tmp_path)
     assert config.source_dir == "src"
@@ -60,7 +62,8 @@ def test_load_config_full(tmp_path):
         'name_column = "Display name"\n\n'
         "[defaults]\njobs = 2\ntimeout = 120\n\n"
         '[dirs]\nsource = "src"\nrelease = "rel"\n'
-        'submitted = "sub"\nautograded = "auto"\nfeedback = "fb"\n'
+        'submitted = "sub"\nautograded = "auto"\nfeedback = "fb"\n',
+        encoding="utf-8",
     )
     config = load_config(tmp_path)
     assert config == MograderConfig(
@@ -82,7 +85,8 @@ def test_load_config_unknown_keys_ignored(tmp_path):
     """Unknown keys in TOML are silently ignored (forward compat)."""
     (tmp_path / "mograder.toml").write_text(
         '[moodle]\ncsv = "grades.csv"\nfuture_key = true\n\n'
-        "[unknown_section]\nfoo = 42\n"
+        "[unknown_section]\nfoo = 42\n",
+        encoding="utf-8",
     )
     config = load_config(tmp_path)
     assert config.moodle_csv == "grades.csv"
@@ -91,28 +95,32 @@ def test_load_config_unknown_keys_ignored(tmp_path):
 
 def test_load_config_gradebook(tmp_path):
     """[gradebook] section sets path."""
-    (tmp_path / "mograder.toml").write_text('[gradebook]\npath = "grades.db"\n')
+    (tmp_path / "mograder.toml").write_text(
+        '[gradebook]\npath = "grades.db"\n', encoding="utf-8"
+    )
     config = load_config(tmp_path)
     assert config.gradebook == "grades.db"
 
 
 def test_load_config_gradebook_default(tmp_path):
     """Missing [gradebook] section uses default."""
-    (tmp_path / "mograder.toml").write_text("")
+    (tmp_path / "mograder.toml").write_text("", encoding="utf-8")
     config = load_config(tmp_path)
     assert config.gradebook == "gradebook.db"
 
 
 def test_load_config_import_dir_default(tmp_path):
     """Missing import key uses default 'import'."""
-    (tmp_path / "mograder.toml").write_text("")
+    (tmp_path / "mograder.toml").write_text("", encoding="utf-8")
     config = load_config(tmp_path)
     assert config.import_dir == "import"
 
 
 def test_load_config_import_dir_custom(tmp_path):
     """[dirs] import key overrides default."""
-    (tmp_path / "mograder.toml").write_text('[dirs]\nimport = "worksheets"\n')
+    (tmp_path / "mograder.toml").write_text(
+        '[dirs]\nimport = "worksheets"\n', encoding="utf-8"
+    )
     config = load_config(tmp_path)
     assert config.import_dir == "worksheets"
 
@@ -129,7 +137,7 @@ def test_config_is_frozen():
 
 def test_load_config_transport_default(tmp_path):
     """Default transport is moodle."""
-    (tmp_path / "mograder.toml").write_text("")
+    (tmp_path / "mograder.toml").write_text("", encoding="utf-8")
     config = load_config(tmp_path)
     assert config.transport == "moodle"
 
@@ -137,7 +145,8 @@ def test_load_config_transport_default(tmp_path):
 def test_load_config_transport_https(tmp_path):
     """transport field is read from top-level."""
     (tmp_path / "mograder.toml").write_text(
-        'transport = "https"\n\n[https]\nurl = "http://localhost:8080"\n'
+        'transport = "https"\n\n[https]\nurl = "http://localhost:8080"\n',
+        encoding="utf-8",
     )
     config = load_config(tmp_path)
     assert config.transport == "https"
@@ -147,7 +156,7 @@ def test_load_config_transport_https(tmp_path):
 def test_load_config_top_level_assignments(tmp_path):
     """[[assignments]] is read from top-level."""
     (tmp_path / "mograder.toml").write_text(
-        '[[assignments]]\nname = "HW1"\nid = "10"\n'
+        '[[assignments]]\nname = "HW1"\nid = "10"\n', encoding="utf-8"
     )
     config = load_config(tmp_path)
     assert len(config.assignments) == 1
@@ -158,7 +167,8 @@ def test_load_config_assignments_fallback_to_moodle(tmp_path):
     """[[moodle.assignments]] is used when [[assignments]] is absent."""
     (tmp_path / "mograder.toml").write_text(
         '[moodle]\nurl = "https://moodle.example.com"\n\n'
-        '[[moodle.assignments]]\nname = "HW2"\nid = 20\n'
+        '[[moodle.assignments]]\nname = "HW2"\nid = 20\n',
+        encoding="utf-8",
     )
     config = load_config(tmp_path)
     assert len(config.assignments) == 1
@@ -172,7 +182,8 @@ def test_load_config_top_level_assignments_override_moodle(tmp_path):
     (tmp_path / "mograder.toml").write_text(
         '[[assignments]]\nname = "HW1"\nid = "10"\n\n'
         '[moodle]\nurl = "https://moodle.example.com"\n\n'
-        '[[moodle.assignments]]\nname = "HW2"\nid = 20\n'
+        '[[moodle.assignments]]\nname = "HW2"\nid = 20\n',
+        encoding="utf-8",
     )
     config = load_config(tmp_path)
     assert len(config.assignments) == 1
@@ -181,14 +192,16 @@ def test_load_config_top_level_assignments_override_moodle(tmp_path):
 
 def test_load_config_https_section(tmp_path):
     """[https] url is read."""
-    (tmp_path / "mograder.toml").write_text('[https]\nurl = "http://localhost:9000"\n')
+    (tmp_path / "mograder.toml").write_text(
+        '[https]\nurl = "http://localhost:9000"\n', encoding="utf-8"
+    )
     config = load_config(tmp_path)
     assert config.https_url == "http://localhost:9000"
 
 
 def test_load_config_rlimits_defaults(tmp_path):
     """Missing [rlimits] section uses defaults."""
-    (tmp_path / "mograder.toml").write_text("")
+    (tmp_path / "mograder.toml").write_text("", encoding="utf-8")
     config = load_config(tmp_path)
     assert config.rlimit_cpu == 600
     assert config.rlimit_nproc == 512
@@ -198,7 +211,7 @@ def test_load_config_rlimits_defaults(tmp_path):
 def test_load_config_rlimits_custom(tmp_path):
     """[rlimits] section overrides defaults."""
     (tmp_path / "mograder.toml").write_text(
-        "[rlimits]\ncpu = 120\nnproc = 0\nnofile = 512\n"
+        "[rlimits]\ncpu = 120\nnproc = 0\nnofile = 512\n", encoding="utf-8"
     )
     config = load_config(tmp_path)
     assert config.rlimit_cpu == 120
@@ -211,7 +224,8 @@ def test_load_config_edit_links(tmp_path):
     (tmp_path / "mograder.toml").write_text(
         "[edit_links]\n"
         'molab = "https://molab.marimo.io/new/#code/{content_lz}"\n'
-        'codespaces = "https://github.com/example/codespaces"\n'
+        'codespaces = "https://github.com/example/codespaces"\n',
+        encoding="utf-8",
     )
     config = load_config(tmp_path)
     assert len(config.edit_links) == 2
@@ -227,34 +241,38 @@ def test_load_config_edit_links(tmp_path):
 
 def test_load_config_edit_links_default(tmp_path):
     """Missing [edit_links] section defaults to empty tuple."""
-    (tmp_path / "mograder.toml").write_text("")
+    (tmp_path / "mograder.toml").write_text("", encoding="utf-8")
     config = load_config(tmp_path)
     assert config.edit_links == ()
 
 
 def test_load_config_rlimit_as_default(tmp_path):
     """Missing rlimits.as uses default (1 GiB)."""
-    (tmp_path / "mograder.toml").write_text("")
+    (tmp_path / "mograder.toml").write_text("", encoding="utf-8")
     config = load_config(tmp_path)
     assert config.rlimit_as == 1 << 30
 
 
 def test_load_config_rlimit_as_custom(tmp_path):
     """[rlimits] as overrides default."""
-    (tmp_path / "mograder.toml").write_text("[rlimits]\nas = 2147483648\n")
+    (tmp_path / "mograder.toml").write_text(
+        "[rlimits]\nas = 2147483648\n", encoding="utf-8"
+    )
     config = load_config(tmp_path)
     assert config.rlimit_as == 2147483648
 
 
 def test_load_config_use_bubblewrap_default(tmp_path):
     """Missing [security] section defaults use_bubblewrap to False."""
-    (tmp_path / "mograder.toml").write_text("")
+    (tmp_path / "mograder.toml").write_text("", encoding="utf-8")
     config = load_config(tmp_path)
     assert config.use_bubblewrap is False
 
 
 def test_load_config_use_bubblewrap_enabled(tmp_path):
     """[security] use_bubblewrap = true is read."""
-    (tmp_path / "mograder.toml").write_text("[security]\nuse_bubblewrap = true\n")
+    (tmp_path / "mograder.toml").write_text(
+        "[security]\nuse_bubblewrap = true\n", encoding="utf-8"
+    )
     config = load_config(tmp_path)
     assert config.use_bubblewrap is True

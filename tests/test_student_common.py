@@ -8,7 +8,9 @@ def test_load_student_config(tmp_path, monkeypatch):
     from mograder.student.common import load_student_config
 
     # Write a minimal mograder.toml
-    (tmp_path / "mograder.toml").write_text("[defaults]\nheadless_edit = true\n")
+    (tmp_path / "mograder.toml").write_text(
+        "[defaults]\nheadless_edit = true\n", encoding="utf-8"
+    )
     monkeypatch.setenv("MOGRADER_COURSE_DIR", str(tmp_path))
 
     config, course_dir = load_student_config()
@@ -20,7 +22,7 @@ def test_load_student_config_default_cwd(tmp_path, monkeypatch):
     """load_student_config defaults to cwd when env var not set."""
     from mograder.student.common import load_student_config
 
-    (tmp_path / "mograder.toml").write_text("")
+    (tmp_path / "mograder.toml").write_text("", encoding="utf-8")
     monkeypatch.delenv("MOGRADER_COURSE_DIR", raising=False)
     monkeypatch.chdir(tmp_path)
 

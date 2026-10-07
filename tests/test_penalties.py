@@ -162,7 +162,7 @@ class TestResolveSubmissionTime:
         submitted_dir = tmp_path / "submitted"
         submitted_dir.mkdir()
         f = submitted_dir / "alice.py"
-        f.write_text("pass")
+        f.write_text("pass", encoding="utf-8")
         ts = resolve_submission_time("alice", "A1", submitted_dir)
         assert ts is not None
         assert ts > 0
@@ -175,7 +175,7 @@ class TestResolveSubmissionTime:
         submitted_dir = tmp_path / "submitted"
         submitted_dir.mkdir()
         f = submitted_dir / "alice.py"
-        f.write_text("pass")
+        f.write_text("pass", encoding="utf-8")
         ts = resolve_submission_time(
             "alice",
             "A1",
@@ -188,7 +188,9 @@ class TestResolveSubmissionTime:
 class TestLoadFetchMetadata:
     def test_load_valid(self, tmp_path):
         meta = {"alice": 1234, "bob": 5678}
-        (tmp_path / ".fetch_metadata.json").write_text(json.dumps(meta))
+        (tmp_path / ".fetch_metadata.json").write_text(
+            json.dumps(meta), encoding="utf-8"
+        )
         result = load_fetch_metadata(tmp_path)
         assert result == meta
 
@@ -196,5 +198,5 @@ class TestLoadFetchMetadata:
         assert load_fetch_metadata(tmp_path) is None
 
     def test_invalid_json(self, tmp_path):
-        (tmp_path / ".fetch_metadata.json").write_text("not json")
+        (tmp_path / ".fetch_metadata.json").write_text("not json", encoding="utf-8")
         assert load_fetch_metadata(tmp_path) is None

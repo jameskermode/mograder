@@ -44,7 +44,7 @@ def _make_moodle_csv(path: Path, rows: list[dict]) -> Path:
 
 def _make_grades_csv(path: Path, rows: list[dict]) -> Path:
     """Write a mograder grades CSV."""
-    with open(path, "w", newline="") as f:
+    with open(path, "w", encoding="utf-8", newline="") as f:
         writer = csv.DictWriter(f, fieldnames=["student", "mark", "feedback"])
         writer.writeheader()
         writer.writerows(rows)
@@ -183,7 +183,7 @@ def test_write_moodle_csv_preserves_columns(tmp_path):
     out = tmp_path / "out.csv"
     write_moodle_csv(rows, MOODLE_FIELDS, out)
 
-    with open(out, newline="") as f:
+    with open(out, encoding="utf-8", newline="") as f:
         reader = csv.DictReader(f)
         assert list(reader.fieldnames) == MOODLE_FIELDS
         result_rows = list(reader)
@@ -197,7 +197,9 @@ def test_write_moodle_csv_preserves_columns(tmp_path):
 def test_build_feedback_zip(tmp_path):
     feedback_dir = tmp_path / "feedback"
     feedback_dir.mkdir()
-    (feedback_dir / "u1234567.html").write_text("<html>feedback</html>")
+    (feedback_dir / "u1234567.html").write_text(
+        "<html>feedback</html>", encoding="utf-8"
+    )
 
     moodle_rows = [
         _moodle_row(
@@ -219,7 +221,7 @@ def test_build_feedback_zip(tmp_path):
 def test_build_feedback_zip_skips_unmatched(tmp_path):
     feedback_dir = tmp_path / "feedback"
     feedback_dir.mkdir()
-    (feedback_dir / "u9999999.html").write_text("<html>orphan</html>")
+    (feedback_dir / "u9999999.html").write_text("<html>orphan</html>", encoding="utf-8")
 
     moodle_rows = [_moodle_row(username="u1234567")]
     zip_path = tmp_path / "feedback.zip"
@@ -233,7 +235,9 @@ def test_build_feedback_zip_skips_unmatched(tmp_path):
 def test_build_feedback_zip_custom_match_column(tmp_path):
     feedback_dir = tmp_path / "feedback"
     feedback_dir.mkdir()
-    (feedback_dir / "1234567.html").write_text("<html>feedback</html>")
+    (feedback_dir / "1234567.html").write_text(
+        "<html>feedback</html>", encoding="utf-8"
+    )
 
     moodle_rows = [
         _moodle_row(
@@ -258,7 +262,9 @@ def test_build_feedback_zip_custom_name_column(tmp_path):
     """name_column overrides which column is used for the folder name."""
     feedback_dir = tmp_path / "feedback"
     feedback_dir.mkdir()
-    (feedback_dir / "u1234567.html").write_text("<html>feedback</html>")
+    (feedback_dir / "u1234567.html").write_text(
+        "<html>feedback</html>", encoding="utf-8"
+    )
 
     moodle_rows = [
         {
@@ -324,8 +330,8 @@ def test_moodle_cli_full_roundtrip(tmp_path):
     )
     feedback_dir = tmp_path / "feedback"
     feedback_dir.mkdir()
-    (feedback_dir / "u1234567.html").write_text("<html>alice</html>")
-    (feedback_dir / "u7654321.html").write_text("<html>bob</html>")
+    (feedback_dir / "u1234567.html").write_text("<html>alice</html>", encoding="utf-8")
+    (feedback_dir / "u7654321.html").write_text("<html>bob</html>", encoding="utf-8")
 
     out_dir = tmp_path / "export"
     runner = CliRunner()
@@ -426,8 +432,8 @@ def test_extract_submissions_basic(tmp_path):
     assert result.extracted == 2
     assert result.skipped == 0
     assert not result.warnings
-    assert (out / "u1234567.py").read_text() == "print('alice')"
-    assert (out / "u7654321.py").read_text() == "print('bob')"
+    assert (out / "u1234567.py").read_text(encoding="utf-8") == "print('alice')"
+    assert (out / "u7654321.py").read_text(encoding="utf-8") == "print('bob')"
 
 
 def test_extract_submissions_multiple_py_skipped(tmp_path):
@@ -483,7 +489,7 @@ def test_extract_submissions_ignores_non_py(tmp_path):
     out = tmp_path / "submitted"
     result = extract_submissions(zip_path, csv_path, out)
     assert result.extracted == 1
-    assert (out / "u1234567.py").read_text() == "code"
+    assert (out / "u1234567.py").read_text(encoding="utf-8") == "code"
 
 
 def test_moodle_cli_bad_match_column(tmp_path):

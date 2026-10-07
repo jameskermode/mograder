@@ -199,7 +199,7 @@ def test_process_file_writes_output(tmp_path, fixtures_dir):
     assert process_file(source, out_dir) is True
     dest = out_dir / source.name
     assert dest.exists()
-    content = dest.read_text()
+    content = dest.read_text(encoding="utf-8")
     assert "# YOUR CODE HERE" in content
     assert SOLUTION_BEGIN not in content
 
@@ -222,7 +222,7 @@ def test_process_file_validate_only(fixtures_dir, capsys):
 
 def test_process_file_no_markers(tmp_path, capsys):
     source = tmp_path / "plain.py"
-    source.write_text("x = 1\n")
+    source.write_text("x = 1\n", encoding="utf-8")
     assert process_file(source, tmp_path) is True
     captured = capsys.readouterr()
     assert "SKIP" in captured.out
@@ -230,7 +230,7 @@ def test_process_file_no_markers(tmp_path, capsys):
 
 def test_process_file_invalid_markers(tmp_path):
     source = tmp_path / "bad.py"
-    source.write_text(f"    {SOLUTION_BEGIN}\n")  # unclosed
+    source.write_text(f"    {SOLUTION_BEGIN}\n", encoding="utf-8")  # unclosed
     assert process_file(source, tmp_path) is False
 
 
@@ -254,12 +254,12 @@ def test_process_file_converts_markdown_cells(tmp_path):
         'if __name__ == "__main__":\n',
         "    app.run()\n",
     ]
-    source.write_text("".join(lines))
+    source.write_text("".join(lines), encoding="utf-8")
     out_dir = tmp_path / "release"
     assert process_file(source, out_dir) is True
 
     dest = out_dir / source.name
-    content = dest.read_text()
+    content = dest.read_text(encoding="utf-8")
     # Solution stripped and markdown cell converted
     assert "# YOUR CODE HERE" not in content
     assert 'mo.md(r"""' in content
@@ -282,7 +282,7 @@ def test_process_file_with_submit_url(tmp_path, fixtures_dir):
     source = fixtures_dir / "staff_notebook.py"
     out_dir = tmp_path / "release"
     assert process_file(source, out_dir, submit_url="https://example.com") is True
-    content = (out_dir / source.name).read_text()
+    content = (out_dir / source.name).read_text(encoding="utf-8")
     assert SUBMIT_MARKER in content
     assert "https://example.com" in content
     # Submit cell should appear before if __name__
@@ -296,7 +296,7 @@ def test_process_file_without_submit_url(tmp_path, fixtures_dir):
     source = fixtures_dir / "staff_notebook.py"
     out_dir = tmp_path / "release"
     assert process_file(source, out_dir) is True
-    content = (out_dir / source.name).read_text()
+    content = (out_dir / source.name).read_text(encoding="utf-8")
     assert SUBMIT_MARKER not in content
 
 
@@ -612,7 +612,7 @@ def test_process_file_injects_metadata(tmp_path, fixtures_dir):
     source = fixtures_dir / "staff_notebook.py"
     out_dir = tmp_path / "release"
     process_file(source, out_dir)
-    content = (out_dir / source.name).read_text()
+    content = (out_dir / source.name).read_text(encoding="utf-8")
     assert "mograder-assignment" in content
     assert "mograder-cell-hashes" in content
 
@@ -638,10 +638,10 @@ def test_build_release_zip(tmp_path):
     """Zip contains student files, excludes .html, .hidden, and .zip."""
     release = tmp_path / "hw1"
     release.mkdir()
-    (release / "hw1.py").write_text("# code")
-    (release / "data.csv").write_text("a,b\n1,2\n")
-    (release / "report.html").write_text("<html>")
-    (release / ".hidden").write_text("secret")
+    (release / "hw1.py").write_text("# code", encoding="utf-8")
+    (release / "data.csv").write_text("a,b\n1,2\n", encoding="utf-8")
+    (release / "report.html").write_text("<html>", encoding="utf-8")
+    (release / ".hidden").write_text("secret", encoding="utf-8")
 
     zip_path = build_release_zip(release)
     assert zip_path == release / "hw1.zip"
@@ -655,7 +655,7 @@ def test_build_release_zip_skips_single_file(tmp_path):
     """Single-file release (just the .py) returns None — no zip needed."""
     release = tmp_path / "hw1"
     release.mkdir()
-    (release / "hw1.py").write_text("# code")
+    (release / "hw1.py").write_text("# code", encoding="utf-8")
 
     zip_path = build_release_zip(release)
     assert zip_path is None
@@ -666,9 +666,9 @@ def test_build_release_zip_removes_stale_zip(tmp_path):
     """Stale zip from a previous run is removed when no longer needed."""
     release = tmp_path / "hw1"
     release.mkdir()
-    (release / "hw1.py").write_text("# code")
+    (release / "hw1.py").write_text("# code", encoding="utf-8")
     stale = release / "hw1.zip"
-    stale.write_text("old zip")
+    stale.write_text("old zip", encoding="utf-8")
 
     zip_path = build_release_zip(release)
     assert zip_path is None
@@ -679,10 +679,10 @@ def test_build_release_zip_skips_dirs(tmp_path):
     """Zip excludes subdirectories like __marimo__/."""
     release = tmp_path / "hw1"
     release.mkdir()
-    (release / "hw1.py").write_text("# code")
-    (release / "data.csv").write_text("a,b\n1,2\n")
+    (release / "hw1.py").write_text("# code", encoding="utf-8")
+    (release / "data.csv").write_text("a,b\n1,2\n", encoding="utf-8")
     (release / "__marimo__").mkdir()
-    (release / "__marimo__" / "session.json").write_text("{}")
+    (release / "__marimo__" / "session.json").write_text("{}", encoding="utf-8")
 
     zip_path = build_release_zip(release)
     with zipfile.ZipFile(zip_path) as zf:

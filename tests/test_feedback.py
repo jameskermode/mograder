@@ -40,12 +40,12 @@ def _make_graded_notebook(mark, feedback_text):
 
 def test_export_feedback_html(tmp_path):
     nb = tmp_path / "student.py"
-    nb.write_text("# notebook")
+    nb.write_text("# notebook", encoding="utf-8")
     out_dir = tmp_path / "feedback"
 
     def mock_run(cmd, **kwargs):
         dest = Path(cmd[cmd.index("-o") + 1])
-        dest.write_text("<html>exported</html>")
+        dest.write_text("<html>exported</html>", encoding="utf-8")
         result = MagicMock()
         result.returncode = 0
         result.stderr = ""
@@ -60,7 +60,7 @@ def test_export_feedback_html(tmp_path):
 
 def test_export_feedback_html_failure(tmp_path):
     nb = tmp_path / "bad.py"
-    nb.write_text("# bad")
+    nb.write_text("# bad", encoding="utf-8")
     out_dir = tmp_path / "feedback"
 
     def mock_run(cmd, **kwargs):
@@ -79,9 +79,9 @@ def test_export_feedback_html_failure(tmp_path):
 def test_collect_grades(tmp_path):
     # Create two graded notebooks
     nb1 = tmp_path / "alice.py"
-    nb1.write_text(_make_graded_notebook(72, "Excellent work"))
+    nb1.write_text(_make_graded_notebook(72, "Excellent work"), encoding="utf-8")
     nb2 = tmp_path / "bob.py"
-    nb2.write_text(_make_graded_notebook(None, ""))
+    nb2.write_text(_make_graded_notebook(None, ""), encoding="utf-8")
 
     grades = collect_grades([nb1, nb2])
     assert len(grades) == 2
@@ -100,7 +100,7 @@ def test_write_grades_csv(tmp_path):
     csv_path = tmp_path / "grades.csv"
     write_grades_csv(grades, csv_path)
 
-    with open(csv_path) as f:
+    with open(csv_path, encoding="utf-8") as f:
         reader = csv.DictReader(f)
         rows = list(reader)
 
@@ -141,7 +141,9 @@ def _make_graded_notebook_with_marks(manual_mark, feedback_text):
 
 def test_collect_grades_with_auto_marks(tmp_path):
     nb = tmp_path / "alice.py"
-    nb.write_text(_make_graded_notebook_with_marks(70, "Good analysis"))
+    nb.write_text(
+        _make_graded_notebook_with_marks(70, "Good analysis"), encoding="utf-8"
+    )
     grades = collect_grades([nb])
     assert len(grades) == 1
     assert grades[0]["auto_mark"] == 10  # Q1 passed
@@ -150,7 +152,7 @@ def test_collect_grades_with_auto_marks(tmp_path):
 
 def test_collect_grades_auto_marks_none_without_marks(tmp_path):
     nb = tmp_path / "alice.py"
-    nb.write_text(_make_graded_notebook(72, "Good"))
+    nb.write_text(_make_graded_notebook(72, "Good"), encoding="utf-8")
     grades = collect_grades([nb])
     assert grades[0]["auto_mark"] is None
     assert grades[0]["mark"] == 72
@@ -164,7 +166,7 @@ def test_write_grades_csv_with_auto_mark(tmp_path):
     csv_path = tmp_path / "grades.csv"
     write_grades_csv(grades, csv_path)
 
-    with open(csv_path) as f:
+    with open(csv_path, encoding="utf-8") as f:
         reader = csv.DictReader(f)
         rows = list(reader)
 
@@ -195,7 +197,7 @@ def test_collect_grades_fractional_auto(tmp_path):
     text = text.replace("_mark = None", "_mark = 70")
     text = text.replace('_feedback = ""', '_feedback = "Good"')
     nb = tmp_path / "alice.py"
-    nb.write_text(text)
+    nb.write_text(text, encoding="utf-8")
     grades = collect_grades([nb])
     assert len(grades) == 1
     assert grades[0]["auto_mark"] == 6.0  # round(10*3/5, 1)
@@ -209,7 +211,7 @@ def test_write_grades_csv_omits_auto_mark_when_none(tmp_path):
     csv_path = tmp_path / "grades.csv"
     write_grades_csv(grades, csv_path)
 
-    with open(csv_path) as f:
+    with open(csv_path, encoding="utf-8") as f:
         reader = csv.DictReader(f)
         rows = list(reader)
 
@@ -269,7 +271,7 @@ def test_inject_feedback_html_holistic(tmp_path):
 
     inject_feedback_html(html_src, dest, mark=72, feedback_text="Good work")
 
-    result = dest.read_text()
+    result = dest.read_text(encoding="utf-8")
     assert "marimo-callout-output" in result
     assert "72/100" in result
     assert "Good work" in result
@@ -297,7 +299,7 @@ def test_inject_feedback_html_with_marks(tmp_path):
         total_available=100,
     )
 
-    result = dest.read_text()
+    result = dest.read_text(encoding="utf-8")
     assert "90/100" in result
     assert "auto: 40" in result
     assert "manual: 50" in result
@@ -308,11 +310,11 @@ def test_export_uses_injection_when_html_exists(tmp_path):
     """When autograde HTML exists, export uses injection (no subprocess)."""
     # Create graded .py notebook
     nb = tmp_path / "student.py"
-    nb.write_text(_make_graded_notebook(72, "Good work"))
+    nb.write_text(_make_graded_notebook(72, "Good work"), encoding="utf-8")
 
     # Create matching autograde .html
     html_file = tmp_path / "student.html"
-    html_file.write_text(_make_marimo_html())
+    html_file.write_text(_make_marimo_html(), encoding="utf-8")
 
     out_dir = tmp_path / "feedback"
 
@@ -322,7 +324,7 @@ def test_export_uses_injection_when_html_exists(tmp_path):
 
     assert html_path.exists()
     assert html_path.name == "student.html"
-    content = html_path.read_text()
+    content = html_path.read_text(encoding="utf-8")
     assert "72/100" in content
     assert "Good work" in content
 
@@ -330,13 +332,13 @@ def test_export_uses_injection_when_html_exists(tmp_path):
 def test_export_falls_back_when_no_html(tmp_path):
     """When no autograde HTML exists, falls back to marimo export."""
     nb = tmp_path / "student.py"
-    nb.write_text("# notebook")
+    nb.write_text("# notebook", encoding="utf-8")
     out_dir = tmp_path / "feedback"
 
     def mock_run(cmd, **kwargs):
         dest = Path(cmd[cmd.index("-o") + 1])
         dest.parent.mkdir(parents=True, exist_ok=True)
-        dest.write_text("<html>exported</html>")
+        dest.write_text("<html>exported</html>", encoding="utf-8")
         result = MagicMock()
         result.returncode = 0
         result.stderr = ""
@@ -374,7 +376,7 @@ def test_scores_cell_removed_with_trailing_comment(tmp_path):
 
     inject_feedback_html(html_src, dest, mark=80, feedback_text="Good")
 
-    result = dest.read_text()
+    result = dest.read_text(encoding="utf-8")
     prefix = "window.__MARIMO_MOUNT_CONFIG__ = "
     start = result.index(prefix) + len(prefix)
     config, _ = json.JSONDecoder().raw_decode(result, start)
@@ -388,16 +390,16 @@ def test_scores_cell_removed_with_trailing_comment(tmp_path):
 def test_export_copies_html_when_ungraded(tmp_path):
     """When mark is None (ungraded), HTML is copied without injection."""
     nb = tmp_path / "student.py"
-    nb.write_text(_make_graded_notebook(None, ""))
+    nb.write_text(_make_graded_notebook(None, ""), encoding="utf-8")
 
     original_html = _make_marimo_html()
     html_file = tmp_path / "student.html"
-    html_file.write_text(original_html)
+    html_file.write_text(original_html, encoding="utf-8")
 
     out_dir = tmp_path / "feedback"
     html_path = export_feedback_html(nb, out_dir)
 
     assert html_path.exists()
     # Should be a copy — no injection, so no "mgFB" cell
-    content = html_path.read_text()
+    content = html_path.read_text(encoding="utf-8")
     assert "mgFB" not in content

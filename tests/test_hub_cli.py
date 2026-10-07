@@ -13,7 +13,7 @@ from mograder.cli import cli
 
 def test_hub_check_reports_status(tmp_path):
     """mograder hub check exits with status output."""
-    (tmp_path / "mograder.toml").write_text("")
+    (tmp_path / "mograder.toml").write_text("", encoding="utf-8")
     runner = CliRunner()
     result = runner.invoke(cli, ["hub", "check", str(tmp_path)])
     assert result.exit_code == 0
@@ -46,7 +46,7 @@ def test_hub_generate_token_instructor():
 
 def test_hub_start_requires_secret(tmp_path):
     """mograder hub without secret fails (unless --dev)."""
-    (tmp_path / "mograder.toml").write_text("")
+    (tmp_path / "mograder.toml").write_text("", encoding="utf-8")
     runner = CliRunner()
     env = {k: v for k, v in os.environ.items() if k != "MOGRADER_HUB_SECRET"}
     result = runner.invoke(
@@ -61,7 +61,8 @@ def test_hub_warm_cache_dry_run(tmp_path):
     """mograder hub warm-cache --dry-run shows deps but doesn't invoke uv."""
     nb_file = tmp_path / "test.py"
     nb_file.write_text(
-        '# /// script\n# dependencies = ["numpy"]\n# ///\nimport numpy\n'
+        '# /// script\n# dependencies = ["numpy"]\n# ///\nimport numpy\n',
+        encoding="utf-8",
     )
     runner = CliRunner()
     result = runner.invoke(
@@ -101,9 +102,9 @@ def _setup_publish_dir(tmp_path):
     release_dir = tmp_path / "release"
     assignment_dir = release_dir / "hw1"
     assignment_dir.mkdir(parents=True)
-    (assignment_dir / "hw1.py").write_text("# code\n")
-    (assignment_dir / "data.csv").write_text("a,b\n1,2\n")
-    (tmp_path / "mograder.toml").write_text("")
+    (assignment_dir / "hw1.py").write_text("# code\n", encoding="utf-8")
+    (assignment_dir / "data.csv").write_text("a,b\n1,2\n", encoding="utf-8")
+    (tmp_path / "mograder.toml").write_text("", encoding="utf-8")
     return assignment_dir
 
 
@@ -176,7 +177,7 @@ def test_hub_publish_moodle_mismatch(tmp_path, monkeypatch):
     mock_transport.list_assignments.return_value = [mock_assignment]
 
     def mock_download(url, dest):
-        dest.write_text("# DIFFERENT code\n")
+        dest.write_text("# DIFFERENT code\n", encoding="utf-8")
         return dest
 
     mock_transport.download_file.side_effect = mock_download
@@ -256,7 +257,7 @@ def _publish_against_moodle_zip(tmp_path, monkeypatch, zip_members):
     (assignment_dir / "hw1.py").write_bytes(b"# code\n")
     (assignment_dir / "data.csv").write_bytes(b"a,b\n1,2\n")
     # generate also leaves a preview and the release zip next to the files
-    (assignment_dir / "hw1.html").write_text("<html></html>")
+    (assignment_dir / "hw1.html").write_text("<html></html>", encoding="utf-8")
     with zipfile.ZipFile(assignment_dir / "hw1.zip", "w") as zf:
         zf.writestr("hw1.py", "# code\n")
         zf.writestr("data.csv", "a,b\n1,2\n")
@@ -320,10 +321,12 @@ def test_moodle_upload_attaches_release_zip(tmp_path, monkeypatch):
     import zipfile
 
     assignment_dir = _setup_publish_dir(tmp_path)
-    (assignment_dir / "hw1.html").write_text("<html></html>")
+    (assignment_dir / "hw1.html").write_text("<html></html>", encoding="utf-8")
     with zipfile.ZipFile(assignment_dir / "hw1.zip", "w") as zf:
         zf.writestr("hw1.py", "# code\n")
-    (tmp_path / "mograder.toml").write_text("[moodle]\ncourse_id = 1\n")
+    (tmp_path / "mograder.toml").write_text(
+        "[moodle]\ncourse_id = 1\n", encoding="utf-8"
+    )
     monkeypatch.chdir(tmp_path)
     match = {"name": "hw1", "cmid": 42}
     with (
@@ -344,8 +347,10 @@ def test_moodle_upload_single_notebook(tmp_path, monkeypatch):
     """With no data files, the notebook itself is the attachment."""
     release = tmp_path / "release" / "hw2"
     release.mkdir(parents=True)
-    (release / "hw2.py").write_text("# code\n")
-    (tmp_path / "mograder.toml").write_text("[moodle]\ncourse_id = 1\n")
+    (release / "hw2.py").write_text("# code\n", encoding="utf-8")
+    (tmp_path / "mograder.toml").write_text(
+        "[moodle]\ncourse_id = 1\n", encoding="utf-8"
+    )
     monkeypatch.chdir(tmp_path)
     with (
         patch(

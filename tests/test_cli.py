@@ -20,7 +20,7 @@ from mograder.core.models import CheckResult, NotebookResult
 @patch("mograder.grading.cells.process_file")
 def test_generate_calls_process_file(mock_pf, tmp_path):
     nb = tmp_path / "staff.py"
-    nb.write_text("# notebook")
+    nb.write_text("# notebook", encoding="utf-8")
     mock_pf.return_value = True
 
     runner = CliRunner()
@@ -32,7 +32,7 @@ def test_generate_calls_process_file(mock_pf, tmp_path):
 @patch("mograder.grading.cells.process_file")
 def test_generate_dry_run(mock_pf, tmp_path):
     nb = tmp_path / "staff.py"
-    nb.write_text("# notebook")
+    nb.write_text("# notebook", encoding="utf-8")
     mock_pf.return_value = True
 
     runner = CliRunner()
@@ -45,7 +45,7 @@ def test_generate_dry_run(mock_pf, tmp_path):
 @patch("mograder.grading.cells.process_file")
 def test_generate_validate(mock_pf, tmp_path):
     nb = tmp_path / "staff.py"
-    nb.write_text("# notebook")
+    nb.write_text("# notebook", encoding="utf-8")
     mock_pf.return_value = True
 
     runner = CliRunner()
@@ -58,7 +58,7 @@ def test_generate_validate(mock_pf, tmp_path):
 @patch("mograder.grading.cells.process_file")
 def test_generate_failure_exits_nonzero(mock_pf, tmp_path):
     nb = tmp_path / "bad.py"
-    nb.write_text("# bad")
+    nb.write_text("# bad", encoding="utf-8")
     mock_pf.return_value = False
 
     runner = CliRunner()
@@ -73,7 +73,7 @@ def test_generate_creates_zip(mock_pf, mock_zip, tmp_path):
     src_dir = tmp_path / "source" / "hw1"
     src_dir.mkdir(parents=True)
     nb = src_dir / "hw1.py"
-    nb.write_text("# notebook")
+    nb.write_text("# notebook", encoding="utf-8")
 
     out = tmp_path / "release"
     rel_dir = out / "hw1"
@@ -93,7 +93,7 @@ def test_generate_creates_zip(mock_pf, mock_zip, tmp_path):
 def test_generate_dry_run_no_zip(mock_pf, mock_zip, tmp_path):
     """--dry-run should NOT call build_release_zip."""
     nb = tmp_path / "staff.py"
-    nb.write_text("# notebook")
+    nb.write_text("# notebook", encoding="utf-8")
     mock_pf.return_value = True
 
     runner = CliRunner()
@@ -107,7 +107,7 @@ def test_generate_dry_run_no_zip(mock_pf, mock_zip, tmp_path):
 def test_generate_validate_no_zip(mock_pf, mock_zip, tmp_path):
     """--validate should NOT call build_release_zip."""
     nb = tmp_path / "staff.py"
-    nb.write_text("# notebook")
+    nb.write_text("# notebook", encoding="utf-8")
     mock_pf.return_value = True
 
     runner = CliRunner()
@@ -121,7 +121,8 @@ def test_generate_validate_no_zip(mock_pf, mock_zip, tmp_path):
 def test_autograde_runs_and_injects(mock_batch, mock_inject, tmp_path):
     nb = tmp_path / "student.py"
     nb.write_text(
-        "import marimo\napp = marimo.App()\n\nif __name__ == '__main__':\n    app.run()\n"
+        "import marimo\napp = marimo.App()\n\nif __name__ == '__main__':\n    app.run()\n",
+        encoding="utf-8",
     )
 
     mock_batch.return_value = [
@@ -131,7 +132,7 @@ def test_autograde_runs_and_injects(mock_batch, mock_inject, tmp_path):
             cell_errors=0,
         )
     ]
-    mock_inject.return_value = nb.read_text().splitlines(keepends=True)
+    mock_inject.return_value = nb.read_text(encoding="utf-8").splitlines(keepends=True)
 
     out_dir = tmp_path / "grading"
     runner = CliRunner()
@@ -149,9 +150,10 @@ def test_autograde_jobs_default_from_config(
     """Without ``-j``, autograde uses ``[defaults] jobs`` from mograder.toml."""
     nb = tmp_path / "student.py"
     nb.write_text(
-        "import marimo\napp = marimo.App()\n\nif __name__ == '__main__':\n    app.run()\n"
+        "import marimo\napp = marimo.App()\n\nif __name__ == '__main__':\n    app.run()\n",
+        encoding="utf-8",
     )
-    (tmp_path / "mograder.toml").write_text("[defaults]\njobs = 1\n")
+    (tmp_path / "mograder.toml").write_text("[defaults]\njobs = 1\n", encoding="utf-8")
     mock_batch.return_value = [
         NotebookResult(
             path=nb,
@@ -159,7 +161,7 @@ def test_autograde_jobs_default_from_config(
             cell_errors=0,
         )
     ]
-    mock_inject.return_value = nb.read_text().splitlines(keepends=True)
+    mock_inject.return_value = nb.read_text(encoding="utf-8").splitlines(keepends=True)
     monkeypatch.chdir(tmp_path)
 
     out_dir = tmp_path / "grading"
@@ -178,9 +180,10 @@ def test_autograde_jobs_flag_overrides_config(
     """``-j`` on the command line wins over ``[defaults] jobs`` in config."""
     nb = tmp_path / "student.py"
     nb.write_text(
-        "import marimo\napp = marimo.App()\n\nif __name__ == '__main__':\n    app.run()\n"
+        "import marimo\napp = marimo.App()\n\nif __name__ == '__main__':\n    app.run()\n",
+        encoding="utf-8",
     )
-    (tmp_path / "mograder.toml").write_text("[defaults]\njobs = 1\n")
+    (tmp_path / "mograder.toml").write_text("[defaults]\njobs = 1\n", encoding="utf-8")
     mock_batch.return_value = [
         NotebookResult(
             path=nb,
@@ -188,7 +191,7 @@ def test_autograde_jobs_flag_overrides_config(
             cell_errors=0,
         )
     ]
-    mock_inject.return_value = nb.read_text().splitlines(keepends=True)
+    mock_inject.return_value = nb.read_text(encoding="utf-8").splitlines(keepends=True)
     monkeypatch.chdir(tmp_path)
 
     out_dir = tmp_path / "grading"
@@ -205,7 +208,8 @@ def test_autograde_max_memory_flag(mock_batch, mock_inject, tmp_path):
     """--max-memory converts MB to bytes and passes to run_batch as rlimit_as."""
     nb = tmp_path / "student.py"
     nb.write_text(
-        "import marimo\napp = marimo.App()\n\nif __name__ == '__main__':\n    app.run()\n"
+        "import marimo\napp = marimo.App()\n\nif __name__ == '__main__':\n    app.run()\n",
+        encoding="utf-8",
     )
     mock_batch.return_value = [
         NotebookResult(
@@ -214,7 +218,7 @@ def test_autograde_max_memory_flag(mock_batch, mock_inject, tmp_path):
             cell_errors=0,
         )
     ]
-    mock_inject.return_value = nb.read_text().splitlines(keepends=True)
+    mock_inject.return_value = nb.read_text(encoding="utf-8").splitlines(keepends=True)
 
     out_dir = tmp_path / "grading"
     runner = CliRunner()
@@ -231,7 +235,7 @@ def test_autograde_max_memory_flag(mock_batch, mock_inject, tmp_path):
 @patch("mograder.grading.feedback.collect_grades")
 def test_feedback_collects_and_exports(mock_grades, mock_export, tmp_path):
     nb = tmp_path / "graded.py"
-    nb.write_text("# graded notebook")
+    nb.write_text("# graded notebook", encoding="utf-8")
 
     mock_grades.return_value = [{"student": "graded", "mark": 72, "feedback": "Good"}]
     mock_export.return_value = tmp_path / "feedback" / "graded.html"
@@ -248,7 +252,7 @@ def test_feedback_collects_and_exports(mock_grades, mock_export, tmp_path):
 @patch("mograder.grading.feedback.collect_grades")
 def test_feedback_writes_grades_csv(mock_grades, mock_export, mock_csv, tmp_path):
     nb = tmp_path / "graded.py"
-    nb.write_text("# graded")
+    nb.write_text("# graded", encoding="utf-8")
 
     mock_grades.return_value = [{"student": "graded", "mark": 72, "feedback": "Good"}]
     mock_export.return_value = tmp_path / "graded.html"
@@ -296,7 +300,7 @@ def test_find_source_convention(tmp_path):
     sub = tmp_path / "submitted" / "hw1" / "nb.py"
     src = tmp_path / "source" / "hw1" / "nb.py"
     sub.touch()
-    src.write_text("# source")
+    src.write_text("# source", encoding="utf-8")
     found = _find_source(sub)
     assert found == src
 
@@ -350,11 +354,13 @@ def test_autograde_with_source(
     """autograde --source runs the source notebook and uses integrity check."""
     nb = tmp_path / "student.py"
     nb.write_text(
-        "import marimo\napp = marimo.App()\n\nif __name__ == '__main__':\n    app.run()\n"
+        "import marimo\napp = marimo.App()\n\nif __name__ == '__main__':\n    app.run()\n",
+        encoding="utf-8",
     )
     source = tmp_path / "source.py"
     source.write_text(
-        "import marimo\napp = marimo.App()\n\nif __name__ == '__main__':\n    app.run()\n"
+        "import marimo\napp = marimo.App()\n\nif __name__ == '__main__':\n    app.run()\n",
+        encoding="utf-8",
     )
 
     mock_run_nb.return_value = NotebookResult(
@@ -369,7 +375,7 @@ def test_autograde_with_source(
             cell_errors=0,
         )
     ]
-    mock_inject.return_value = nb.read_text().splitlines(keepends=True)
+    mock_inject.return_value = nb.read_text(encoding="utf-8").splitlines(keepends=True)
 
     out_dir = tmp_path / "grading"
     runner = CliRunner()
@@ -385,9 +391,9 @@ def _make_autograded_pair(out_dir, name, content="autograded\n"):
     """Create a stub <name>.py + <name>.html in *out_dir* and return the .py path."""
     out_dir.mkdir(parents=True, exist_ok=True)
     py = out_dir / name
-    py.write_text(content)
+    py.write_text(content, encoding="utf-8")
     html = py.with_suffix(".html")
-    html.write_text("<html></html>")
+    html.write_text("<html></html>", encoding="utf-8")
     return py
 
 
@@ -404,17 +410,19 @@ def test_autograde_skips_when_source_hash_matches(
 
     nb = tmp_path / "student.py"
     nb.write_text(
-        "import marimo\napp = marimo.App()\n\nif __name__ == '__main__':\n    app.run()\n"
+        "import marimo\napp = marimo.App()\n\nif __name__ == '__main__':\n    app.run()\n",
+        encoding="utf-8",
     )
     source = tmp_path / "source.py"
     source.write_text(
-        "import marimo\napp = marimo.App()\n\nif __name__ == '__main__':\n    app.run()\n"
+        "import marimo\napp = marimo.App()\n\nif __name__ == '__main__':\n    app.run()\n",
+        encoding="utf-8",
     )
     out_dir = tmp_path / "grading"
     auto_py = _make_autograded_pair(out_dir, "student.py")
     # Sidecar matches current source; submission older than autograded.
     (out_dir / ".mograder_source_hash").write_text(
-        hashlib.sha256(source.read_bytes()).hexdigest() + "\n"
+        hashlib.sha256(source.read_bytes()).hexdigest() + "\n", encoding="utf-8"
     )
     # Bump source mtime to be newer than autograded — content unchanged.
     later = auto_py.stat().st_mtime + 60
@@ -442,16 +450,18 @@ def test_autograde_regrades_when_source_hash_differs(
     """Editing the source content (different hash) must trigger re-grading."""
     nb = tmp_path / "student.py"
     nb.write_text(
-        "import marimo\napp = marimo.App()\n\nif __name__ == '__main__':\n    app.run()\n"
+        "import marimo\napp = marimo.App()\n\nif __name__ == '__main__':\n    app.run()\n",
+        encoding="utf-8",
     )
     source = tmp_path / "source.py"
     source.write_text(
-        "import marimo\napp = marimo.App()\n\nif __name__ == '__main__':\n    app.run()\n"
+        "import marimo\napp = marimo.App()\n\nif __name__ == '__main__':\n    app.run()\n",
+        encoding="utf-8",
     )
     out_dir = tmp_path / "grading"
     _make_autograded_pair(out_dir, "student.py")
     # Sidecar records a stale hash — pretend source has been edited since.
-    (out_dir / ".mograder_source_hash").write_text("0" * 64 + "\n")
+    (out_dir / ".mograder_source_hash").write_text("0" * 64 + "\n", encoding="utf-8")
 
     mock_run_nb.return_value = NotebookResult(
         path=source,
@@ -465,7 +475,7 @@ def test_autograde_regrades_when_source_hash_differs(
             cell_errors=0,
         )
     ]
-    mock_inject.return_value = nb.read_text().splitlines(keepends=True)
+    mock_inject.return_value = nb.read_text(encoding="utf-8").splitlines(keepends=True)
 
     runner = CliRunner()
     result = runner.invoke(
@@ -488,11 +498,13 @@ def test_autograde_writes_source_hash_after_run(
 
     nb = tmp_path / "student.py"
     nb.write_text(
-        "import marimo\napp = marimo.App()\n\nif __name__ == '__main__':\n    app.run()\n"
+        "import marimo\napp = marimo.App()\n\nif __name__ == '__main__':\n    app.run()\n",
+        encoding="utf-8",
     )
     source = tmp_path / "source.py"
     source.write_text(
-        "import marimo\napp = marimo.App()\n\nif __name__ == '__main__':\n    app.run()\n"
+        "import marimo\napp = marimo.App()\n\nif __name__ == '__main__':\n    app.run()\n",
+        encoding="utf-8",
     )
 
     mock_run_nb.return_value = NotebookResult(
@@ -507,7 +519,7 @@ def test_autograde_writes_source_hash_after_run(
             cell_errors=0,
         )
     ]
-    mock_inject.return_value = nb.read_text().splitlines(keepends=True)
+    mock_inject.return_value = nb.read_text(encoding="utf-8").splitlines(keepends=True)
 
     out_dir = tmp_path / "grading"
     runner = CliRunner()
@@ -518,7 +530,8 @@ def test_autograde_writes_source_hash_after_run(
     sidecar = out_dir / ".mograder_source_hash"
     assert sidecar.is_file()
     assert (
-        sidecar.read_text().strip() == hashlib.sha256(source.read_bytes()).hexdigest()
+        sidecar.read_text(encoding="utf-8").strip()
+        == hashlib.sha256(source.read_bytes()).hexdigest()
     )
 
 
@@ -528,7 +541,8 @@ def test_autograde_progress_flag(mock_batch, mock_inject, tmp_path):
     """--progress emits JSON start + progress events to stderr."""
     nb = tmp_path / "student.py"
     nb.write_text(
-        "import marimo\napp = marimo.App()\n\nif __name__ == '__main__':\n    app.run()\n"
+        "import marimo\napp = marimo.App()\n\nif __name__ == '__main__':\n    app.run()\n",
+        encoding="utf-8",
     )
 
     mock_batch.return_value = [
@@ -538,7 +552,7 @@ def test_autograde_progress_flag(mock_batch, mock_inject, tmp_path):
             cell_errors=0,
         )
     ]
-    mock_inject.return_value = nb.read_text().splitlines(keepends=True)
+    mock_inject.return_value = nb.read_text(encoding="utf-8").splitlines(keepends=True)
 
     out_dir = tmp_path / "grading"
     runner = CliRunner()
@@ -577,11 +591,13 @@ def test_autograde_creates_shared_sandbox(
     """autograde creates a shared sandbox from source and cleans it up."""
     nb = tmp_path / "student.py"
     nb.write_text(
-        "import marimo\napp = marimo.App()\n\nif __name__ == '__main__':\n    app.run()\n"
+        "import marimo\napp = marimo.App()\n\nif __name__ == '__main__':\n    app.run()\n",
+        encoding="utf-8",
     )
     source = tmp_path / "source.py"
     source.write_text(
-        "import marimo\napp = marimo.App()\n\nif __name__ == '__main__':\n    app.run()\n"
+        "import marimo\napp = marimo.App()\n\nif __name__ == '__main__':\n    app.run()\n",
+        encoding="utf-8",
     )
 
     # Simulate create_shared_sandbox returning a persistent .venv dir
@@ -601,7 +617,7 @@ def test_autograde_creates_shared_sandbox(
             cell_errors=0,
         )
     ]
-    mock_inject.return_value = nb.read_text().splitlines(keepends=True)
+    mock_inject.return_value = nb.read_text(encoding="utf-8").splitlines(keepends=True)
 
     out_dir = tmp_path / "grading"
     cli_runner = CliRunner()
@@ -631,11 +647,13 @@ def test_autograde_progress_sandbox_events(
     """--progress emits sandbox_start and sandbox_done events when source has deps."""
     nb = tmp_path / "student.py"
     nb.write_text(
-        "import marimo\napp = marimo.App()\n\nif __name__ == '__main__':\n    app.run()\n"
+        "import marimo\napp = marimo.App()\n\nif __name__ == '__main__':\n    app.run()\n",
+        encoding="utf-8",
     )
     source = tmp_path / "source.py"
     source.write_text(
-        "import marimo\napp = marimo.App()\n\nif __name__ == '__main__':\n    app.run()\n"
+        "import marimo\napp = marimo.App()\n\nif __name__ == '__main__':\n    app.run()\n",
+        encoding="utf-8",
     )
 
     sandbox_dir = tmp_path / "sandbox"
@@ -654,7 +672,7 @@ def test_autograde_progress_sandbox_events(
             cell_errors=0,
         )
     ]
-    mock_inject.return_value = nb.read_text().splitlines(keepends=True)
+    mock_inject.return_value = nb.read_text(encoding="utf-8").splitlines(keepends=True)
 
     out_dir = tmp_path / "grading"
     cli_runner = CliRunner()
@@ -702,7 +720,8 @@ def test_autograde_progress_emits_results(mock_batch, mock_inject, tmp_path):
     """--progress emits a results event with labels and rows."""
     nb = tmp_path / "student.py"
     nb.write_text(
-        "import marimo\napp = marimo.App()\n\nif __name__ == '__main__':\n    app.run()\n"
+        "import marimo\napp = marimo.App()\n\nif __name__ == '__main__':\n    app.run()\n",
+        encoding="utf-8",
     )
 
     mock_batch.return_value = [
@@ -715,7 +734,7 @@ def test_autograde_progress_emits_results(mock_batch, mock_inject, tmp_path):
             cell_errors=1,
         )
     ]
-    mock_inject.return_value = nb.read_text().splitlines(keepends=True)
+    mock_inject.return_value = nb.read_text(encoding="utf-8").splitlines(keepends=True)
 
     out_dir = tmp_path / "grading"
     runner = CliRunner()
@@ -759,7 +778,7 @@ def test_resolve_assignments_name(tmp_path):
     """Assignment name resolves to .py files in the directory."""
     d = tmp_path / "source" / "hw1"
     d.mkdir(parents=True)
-    (d / "hw1.py").write_text("# nb")
+    (d / "hw1.py").write_text("# nb", encoding="utf-8")
     result = _resolve_assignments(("hw1",), str(tmp_path / "source"))
     assert result == (d / "hw1.py",)
 
@@ -767,7 +786,7 @@ def test_resolve_assignments_name(tmp_path):
 def test_resolve_assignments_path(tmp_path):
     """File paths pass through unchanged."""
     nb = tmp_path / "staff.py"
-    nb.write_text("# nb")
+    nb.write_text("# nb", encoding="utf-8")
     result = _resolve_assignments((str(nb),), "source")
     assert result == (nb,)
 
@@ -801,7 +820,7 @@ def test_find_source_for_assignment(tmp_path):
     d = tmp_path / "source" / "hw1"
     d.mkdir(parents=True)
     src = d / "hw1.py"
-    src.write_text("# source")
+    src.write_text("# source", encoding="utf-8")
     assert _find_source_for_assignment("hw1", str(tmp_path / "source")) == src
 
 
@@ -818,7 +837,7 @@ def test_generate_assignment_name(mock_pf, tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     d = tmp_path / "source" / "hw1"
     d.mkdir(parents=True)
-    (d / "hw1.py").write_text("# nb")
+    (d / "hw1.py").write_text("# nb", encoding="utf-8")
     mock_pf.return_value = True
 
     runner = CliRunner()
@@ -831,7 +850,7 @@ def test_generate_assignment_name(mock_pf, tmp_path, monkeypatch):
 def test_generate_backward_compat(mock_pf, tmp_path):
     """generate still works with explicit file paths."""
     nb = tmp_path / "staff.py"
-    nb.write_text("# notebook")
+    nb.write_text("# notebook", encoding="utf-8")
     mock_pf.return_value = True
 
     runner = CliRunner()
@@ -849,7 +868,7 @@ def test_generate_multiple_assignments(mock_pf, tmp_path, monkeypatch):
     for name in ("hw1", "hw2"):
         d = tmp_path / "source" / name
         d.mkdir(parents=True)
-        (d / f"{name}.py").write_text("# nb")
+        (d / f"{name}.py").write_text("# nb", encoding="utf-8")
     mock_pf.return_value = True
 
     runner = CliRunner()
@@ -887,7 +906,8 @@ def test_generate_lecture(tmp_path):
         "    return (mo,)\n"
         "\n"
         'if __name__ == "__main__":\n'
-        "    app.run()\n"
+        "    app.run()\n",
+        encoding="utf-8",
     )
 
     out = tmp_path / "release"
@@ -899,7 +919,7 @@ def test_generate_lecture(tmp_path):
     dest = out / "L01-Intro" / "L01-Intro.py"
     assert dest.is_file()
 
-    text = dest.read_text()
+    text = dest.read_text(encoding="utf-8")
     assert "layout_file" not in text
     assert "html_head_file" not in text
     assert "marimo.App()" in text
@@ -909,7 +929,7 @@ def test_generate_lecture(tmp_path):
 def test_generate_lecture_dry_run(tmp_path):
     """generate --lecture --dry-run does not write files."""
     nb = tmp_path / "L01.py"
-    nb.write_text("import marimo\napp = marimo.App()\n")
+    nb.write_text("import marimo\napp = marimo.App()\n", encoding="utf-8")
 
     out = tmp_path / "release"
     runner = CliRunner()
@@ -939,13 +959,15 @@ def test_autograde_assignment_name(mock_batch, mock_inject, tmp_path, monkeypatc
     sub_dir.mkdir(parents=True)
     nb = sub_dir / "alice.py"
     nb.write_text(
-        "import marimo\napp = marimo.App()\n\nif __name__ == '__main__':\n    app.run()\n"
+        "import marimo\napp = marimo.App()\n\nif __name__ == '__main__':\n    app.run()\n",
+        encoding="utf-8",
     )
     # Create source/hw1/hw1.py (different filename than submission)
     src_dir = tmp_path / "source" / "hw1"
     src_dir.mkdir(parents=True)
     (src_dir / "hw1.py").write_text(
-        "import marimo\napp = marimo.App()\n\nif __name__ == '__main__':\n    app.run()\n"
+        "import marimo\napp = marimo.App()\n\nif __name__ == '__main__':\n    app.run()\n",
+        encoding="utf-8",
     )
 
     mock_batch.return_value = [
@@ -955,7 +977,7 @@ def test_autograde_assignment_name(mock_batch, mock_inject, tmp_path, monkeypatc
             cell_errors=0,
         )
     ]
-    mock_inject.return_value = nb.read_text().splitlines(keepends=True)
+    mock_inject.return_value = nb.read_text(encoding="utf-8").splitlines(keepends=True)
 
     runner = CliRunner()
     result = runner.invoke(cli, ["autograde", "hw1"])
@@ -971,7 +993,7 @@ def test_feedback_assignment_name(mock_grades, mock_export, tmp_path, monkeypatc
     d = tmp_path / "autograded" / "hw1"
     d.mkdir(parents=True)
     nb = d / "alice.py"
-    nb.write_text("# graded")
+    nb.write_text("# graded", encoding="utf-8")
 
     mock_grades.return_value = [{"student": "alice", "mark": 72, "feedback": "Good"}]
     mock_export.return_value = tmp_path / "feedback" / "hw1" / "alice.html"
@@ -1027,7 +1049,7 @@ def test_validate_warns_on_modified_cells(mock_run_nb, mock_sandbox, tmp_path):
     # Modify a non-solution cell
     nb_text = nb_text.replace("x = 1", "x = 999")
     nb = tmp_path / "student.py"
-    nb.write_text(nb_text)
+    nb.write_text(nb_text, encoding="utf-8")
 
     mock_run_nb.return_value = NotebookResult(
         path=nb, checks=[CheckResult("Q1", "success")], cell_errors=0
@@ -1045,7 +1067,7 @@ def test_validate_no_warning_on_clean_notebook(mock_run_nb, mock_sandbox, tmp_pa
     """validate shows no warnings when cells are unmodified."""
     nb_text = _inject_cell_hashes(_VALIDATE_NB)
     nb = tmp_path / "student.py"
-    nb.write_text(nb_text)
+    nb.write_text(nb_text, encoding="utf-8")
 
     mock_run_nb.return_value = NotebookResult(
         path=nb, checks=[CheckResult("Q1", "success")], cell_errors=0
@@ -1062,12 +1084,12 @@ def test_validate_fix_restores_cells(mock_run_nb, mock_sandbox, tmp_path):
     """validate --fix with --release restores modified cells."""
     nb_text = _inject_cell_hashes(_VALIDATE_NB)
     release = tmp_path / "release.py"
-    release.write_text(nb_text)
+    release.write_text(nb_text, encoding="utf-8")
 
     # Modify a non-solution cell
     modified = nb_text.replace("x = 1", "x = 999")
     nb = tmp_path / "student.py"
-    nb.write_text(modified)
+    nb.write_text(modified, encoding="utf-8")
 
     mock_run_nb.return_value = NotebookResult(
         path=nb, checks=[CheckResult("Q1", "success")], cell_errors=0
@@ -1079,7 +1101,7 @@ def test_validate_fix_restores_cells(mock_run_nb, mock_sandbox, tmp_path):
     )
     assert "Fixed" in result.output
     # The file should be restored
-    restored = nb.read_text()
+    restored = nb.read_text(encoding="utf-8")
     assert "x = 1" in restored
     assert "x = 999" not in restored
 
@@ -1093,7 +1115,7 @@ def test_validate_fix_no_release_shows_instructions(
     nb_text = _inject_cell_hashes(_VALIDATE_NB)
     modified = nb_text.replace("x = 1", "x = 999")
     nb = tmp_path / "student.py"
-    nb.write_text(modified)
+    nb.write_text(modified, encoding="utf-8")
 
     mock_run_nb.return_value = NotebookResult(
         path=nb, checks=[CheckResult("Q1", "success")], cell_errors=0
@@ -1116,13 +1138,14 @@ def test_generate_lecture_strips_solutions(tmp_path):
         "    ### BEGIN SOLUTION\n"
         "    answer = 42\n"
         "    ### END SOLUTION\n"
-        "    return\n"
+        "    return\n",
+        encoding="utf-8",
     )
     out = tmp_path / "release"
     result = CliRunner().invoke(cli, ["generate", "--lecture", str(nb), "-o", str(out)])
     assert result.exit_code == 0, result.output
     assert "1 solution blocks stripped" in result.output
-    text = (out / "L00c-Intro" / "L00c-Intro.py").read_text()
+    text = (out / "L00c-Intro" / "L00c-Intro.py").read_text(encoding="utf-8")
     assert "answer = 42" not in text
     assert "BEGIN SOLUTION" not in text
     assert '# mograder-type = "lecture"' in text
@@ -1131,12 +1154,14 @@ def test_generate_lecture_strips_solutions(tmp_path):
 def test_generate_lecture_without_solutions_unchanged(tmp_path):
     """Lectures without solution markers are not stripped."""
     nb = tmp_path / "L01.py"
-    nb.write_text("import marimo\napp = marimo.App()\n# answer = 42\n")
+    nb.write_text(
+        "import marimo\napp = marimo.App()\n# answer = 42\n", encoding="utf-8"
+    )
     out = tmp_path / "release"
     result = CliRunner().invoke(cli, ["generate", "--lecture", str(nb), "-o", str(out)])
     assert result.exit_code == 0, result.output
     assert "stripped" not in result.output
-    assert "# answer = 42" in (out / "L01" / "L01.py").read_text()
+    assert "# answer = 42" in (out / "L01" / "L01.py").read_text(encoding="utf-8")
 
 
 def _source_with_preview(tmp_path, name):
@@ -1153,10 +1178,13 @@ def _source_with_preview(tmp_path, name):
         "    ### BEGIN SOLUTION\n"
         "    answer = 42\n"
         "    ### END SOLUTION\n"
-        "    return\n"
+        "    return\n",
+        encoding="utf-8",
     )
-    (src / "data.csv").write_text("x\n1\n")
-    (src / f"{name}.html").write_text("<html>answer = 42</html>")  # has solutions
+    (src / "data.csv").write_text("x\n1\n", encoding="utf-8")
+    (src / f"{name}.html").write_text(
+        "<html>answer = 42</html>", encoding="utf-8"
+    )  # has solutions
     (src / ".DS_Store").write_bytes(b"\0")
     return nb
 
@@ -1174,7 +1202,7 @@ def test_generate_lecture_skips_source_previews(tmp_path):
 
 def test_generate_assignment_skips_source_previews(tmp_path, monkeypatch):
     nb = _source_with_preview(tmp_path, "A1-Intro")
-    (tmp_path / "mograder.toml").write_text("")
+    (tmp_path / "mograder.toml").write_text("", encoding="utf-8")
     monkeypatch.chdir(tmp_path)
     result = CliRunner().invoke(cli, ["generate", str(nb), "--no-validate"])
     assert result.exit_code == 0, result.output
@@ -1183,7 +1211,7 @@ def test_generate_assignment_skips_source_previews(tmp_path, monkeypatch):
     assert "A1-Intro.html" not in files
     assert ".DS_Store" not in files
     assert "data.csv" in files
-    assert "answer = 42" not in (rel / "A1-Intro.py").read_text()
+    assert "answer = 42" not in (rel / "A1-Intro.py").read_text(encoding="utf-8")
 
 
 @patch("mograder.grading.runner.create_shared_sandbox", return_value=None)

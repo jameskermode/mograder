@@ -92,7 +92,8 @@ def test_extract_imports_string_not_matched():
 
 def test_compatible_pure_python(tmp_path):
     nb = tmp_path / "pure.py"
-    nb.write_text("""\
+    nb.write_text(
+        """\
 # /// script
 # dependencies = [
 #     "numpy<2",
@@ -103,7 +104,9 @@ def test_compatible_pure_python(tmp_path):
 # ///
 import marimo
 app = marimo.App()
-""")
+""",
+        encoding="utf-8",
+    )
     compatible, blockers = check_wasm_compatible(nb)
     assert compatible is True
     assert blockers == []
@@ -111,7 +114,8 @@ app = marimo.App()
 
 def test_incompatible_jax(tmp_path):
     nb = tmp_path / "jax_nb.py"
-    nb.write_text("""\
+    nb.write_text(
+        """\
 # /// script
 # dependencies = [
 #     "jax>=0.4.38,<0.5",
@@ -123,7 +127,9 @@ def test_incompatible_jax(tmp_path):
 # ///
 import marimo
 app = marimo.App()
-""")
+""",
+        encoding="utf-8",
+    )
     compatible, blockers = check_wasm_compatible(nb)
     assert compatible is False
     assert "jax" in blockers
@@ -134,12 +140,15 @@ app = marimo.App()
 def test_incompatible_torch_import_only(tmp_path):
     """Torch caught via import even without PEP 723 declaration."""
     nb = tmp_path / "torch_nb.py"
-    nb.write_text("""\
+    nb.write_text(
+        """\
 import marimo
 app = marimo.App()
 
 import torch
-""")
+""",
+        encoding="utf-8",
+    )
     compatible, blockers = check_wasm_compatible(nb)
     assert compatible is False
     assert "torch" in blockers
@@ -165,13 +174,16 @@ def test_blocklist_includes_jax_ecosystem():
 def test_no_duplicates_in_blockers(tmp_path):
     """Same package in both deps and imports should only appear once."""
     nb = tmp_path / "dup.py"
-    nb.write_text("""\
+    nb.write_text(
+        """\
 # /// script
 # dependencies = [
 #     "torch",
 # ]
 # ///
 import torch
-""")
+""",
+        encoding="utf-8",
+    )
     _, blockers = check_wasm_compatible(nb)
     assert blockers.count("torch") == 1

@@ -108,7 +108,7 @@ class TestUploadFile:
     def test_upload_file_returns_itemid(self, tmp_path):
         client = MoodleAPIClient("https://moodle.example.com", "tok")
         test_file = tmp_path / "notebook.py"
-        test_file.write_text("print('hello')")
+        test_file.write_text("print('hello')", encoding="utf-8")
 
         mock_resp = MagicMock()
         mock_resp.json.return_value = [{"itemid": 12345, "filename": "notebook.py"}]
@@ -120,7 +120,7 @@ class TestUploadFile:
     def test_upload_file_error(self, tmp_path):
         client = MoodleAPIClient("https://moodle.example.com", "tok")
         test_file = tmp_path / "notebook.py"
-        test_file.write_text("print('hello')")
+        test_file.write_text("print('hello')", encoding="utf-8")
 
         mock_resp = MagicMock()
         mock_resp.json.return_value = {
@@ -217,7 +217,7 @@ class TestDownloadFile:
                 dest,
             )
         assert result == dest
-        assert dest.read_text() == "file content"
+        assert dest.read_text(encoding="utf-8") == "file content"
 
 
 # ---------------------------------------------------------------------------
@@ -476,7 +476,7 @@ class TestMoodleSubmitCLI:
     def test_submit_uploads_and_finalizes(self, monkeypatch, tmp_path):
         _mock_config(monkeypatch)
         nb = tmp_path / "solution.py"
-        nb.write_text("print('answer')")
+        nb.write_text("print('answer')", encoding="utf-8")
 
         assignment = {"id": 10, "name": "Demo", "duedate": 0, "introattachments": []}
         with (
@@ -515,7 +515,7 @@ class TestMoodleSubmitCLI:
     def test_submit_dry_run(self, monkeypatch, tmp_path):
         _mock_config(monkeypatch)
         nb = tmp_path / "solution.py"
-        nb.write_text("print('answer')")
+        nb.write_text("print('answer')", encoding="utf-8")
 
         assignment = {"id": 10, "name": "Demo", "duedate": 0, "introattachments": []}
         with (
@@ -547,7 +547,7 @@ class TestMoodleSubmitCLI:
     def test_submit_no_finalize(self, monkeypatch, tmp_path):
         _mock_config(monkeypatch)
         nb = tmp_path / "solution.py"
-        nb.write_text("print('answer')")
+        nb.write_text("print('answer')", encoding="utf-8")
 
         assignment = {"id": 10, "name": "Demo", "duedate": 0, "introattachments": []}
         with (
@@ -583,7 +583,7 @@ class TestMoodleSubmitCLI:
     def test_submit_rejects_non_py(self, monkeypatch, tmp_path):
         _mock_config(monkeypatch)
         nb = tmp_path / "notebook.ipynb"
-        nb.write_text("{}")
+        nb.write_text("{}", encoding="utf-8")
         runner = CliRunner()
         result = runner.invoke(cli, ["moodle", "submit", "Demo", str(nb), "-c", "1"])
         assert result.exit_code != 0
@@ -651,7 +651,9 @@ class TestMoodleUploadFeedbackCLI:
 
         # Create a grades CSV
         grades_csv = tmp_path / "grades.csv"
-        grades_csv.write_text("student,mark,feedback\nalice,85,Good\n")
+        grades_csv.write_text(
+            "student,mark,feedback\nalice,85,Good\n", encoding="utf-8"
+        )
 
         with (
             patch(
@@ -703,7 +705,7 @@ class TestMoodleExportCLI:
             encoding="utf-8-sig",
         )
         grades = tmp_path / "grades.csv"
-        grades.write_text("student,mark,feedback\nalice,85,Good\n")
+        grades.write_text("student,mark,feedback\nalice,85,Good\n", encoding="utf-8")
 
         out_dir = tmp_path / "export"
         runner = CliRunner()
@@ -734,7 +736,7 @@ class TestMoodleExportCLI:
             encoding="utf-8-sig",
         )
         grades = tmp_path / "grades.csv"
-        grades.write_text("student,mark,feedback\nalice,85,Good\n")
+        grades.write_text("student,mark,feedback\nalice,85,Good\n", encoding="utf-8")
 
         out_dir = tmp_path / "export"
         runner = CliRunner()
@@ -842,7 +844,7 @@ class TestTokenCache:
 
     def test_load_corrupt_file(self, tmp_path, monkeypatch):
         cache_file = tmp_path / "token.json"
-        cache_file.write_text("not json!")
+        cache_file.write_text("not json!", encoding="utf-8")
         monkeypatch.setattr("mograder.transport.moodle_api.TOKEN_CACHE", cache_file)
 
         result = load_cached_token("https://moodle.example.com")
@@ -1079,7 +1081,7 @@ class TestUploadFileItemid:
     def test_upload_file_passes_nonzero_itemid(self, tmp_path):
         client = MoodleAPIClient("https://moodle.example.com", "tok")
         test_file = tmp_path / "notebook.py"
-        test_file.write_text("print('hello')")
+        test_file.write_text("print('hello')", encoding="utf-8")
 
         mock_resp = MagicMock()
         mock_resp.json.return_value = [{"itemid": 555, "filename": "notebook.py"}]
@@ -1094,7 +1096,7 @@ class TestUploadFileItemid:
     def test_upload_file_default_itemid_zero(self, tmp_path):
         client = MoodleAPIClient("https://moodle.example.com", "tok")
         test_file = tmp_path / "notebook.py"
-        test_file.write_text("print('hello')")
+        test_file.write_text("print('hello')", encoding="utf-8")
 
         mock_resp = MagicMock()
         mock_resp.json.return_value = [{"itemid": 123, "filename": "notebook.py"}]
@@ -1111,8 +1113,8 @@ class TestUploadFilesToDraft:
         client = MoodleAPIClient("https://moodle.example.com", "tok")
         f1 = tmp_path / "a.py"
         f2 = tmp_path / "b.py"
-        f1.write_text("a")
-        f2.write_text("b")
+        f1.write_text("a", encoding="utf-8")
+        f2.write_text("b", encoding="utf-8")
 
         # First call creates draft (itemid=0 → returns 100)
         # Second call appends (itemid=100 → returns 100)
@@ -1184,7 +1186,7 @@ class TestMoodleUploadCLI:
         _mock_config(monkeypatch)
         monkeypatch.chdir(tmp_path)
         f1 = tmp_path / "notebook.py"
-        f1.write_text("print('hello')")
+        f1.write_text("print('hello')", encoding="utf-8")
 
         assignment = {
             "id": 10,
@@ -1215,8 +1217,8 @@ class TestMoodleUploadCLI:
         monkeypatch.chdir(tmp_path)
         f1 = tmp_path / "a.py"
         f2 = tmp_path / "data.csv"
-        f1.write_text("a")
-        f2.write_text("x,y\n1,2\n")
+        f1.write_text("a", encoding="utf-8")
+        f2.write_text("x,y\n1,2\n", encoding="utf-8")
 
         assignment = {
             "id": 10,
@@ -1256,7 +1258,7 @@ class TestMoodleUploadCLI:
         release_dir = tmp_path / "release" / "Demo"
         release_dir.mkdir(parents=True)
         nb = release_dir / "notebook.py"
-        nb.write_text("print('hello')")
+        nb.write_text("print('hello')", encoding="utf-8")
 
         assignment = {
             "id": 10,
@@ -1290,9 +1292,9 @@ class TestMoodleUploadCLI:
         monkeypatch.chdir(tmp_path)
         release_dir = tmp_path / "release" / "Demo"
         release_dir.mkdir(parents=True)
-        (release_dir / "Demo.py").write_text("print('hello')")
-        (release_dir / "data.csv").write_text("x\n1\n")
-        (release_dir / "Demo.html").write_text("<html></html>")
+        (release_dir / "Demo.py").write_text("print('hello')", encoding="utf-8")
+        (release_dir / "data.csv").write_text("x\n1\n", encoding="utf-8")
+        (release_dir / "Demo.html").write_text("<html></html>", encoding="utf-8")
         assignment = {
             "id": 10,
             "cmid": 42,
@@ -1316,7 +1318,7 @@ class TestMoodleUploadCLI:
         _mock_config(monkeypatch)
         monkeypatch.chdir(tmp_path)
         f1 = tmp_path / "a.py"
-        f1.write_text("a")
+        f1.write_text("a", encoding="utf-8")
 
         assignment = {
             "id": 10,
@@ -1346,7 +1348,7 @@ class TestMoodleUploadCLI:
         _mock_config(monkeypatch)
         monkeypatch.chdir(tmp_path)
         f1 = tmp_path / "a.py"
-        f1.write_text("a")
+        f1.write_text("a", encoding="utf-8")
 
         assignment = {
             "id": 10,
@@ -1382,7 +1384,7 @@ class TestMoodleSyncEditLinks:
         # Create release dir with a .py file
         release = tmp_path / "release" / "A1-Demo"
         release.mkdir(parents=True)
-        (release / "A1-Demo.py").write_text("print('hello')")
+        (release / "A1-Demo.py").write_text("print('hello')", encoding="utf-8")
 
         # Create mograder.toml with edit_links config AND existing assignment with dir
         toml_path = tmp_path / "mograder.toml"
@@ -1391,7 +1393,8 @@ class TestMoodleSyncEditLinks:
             "[[assignments]]\n"
             'name = "A1. Demo Assignment"\n'
             "cmid = 42\n"
-            'dir = "A1-Demo"\n'
+            'dir = "A1-Demo"\n',
+            encoding="utf-8",
         )
 
         assignments = [
@@ -1452,7 +1455,8 @@ class TestMoodleSyncEditLinks:
 
         toml_path = tmp_path / "mograder.toml"
         toml_path.write_text(
-            '[edit_links]\nmolab = "https://molab.marimo.io/new/#code/{content_lz}"\n'
+            '[edit_links]\nmolab = "https://molab.marimo.io/new/#code/{content_lz}"\n',
+            encoding="utf-8",
         )
 
         assignments = [
@@ -1499,7 +1503,7 @@ class TestMoodleSyncEditLinks:
 
         release = tmp_path / "release" / "A1-Demo"
         release.mkdir(parents=True)
-        (release / "A1-Demo.py").write_text("print('hello')")
+        (release / "A1-Demo.py").write_text("print('hello')", encoding="utf-8")
 
         toml_path = tmp_path / "mograder.toml"
         toml_path.write_text(
@@ -1507,7 +1511,8 @@ class TestMoodleSyncEditLinks:
             "[[assignments]]\n"
             'name = "A1. Demo Assignment"\n'
             "cmid = 42\n"
-            'dir = "A1-Demo"\n'
+            'dir = "A1-Demo"\n',
+            encoding="utf-8",
         )
 
         assignments = [
@@ -1550,7 +1555,7 @@ class TestMoodleSyncEditLinks:
 
         html_file = tmp_path / "edit-links.html"
         assert html_file.exists()
-        content = html_file.read_text()
+        content = html_file.read_text(encoding="utf-8")
         assert "modedit.php?update=42" in content
         assert "molab.marimo.io" in content
         assert "A1. Demo Assignment" in content

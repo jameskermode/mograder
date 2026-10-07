@@ -370,7 +370,7 @@ def _demo_release(tmp_path):
     from mograder.grading.cells import process_file
 
     assert process_file(_DEMO, tmp_path)
-    return (tmp_path / _DEMO.name).read_text()
+    return (tmp_path / _DEMO.name).read_text(encoding="utf-8")
 
 
 def _with_answer(release: str) -> str:

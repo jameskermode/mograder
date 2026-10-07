@@ -231,7 +231,7 @@ class TestAllowlist:
 
     def test_allowed_user_passes(self, tmp_path):
         """User in allowlist gets through."""
-        (tmp_path / "allowed_users.txt").write_text("alice\nbob\n")
+        (tmp_path / "allowed_users.txt").write_text("alice\nbob\n", encoding="utf-8")
         mw = RemoteUserMiddleware(
             _echo_app(),
             secret=SECRET,
@@ -250,7 +250,7 @@ class TestAllowlist:
 
     def test_blocked_user_gets_403(self, tmp_path):
         """User not in allowlist gets friendly 403."""
-        (tmp_path / "allowed_users.txt").write_text("alice\nbob\n")
+        (tmp_path / "allowed_users.txt").write_text("alice\nbob\n", encoding="utf-8")
         mw = RemoteUserMiddleware(
             _echo_app(),
             secret=SECRET,
@@ -271,7 +271,7 @@ class TestAllowlist:
         """Instructor token always passes even if not in allowlist."""
         from mograder.core.auth import INSTRUCTOR_USER, make_token
 
-        (tmp_path / "allowed_users.txt").write_text("alice\n")
+        (tmp_path / "allowed_users.txt").write_text("alice\n", encoding="utf-8")
         mw = RemoteUserMiddleware(
             _echo_app(),
             secret=SECRET,
@@ -291,7 +291,7 @@ class TestAllowlist:
     def test_comments_and_blanks_ignored(self, tmp_path):
         """Comments and blank lines in allowlist are skipped."""
         (tmp_path / "allowed_users.txt").write_text(
-            "# header comment\nalice\n\n# another\nbob\n"
+            "# header comment\nalice\n\n# another\nbob\n", encoding="utf-8"
         )
         users = load_allowed_users(tmp_path / "allowed_users.txt")
         assert users == {"alice", "bob"}

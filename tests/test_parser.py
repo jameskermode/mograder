@@ -2,7 +2,7 @@ from mograder.grading.parser import count_cell_errors, parse_check_results
 
 
 def test_parse_check_results(fixtures_dir):
-    html = (fixtures_dir / "sample_export.html").read_text()
+    html = (fixtures_dir / "sample_export.html").read_text(encoding="utf-8")
     results = parse_check_results(html)
     assert len(results) == 4
     labels = [r.label for r in results]
@@ -13,7 +13,7 @@ def test_parse_check_results(fixtures_dir):
 
 
 def test_parse_check_statuses(fixtures_dir):
-    html = (fixtures_dir / "sample_export.html").read_text()
+    html = (fixtures_dir / "sample_export.html").read_text(encoding="utf-8")
     results = parse_check_results(html)
     status_map = {r.label.split(":")[0].strip(): r.status for r in results}
     assert status_map["Q1"] == "success"
@@ -24,14 +24,14 @@ def test_parse_check_statuses(fixtures_dir):
 
 def test_parse_deduplication(fixtures_dir):
     """Q1 appears twice in the fixture; should be deduplicated."""
-    html = (fixtures_dir / "sample_export.html").read_text()
+    html = (fixtures_dir / "sample_export.html").read_text(encoding="utf-8")
     results = parse_check_results(html)
     q1_results = [r for r in results if r.label.startswith("Q1")]
     assert len(q1_results) == 1
 
 
 def test_parse_ordering(fixtures_dir):
-    html = (fixtures_dir / "sample_export.html").read_text()
+    html = (fixtures_dir / "sample_export.html").read_text(encoding="utf-8")
     results = parse_check_results(html)
     labels = [r.label for r in results]
     assert labels == sorted(labels)
@@ -39,7 +39,7 @@ def test_parse_ordering(fixtures_dir):
 
 def test_parse_non_q_prefix_label(fixtures_dir):
     """Labels that don't start with Q should still be parsed."""
-    html = (fixtures_dir / "sample_export.html").read_text()
+    html = (fixtures_dir / "sample_export.html").read_text(encoding="utf-8")
     results = parse_check_results(html)
     jensen = [r for r in results if "Jensen" in r.label]
     assert len(jensen) == 1
@@ -52,7 +52,7 @@ def test_parse_empty_html():
 
 
 def test_count_cell_errors(fixtures_dir):
-    html = (fixtures_dir / "sample_export.html").read_text()
+    html = (fixtures_dir / "sample_export.html").read_text(encoding="utf-8")
     assert count_cell_errors(html) == 2
 
 

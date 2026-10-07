@@ -22,7 +22,8 @@ def hub_dirs(tmp_path):
     nb_str = str(notebooks).replace("\\", "/")
     rel_str = str(release).replace("\\", "/")
     (tmp_path / "mograder.toml").write_text(
-        f'[hub]\nnotebooks_dir = "{nb_str}"\nrelease_dir = "{rel_str}"\n'
+        f'[hub]\nnotebooks_dir = "{nb_str}"\nrelease_dir = "{rel_str}"\n',
+        encoding="utf-8",
     )
     return {"course_dir": tmp_path, "notebooks": notebooks, "release": release}
 
@@ -51,7 +52,7 @@ def _setup_student_file(hub_dirs, username, assignment, content="# student code"
     d = hub_dirs["notebooks"] / username / assignment
     d.mkdir(parents=True, exist_ok=True)
     nb = d / f"{assignment}.py"
-    nb.write_text(content)
+    nb.write_text(content, encoding="utf-8")
     return nb
 
 
@@ -60,7 +61,7 @@ def _setup_release(hub_dirs, assignment, content="# release version"):
     d = hub_dirs["release"] / assignment
     d.mkdir(parents=True, exist_ok=True)
     nb = d / f"{assignment}.py"
-    nb.write_text(content)
+    nb.write_text(content, encoding="utf-8")
     return nb
 
 
@@ -74,7 +75,7 @@ class TestUpload:
         )
         assert resp.status_code == 200
         nb = hub_dirs["notebooks"] / "dev-user" / "hw1" / "hw1.py"
-        assert nb.read_text() == content
+        assert nb.read_text(encoding="utf-8") == content
 
     def test_unsafe_file_400(self, client, hub_dirs):
         """File with denied import is rejected."""
@@ -101,7 +102,7 @@ class TestUpload:
         d = hub_dirs["notebooks"] / "dev-user" / "hw1"
         baks = list(d.glob("*.bak.*.py"))
         assert len(baks) == 1
-        assert baks[0].read_text() == "# old code"
+        assert baks[0].read_text(encoding="utf-8") == "# old code"
 
     def test_user_isolation(self, hub_dirs):
         """User A can't upload to user B (non-dev mode)."""
@@ -130,7 +131,7 @@ class TestDownloadRelease:
         resp = client.post("/download-release/dev-user/hw1")
         assert resp.status_code == 200
         nb = hub_dirs["notebooks"] / "dev-user" / "hw1" / "hw1.py"
-        assert nb.read_text() == release_src
+        assert nb.read_text(encoding="utf-8") == release_src
 
     def test_missing_release_404(self, client):
         """Unknown assignment returns 404."""
@@ -170,7 +171,7 @@ class TestReset:
         resp = client.post("/reset/dev-user/hw1")
         assert resp.status_code == 200
         nb = hub_dirs["notebooks"] / "dev-user" / "hw1" / "hw1.py"
-        assert nb.read_text() == "# release version"
+        assert nb.read_text(encoding="utf-8") == "# release version"
 
     def test_without_release(self, client, hub_dirs):
         """Reset without release archives only."""
@@ -254,7 +255,7 @@ class TestValidate:
             resp = client.post("/validate/dev-user/hw1")
 
         assert resp.status_code == 200
-        assert "MY_ANSWER_42_UNIQUE" in nb.read_text()
+        assert "MY_ANSWER_42_UNIQUE" in nb.read_text(encoding="utf-8")
 
 
 _MARIMO_NOTEBOOK_WITH_CHECK = """import marimo
@@ -297,7 +298,7 @@ class TestSubmit:
         assert sub_dir.is_dir()
         latest = sub_dir / "dev-user.py"
         assert latest.exists()
-        assert "# student code" in latest.read_text()
+        assert "# student code" in latest.read_text(encoding="utf-8")
         timestamped = [p for p in sub_dir.glob("dev-user_*.py")]
         assert len(timestamped) == 1
 
@@ -316,11 +317,11 @@ class TestSubmit:
         assert "Q1" in data["tampered_checks"]
 
         submitted = hub_dirs["course_dir"] / "submitted" / "hw1" / "dev-user.py"
-        assert "arithmetic" in submitted.read_text()
-        assert "forced pass" not in submitted.read_text()
+        assert "arithmetic" in submitted.read_text(encoding="utf-8")
+        assert "forced pass" not in submitted.read_text(encoding="utf-8")
 
         # Student's working copy is untouched.
-        assert "forced pass" in nb.read_text()
+        assert "forced pass" in nb.read_text(encoding="utf-8")
 
     def test_submit_creates_marker(self, client, hub_dirs):
         _setup_student_file(hub_dirs, "dev-user", "hw1", "# code\n")
@@ -341,7 +342,7 @@ class TestSubmit:
         import time
 
         time.sleep(1.1)
-        nb.write_text("# v2\n")
+        nb.write_text("# v2\n", encoding="utf-8")
         r2 = client.post("/submit/dev-user/hw1")
         assert r2.status_code == 200
 
@@ -349,7 +350,7 @@ class TestSubmit:
         timestamped = sorted(p.name for p in sub_dir.glob("dev-user_*.py"))
         assert len(timestamped) == 2, f"expected 2 timestamped files, got {timestamped}"
         latest = sub_dir / "dev-user.py"
-        assert "# v2" in latest.read_text()
+        assert "# v2" in latest.read_text(encoding="utf-8")
 
     def test_submit_no_notebook_404(self, client):
         resp = client.post("/submit/dev-user/never-uploaded")
@@ -390,7 +391,7 @@ if __name__ == "__main__":
 
         submitted = (
             hub_dirs["course_dir"] / "submitted" / "hw1" / "dev-user.py"
-        ).read_text()
+        ).read_text(encoding="utf-8")
         assert "MOGRADER: SUBMIT" not in submitted
         assert "run_button" not in submitted
         assert "submit_btn" not in submitted
@@ -458,7 +459,7 @@ class TestPublish:
         assert resp.status_code == 200
         nb = hub_dirs["release"] / "hw1" / "hw1.py"
         assert nb.exists()
-        assert nb.read_text() == content
+        assert nb.read_text(encoding="utf-8") == content
 
     def test_publish_manifest_format(self, hub_dirs):
         """files.json is {"files": [...]} not a bare list, excluding dotfiles."""
@@ -480,7 +481,7 @@ class TestPublish:
         # Create a dotfile in the release dir first (should be excluded)
         assignment_dir = hub_dirs["release"] / "hw1"
         assignment_dir.mkdir(parents=True, exist_ok=True)
-        (assignment_dir / ".hidden").write_text("secret")
+        (assignment_dir / ".hidden").write_text("secret", encoding="utf-8")
 
         resp = client.post(
             "/publish/hw1",
@@ -494,7 +495,7 @@ class TestPublish:
 
         manifest_path = hub_dirs["release"] / "hw1" / "files.json"
         assert manifest_path.exists()
-        manifest = json.loads(manifest_path.read_text())
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
         assert isinstance(manifest, dict)
         assert "files" in manifest
         assert ".hidden" not in manifest["files"]
@@ -570,7 +571,9 @@ class TestPublish:
         data = resp.json()
         assert data["type"] == "lecture"
 
-        manifest = json.loads((hub_dirs["release"] / "L01" / "files.json").read_text())
+        manifest = json.loads(
+            (hub_dirs["release"] / "L01" / "files.json").read_text(encoding="utf-8")
+        )
         assert manifest["type"] == "lecture"
 
     def test_publish_lecture_warms_cache(self, hub_dirs):
@@ -624,13 +627,15 @@ class TestListAssignmentsAPI:
 
         # Create an assignment
         (hub_dirs["release"] / "hw1").mkdir()
-        (hub_dirs["release"] / "hw1" / "hw1.py").write_text("# hw1")
+        (hub_dirs["release"] / "hw1" / "hw1.py").write_text("# hw1", encoding="utf-8")
 
         # Create a lecture with manifest
         (hub_dirs["release"] / "L01").mkdir()
-        (hub_dirs["release"] / "L01" / "L01.py").write_text("# lecture")
+        (hub_dirs["release"] / "L01" / "L01.py").write_text(
+            "# lecture", encoding="utf-8"
+        )
         (hub_dirs["release"] / "L01" / "files.json").write_text(
-            json.dumps({"files": ["L01.py"], "type": "lecture"})
+            json.dumps({"files": ["L01.py"], "type": "lecture"}), encoding="utf-8"
         )
 
         resp = client.get(
@@ -682,7 +687,8 @@ class TestWarmCacheAPI:
             d = hub_dirs["release"] / name
             d.mkdir(parents=True, exist_ok=True)
             (d / f"{name}.py").write_text(
-                '# /// script\n# dependencies = ["numpy"]\n# ///\nimport numpy\n'
+                '# /// script\n# dependencies = ["numpy"]\n# ///\nimport numpy\n',
+                encoding="utf-8",
             )
 
         token = make_token(secret, INSTRUCTOR_USER)
@@ -922,7 +928,7 @@ class TestDeepLinkEdit:
         # Check student file was created from release
         nb = hub_dirs["notebooks"] / "dev-user" / "hw1" / "hw1.py"
         assert nb.exists()
-        assert nb.read_text() == "# release version"
+        assert nb.read_text(encoding="utf-8") == "# release version"
 
     def test_deep_edit_preserves_student_edits(self, app, client, hub_dirs):
         """POST /start-edit-deep/hw1 when student copy exists → file unchanged."""
@@ -949,7 +955,7 @@ class TestDeepLinkEdit:
 
         # Verify student file unchanged
         nb = hub_dirs["notebooks"] / "dev-user" / "hw1" / "hw1.py"
-        assert nb.read_text() == "# my edits"
+        assert nb.read_text(encoding="utf-8") == "# my edits"
 
     def test_deep_edit_returns_url(self, app, client, hub_dirs):
         """POST /start-edit-deep/hw1 returns per-user edit URL."""

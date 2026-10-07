@@ -311,7 +311,7 @@ def test_check_sidecar_includes_weights(tmp_path):
     finally:
         del os.environ["MOGRADER_SIDECAR_PATH"]
 
-    record = json.loads(sidecar.read_text().strip())
+    record = json.loads(sidecar.read_text(encoding="utf-8").strip())
     assert record["earned_weight"] == 3.0
     assert record["total_weight"] == 5.0
 
@@ -330,7 +330,7 @@ def test_empty_check_writes_warn_sidecar(tmp_path, mock_mo):
     finally:
         del os.environ["MOGRADER_SIDECAR_PATH"]
 
-    record = json.loads(sidecar.read_text().strip())
+    record = json.loads(sidecar.read_text(encoding="utf-8").strip())
     assert record["label"] == "Q1: Foo"
     assert record["status"] == "warn"
 
@@ -348,7 +348,7 @@ def test_grader_empty_check_writes_warn_sidecar(tmp_path, mock_mo):
     finally:
         del os.environ["MOGRADER_SIDECAR_PATH"]
 
-    record = json.loads(sidecar.read_text().strip())
+    record = json.loads(sidecar.read_text(encoding="utf-8").strip())
     assert record["label"] == "Q1: Foo"
     assert record["status"] == "warn"
 
@@ -436,7 +436,7 @@ def test_word_count_reads_watched_file(tmp_path):
     from mograder.runtime import word_count
 
     nb = tmp_path / "nb.py"
-    nb.write_text(RELEASE_STYLE)
+    nb.write_text(RELEASE_STYLE, encoding="utf-8")
     html = word_count(nb, target=(300, 500)).text
     assert "Word count: 6" in html
     assert "#EA4335" in html  # red: far below target

@@ -285,8 +285,10 @@ def test_count_graded(tmp_path):
 def test_import_from_py(tmp_path):
     auto_dir = tmp_path / "autograded" / "hw1"
     auto_dir.mkdir(parents=True)
-    (auto_dir / "alice.py").write_text(_make_autograded(graded=True, mark=72))
-    (auto_dir / "bob.py").write_text(_make_autograded(graded=False))
+    (auto_dir / "alice.py").write_text(
+        _make_autograded(graded=True, mark=72), encoding="utf-8"
+    )
+    (auto_dir / "bob.py").write_text(_make_autograded(graded=False), encoding="utf-8")
 
     with Gradebook(tmp_path / "test.db") as gb:
         gb.upsert_assignment("hw1")
@@ -307,7 +309,7 @@ def test_import_from_py_with_marks(tmp_path):
     auto_dir = tmp_path / "autograded" / "hw1"
     auto_dir.mkdir(parents=True)
     (auto_dir / "alice.py").write_text(
-        _make_autograded_with_marks(graded=True, manual_mark=70)
+        _make_autograded_with_marks(graded=True, manual_mark=70), encoding="utf-8"
     )
 
     with Gradebook(tmp_path / "test.db") as gb:
@@ -355,7 +357,9 @@ def test_import_preserves_existing(tmp_path):
     """Import should not overwrite existing manual grades."""
     auto_dir = tmp_path / "autograded" / "hw1"
     auto_dir.mkdir(parents=True)
-    (auto_dir / "alice.py").write_text(_make_autograded(graded=True, mark=72))
+    (auto_dir / "alice.py").write_text(
+        _make_autograded(graded=True, mark=72), encoding="utf-8"
+    )
 
     with Gradebook(tmp_path / "test.db") as gb:
         gb.upsert_assignment("hw1")

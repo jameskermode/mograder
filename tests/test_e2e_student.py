@@ -14,7 +14,9 @@ def course_server(tmp_path):
     server_root = tmp_path / "server"
     hw1_files = server_root / "hw1" / "files"
     hw1_files.mkdir(parents=True)
-    (hw1_files / "homework.py").write_text("# HW1 starter\nprint('hello')\n")
+    (hw1_files / "homework.py").write_text(
+        "# HW1 starter\nprint('hello')\n", encoding="utf-8"
+    )
 
     srv, thread = run_server_background(server_root, port=0)
     port = srv.server_address[1]
@@ -24,7 +26,7 @@ def course_server(tmp_path):
     course_dir = tmp_path / "course"
     course_dir.mkdir()
     (course_dir / "mograder.toml").write_text(
-        f'transport = "https"\n\n[https]\nurl = "{base_url}"\n'
+        f'transport = "https"\n\n[https]\nurl = "{base_url}"\n', encoding="utf-8"
     )
 
     yield base_url, course_dir, server_root
@@ -51,7 +53,7 @@ class TestE2EStudentWorkflow:
         )
         assert result.exit_code == 0, result.output
         assert (out_dir / "homework.py").exists()
-        assert "starter" in (out_dir / "homework.py").read_text()
+        assert "starter" in (out_dir / "homework.py").read_text(encoding="utf-8")
 
     def test_https_submit(self, course_server, monkeypatch):
         base_url, course_dir, server_root = course_server
@@ -59,7 +61,7 @@ class TestE2EStudentWorkflow:
 
         # Create student solution
         sol = course_dir / "solution.py"
-        sol.write_text("print('my answer')\n")
+        sol.write_text("print('my answer')\n", encoding="utf-8")
 
         runner = CliRunner()
         result = runner.invoke(
@@ -85,7 +87,7 @@ class TestE2EStudentWorkflow:
 
         # Submit first
         sol = course_dir / "solution.py"
-        sol.write_text("print('my answer')\n")
+        sol.write_text("print('my answer')\n", encoding="utf-8")
         runner = CliRunner()
         runner.invoke(
             cli,

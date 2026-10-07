@@ -17,7 +17,7 @@ class TestBuildEditLinkHtml:
         """Release dir with .py file → HTML with lzstring-compressed molab link."""
         release = tmp_path / "A1-Demo"
         release.mkdir()
-        (release / "A1-Demo.py").write_text("print('hello')")
+        (release / "A1-Demo.py").write_text("print('hello')", encoding="utf-8")
 
         edit_links = (("molab", "https://molab.marimo.io/new/#code/{content_lz}"),)
         html = build_edit_link_html(release, "A1-Demo", edit_links)
@@ -30,7 +30,7 @@ class TestBuildEditLinkHtml:
         """Codespaces config → includes codespaces link (no lzstring needed)."""
         release = tmp_path / "A1-Demo"
         release.mkdir()
-        (release / "A1-Demo.py").write_text("print('hello')")
+        (release / "A1-Demo.py").write_text("print('hello')", encoding="utf-8")
 
         edit_links = (("codespaces", "https://github.com/org/repo/codespaces"),)
         html = build_edit_link_html(release, "A1-Demo", edit_links)
@@ -42,7 +42,7 @@ class TestBuildEditLinkHtml:
         """Both molab and codespaces → both appear in HTML."""
         release = tmp_path / "A1-Demo"
         release.mkdir()
-        (release / "A1-Demo.py").write_text("print('hello')")
+        (release / "A1-Demo.py").write_text("print('hello')", encoding="utf-8")
 
         edit_links = (
             ("molab", "https://molab.marimo.io/new/#code/{content_lz}"),
@@ -73,7 +73,7 @@ class TestBuildEditLinkHtml:
         """Empty edit_links config → empty string."""
         release = tmp_path / "A1-Demo"
         release.mkdir()
-        (release / "A1-Demo.py").write_text("print('hello')")
+        (release / "A1-Demo.py").write_text("print('hello')", encoding="utf-8")
 
         html = build_edit_link_html(release, "A1-Demo", ())
         assert html == ""
@@ -82,7 +82,7 @@ class TestBuildEditLinkHtml:
         """Template using {dir} variable → dir_key substituted."""
         release = tmp_path / "A1-Demo"
         release.mkdir()
-        (release / "A1-Demo.py").write_text("x")
+        (release / "A1-Demo.py").write_text("x", encoding="utf-8")
 
         edit_links = (("custom", "https://example.com/{dir}"),)
         html = build_edit_link_html(release, "A1-Demo", edit_links)

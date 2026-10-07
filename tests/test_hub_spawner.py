@@ -29,7 +29,7 @@ def _create_notebook(notebooks_dir, username, assignment):
     d = notebooks_dir / username / assignment
     d.mkdir(parents=True, exist_ok=True)
     nb = d / f"{assignment}.py"
-    nb.write_text("import marimo\napp = marimo.App()\n")
+    nb.write_text("import marimo\napp = marimo.App()\n", encoding="utf-8")
     return nb
 
 
@@ -228,9 +228,9 @@ class TestEditAutorun:
         f = tmp_path / ".config" / "marimo" / "marimo.toml"
         if text is not None:
             f.parent.mkdir(parents=True)
-            f.write_text(text)
+            f.write_text(text, encoding="utf-8")
         SessionManager._ensure_autorun_config(tmp_path / ".config")
-        return tomllib.loads(f.read_text())
+        return tomllib.loads(f.read_text(encoding="utf-8"))
 
     def test_new_or_empty_config(self, tmp_path):
         assert self._cfg(tmp_path)["runtime"]["auto_instantiate"] is True
@@ -254,6 +254,6 @@ class TestEditAutorun:
 
         f = tmp_path / ".config" / "marimo" / "marimo.toml"
         f.parent.mkdir(parents=True)
-        f.write_text("not = [valid")
+        f.write_text("not = [valid", encoding="utf-8")
         SessionManager._ensure_autorun_config(tmp_path / ".config")
-        assert f.read_text() == "not = [valid"
+        assert f.read_text(encoding="utf-8") == "not = [valid"
