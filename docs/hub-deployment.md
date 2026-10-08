@@ -53,9 +53,14 @@ Environment=PATH=/home/mograder/.local/bin:/usr/local/bin:/usr/bin
 ExecStart=/home/mograder/.local/bin/uv run mograder hub \
     --port 8080 \
     --host 127.0.0.1 \
-    --session-ttl 3600
+    --session-ttl 3600 \
+    --session-threads 1 \
+    --min-free-mb 2048
 Restart=on-failure
 RestartSec=5
+# every student's marimo runs in this service: an OOM kill of one kernel
+# must not stop the whole hub (the systemd default, OOMPolicy=stop)
+OOMPolicy=continue
 
 [Install]
 WantedBy=multi-user.target

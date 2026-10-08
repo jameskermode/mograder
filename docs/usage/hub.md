@@ -91,9 +91,13 @@ Start the hub server. Options:
 | `--host` | `0.0.0.0` | Bind address |
 | `--notebooks-dir` | from config | Student notebooks directory |
 | `--session-ttl` | `3600` | Session idle timeout (seconds) |
+| `--session-threads` | `0` | Cap each session's numerical thread pools (OpenMP, BLAS, PyTorch; JAX only at 1) at N threads. `0` keeps library defaults (one thread per core), which oversubscribes the CPU when many students compute at once |
+| `--min-free-mb` | `0` | Admission control: refuse *new* sessions (HTTP 503, "the hub is busy") while available memory is below this many MB; existing sessions are unaffected. `0` disables |
 | `--trusted-header` | `X-Remote-User` | Trusted proxy header name |
 | `--dev` | off | Dev mode (no auth required) |
 | `--headless` | off | Don't open browser on startup |
+
+Each option can also be set in the service environment as `MOGRADER_HUB_SESSION_TTL`, `MOGRADER_HUB_SESSION_THREADS` and `MOGRADER_HUB_MIN_FREE_MB` (an option given on the command line wins).
 
 ### `mograder hub check`
 

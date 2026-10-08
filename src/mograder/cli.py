@@ -3551,6 +3551,20 @@ def wasm_edit_links(wasm_app, notebooks, output, url_template):
     help="Directory for student notebooks",
 )
 @click.option("--session-ttl", type=int, default=3600, help="Session idle timeout (s)")
+@click.option(
+    "--session-threads",
+    type=int,
+    default=0,
+    help="Cap each session's numerical thread pools (OpenMP/BLAS/PyTorch; "
+    "JAX only at 1) at this many threads; 0 = library defaults (one per core)",
+)
+@click.option(
+    "--min-free-mb",
+    type=int,
+    default=0,
+    help="Refuse new sessions (503, 'hub busy') when available memory is below "
+    "this many MB; 0 = never",
+)
 @click.option("--trusted-header", default="X-Remote-User", help="Trusted proxy header")
 @click.option("--dev", is_flag=True, help="Dev mode: trust any X-Remote-User")
 @click.option("--headless", is_flag=True, help="Don't open browser")
@@ -3562,6 +3576,8 @@ def hub(
     host,
     notebooks_dir,
     session_ttl,
+    session_threads,
+    min_free_mb,
     trusted_header,
     dev,
     headless,
@@ -3591,6 +3607,8 @@ def hub(
             trusted_header,
             dev,
             headless,
+            session_threads=session_threads,
+            min_free_mb=min_free_mb,
         )
 
 
@@ -3603,6 +3621,8 @@ def _start_hub_server(
     trusted_header,
     dev,
     headless,
+    session_threads=0,
+    min_free_mb=0,
 ):
     """Start the hub server via uvicorn."""
     import subprocess as sp
@@ -3619,6 +3639,16 @@ def _start_hub_server(
     os.environ["MOGRADER_HUB_MODE"] = "1"
     if dev:
         os.environ["MOGRADER_HUB_DEV"] = "1"
+    # uvicorn imports the app module, which reads its settings from the
+    # environment (the options are otherwise lost); an option left at its
+    # default does not override a value already set in the environment
+    for var, value, default in (
+        ("MOGRADER_HUB_SESSION_TTL", session_ttl, 3600),
+        ("MOGRADER_HUB_SESSION_THREADS", session_threads, 0),
+        ("MOGRADER_HUB_MIN_FREE_MB", min_free_mb, 0),
+    ):
+        if value != default or var not in os.environ:
+            os.environ[var] = str(value)
 
     cmd = [
         sys.executable,

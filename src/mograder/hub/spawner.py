@@ -28,6 +28,54 @@ def _uv_env() -> dict[str, str]:
     return env
 
 
+class HubBusy(RuntimeError):
+    """Not enough free memory to start another session (admission control)."""
+
+
+BUSY_MESSAGE = (
+    "The hub is busy right now: there is not enough free memory for another "
+    "notebook session. Please try again in a few minutes, or run the notebook "
+    "on your own computer."
+)
+
+# Thread-pool sizes of the numerical libraries a kernel may load. Each defaults
+# to one thread per core, so many kernels on a shared machine oversubscribe the
+# CPU (e.g. 14 kernels x 4 threads on 4 vCPU) and lose throughput to switching.
+THREAD_ENV_VARS = (
+    "OMP_NUM_THREADS",  # OpenMP: PyTorch intra-op, OpenBLAS/MKL builds using OpenMP
+    "MKL_NUM_THREADS",
+    "OPENBLAS_NUM_THREADS",
+    "VECLIB_MAXIMUM_THREADS",
+    "NUMEXPR_NUM_THREADS",
+)
+
+
+def thread_env(threads: int) -> dict[str, str]:
+    """Environment capping a kernel's numerical thread pools at ``threads``."""
+    if threads <= 0:
+        return {}
+    env = {var: str(threads) for var in THREAD_ENV_VARS}
+    # JAX (XLA CPU) ignores the variables above; its Eigen pool can only be
+    # switched to single-threaded
+    if threads == 1:
+        flags = os.environ.get("XLA_FLAGS", "")
+        extra = "--xla_cpu_multi_thread_eigen=false intra_op_parallelism_threads=1"
+        env["XLA_FLAGS"] = f"{flags} {extra}".strip()
+    return env
+
+
+def mem_available_mb() -> int | None:
+    """MemAvailable from /proc/meminfo in MB (None where unavailable, e.g. macOS)."""
+    try:
+        with open("/proc/meminfo", encoding="utf-8") as f:
+            for line in f:
+                if line.startswith("MemAvailable:"):
+                    return int(line.split()[1]) // 1024
+    except OSError:
+        return None
+    return None
+
+
 def parse_pep723_deps(source: str) -> list[str]:
     """Extract dependencies from PEP 723 inline script metadata."""
     m = re.search(
@@ -94,7 +142,11 @@ class SessionManager:
         uv_cache_dir: str = "",
         spawn_timeout: int = 120,
         release_dir: Path | None = None,
+        session_threads: int = 0,
+        min_free_mb: int = 0,
     ):
+        self.session_threads = session_threads
+        self.min_free_mb = min_free_mb
         self.notebooks_dir = Path(notebooks_dir).resolve()
         self.session_ttl = session_ttl
         self.base_port = base_port
@@ -123,6 +175,23 @@ class SessionManager:
 
     def _notebook_path(self, username: str, assignment: str) -> Path:
         return self.notebooks_dir / username / assignment / f"{assignment}.py"
+
+    def _check_capacity(self) -> None:
+        """Refuse a new session when free memory is below ``min_free_mb``.
+
+        Only new sessions are refused: students already working keep their
+        sessions, which a new one could otherwise push into the OOM killer.
+        """
+        if self.min_free_mb <= 0:
+            return
+        avail = mem_available_mb()
+        if avail is not None and avail < self.min_free_mb:
+            log.warning(
+                "refusing new session: %d MB available < %d MB",
+                avail,
+                self.min_free_mb,
+            )
+            raise HubBusy(BUSY_MESSAGE)
 
     def _allocate_port(self) -> int:
         """Find a free port starting from base_port and reserve it.
@@ -219,6 +288,7 @@ class SessionManager:
         self._ensure_autorun_config(student_dir / ".config")
         env["XDG_DATA_HOME"] = str(student_dir / ".local" / "share")
         env["MOGRADER_DASHBOARD"] = "1"
+        env.update(thread_env(self.session_threads))
         # Ensure uv is on PATH for marimo --sandbox mode
         uv_bin = Path.home() / ".local" / "bin"
         if uv_bin.is_dir():
@@ -409,6 +479,7 @@ class SessionManager:
             if not nb.is_file():
                 raise FileNotFoundError(f"Notebook not found: {nb}")
 
+            self._check_capacity()
             port = self._allocate_port()
             try:
                 proc, actual_port = await self._spawn_process(
@@ -456,10 +527,11 @@ class SessionManager:
             if not nb.is_file():
                 raise FileNotFoundError(f"Lecture notebook not found: {nb}")
 
+            self._check_capacity()
             port = self._allocate_port()
             try:
                 cmd = self._build_run_command(username, lecture, nb, port)
-                env = {**os.environ}
+                env = {**os.environ, **thread_env(self.session_threads)}
                 uv_bin = Path.home() / ".local" / "bin"
                 if uv_bin.is_dir():
                     env["PATH"] = f"{uv_bin}:{os.environ.get('PATH', '/usr/bin:/bin')}"

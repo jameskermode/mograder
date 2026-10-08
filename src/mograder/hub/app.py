@@ -16,7 +16,7 @@ from fastapi.responses import FileResponse, JSONResponse
 
 from mograder.hub.auth import ALLOWED_USERS_FILE, RemoteUserMiddleware
 from mograder.hub.proxy import create_proxy_router
-from mograder.hub.spawner import SessionManager
+from mograder.hub.spawner import HubBusy, SessionManager
 from mograder.hub.storage import StorageManager
 from mograder.grading.runner import run_notebook
 from mograder.grading.safety import check_safety
@@ -37,6 +37,8 @@ def create_hub_app(
     trusted_proxies: set[str] | None = None,
     use_bubblewrap: bool = False,
     uv_cache_dir: str = "",
+    session_threads: int = 0,
+    min_free_mb: int = 0,
 ) -> FastAPI:
     """Create the hub FastAPI application."""
     from mograder.core.config import load_config
@@ -69,6 +71,8 @@ def create_hub_app(
         use_bubblewrap=use_bubblewrap,
         uv_cache_dir=uv_cache_dir,
         release_dir=rel_dir,
+        session_threads=session_threads,
+        min_free_mb=min_free_mb,
     )
 
     @asynccontextmanager
@@ -405,6 +409,8 @@ def create_hub_app(
             raise HTTPException(status_code=404, detail="Notebook not found")
         except TimeoutError as e:
             raise HTTPException(status_code=504, detail=str(e))
+        except HubBusy as e:
+            raise HTTPException(status_code=503, detail=str(e))
 
     # -- Deep link: auto-download + start-edit --
 
@@ -442,6 +448,8 @@ def create_hub_app(
             raise HTTPException(status_code=404, detail="Notebook not found")
         except TimeoutError as e:
             raise HTTPException(status_code=504, detail=str(e))
+        except HubBusy as e:
+            raise HTTPException(status_code=503, detail=str(e))
 
     # -- Stop edit session --
 
@@ -573,6 +581,8 @@ def create_hub_app(
             raise HTTPException(status_code=404, detail="Lecture not found")
         except TimeoutError as e:
             raise HTTPException(status_code=504, detail=str(e))
+        except HubBusy as e:
+            raise HTTPException(status_code=503, detail=str(e))
 
     # -- Mark exported --
 
@@ -810,8 +820,22 @@ def create_hub_app(
 _course_dir = Path(os.environ.get("MOGRADER_COURSE_DIR", "."))
 _dev = os.environ.get("MOGRADER_HUB_DEV") == "1"
 
+
+def _env_int(name: str, default: int) -> int:
+    try:
+        return int(os.environ.get(name, default))
+    except ValueError:
+        return default
+
+
 try:
-    app = create_hub_app(_course_dir, dev=_dev)
+    app = create_hub_app(
+        _course_dir,
+        dev=_dev,
+        session_ttl=_env_int("MOGRADER_HUB_SESSION_TTL", 3600),
+        session_threads=_env_int("MOGRADER_HUB_SESSION_THREADS", 0),
+        min_free_mb=_env_int("MOGRADER_HUB_MIN_FREE_MB", 0),
+    )
 except Exception:
     # Allow import to succeed even without proper config
     app = None
