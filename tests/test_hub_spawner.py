@@ -106,6 +106,38 @@ class TestGetOrSpawn:
         assert s1 is s2
         assert call_count == 1
 
+    def test_concurrent_spawns_get_distinct_ports(self, sm, notebooks_dir):
+        """Students starting at the same moment must not share a port.
+
+        A port is only taken (bound) once marimo starts listening, so
+        allocation must also skip ports handed to spawns still starting up;
+        otherwise the second student's session points at the first's server.
+        """
+        users = ["alice", "bob", "carol"]
+        for u in users:
+            _create_notebook(notebooks_dir, u, "hw1")
+
+        async def slow_spawn(username, assignment, nb, port):
+            await asyncio.sleep(0.05)  # not listening yet
+            return (_fake_popen(), port)
+
+        with patch.object(sm, "_spawn_process", side_effect=slow_spawn):
+
+            async def run():
+                return await asyncio.gather(*(sm.get_or_spawn(u, "hw1") for u in users))
+
+            sessions = asyncio.run(run())
+
+        assert len({s.port for s in sessions}) == len(users)
+        assert sm._reserved_ports == set()
+
+    def test_failed_spawn_releases_port(self, sm, notebooks_dir):
+        _create_notebook(notebooks_dir, "alice", "hw1")
+        with patch.object(sm, "_spawn_process", side_effect=RuntimeError("boom")):
+            with pytest.raises(RuntimeError):
+                asyncio.run(sm.get_or_spawn("alice", "hw1"))
+        assert sm._reserved_ports == set()
+
 
 class TestTerminate:
     def test_kills_and_removes(self, sm, notebooks_dir):

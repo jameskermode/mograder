@@ -108,6 +108,11 @@ class SessionManager:
         # served under different base URLs (/run/user/... vs /edit/user/...)
         self.run_sessions: dict[tuple[str, str], MarimoSession] = {}
         self._locks: dict[tuple[str, str], asyncio.Lock] = {}
+        # Ports handed out to spawns still starting up (not yet in a session
+        # map): without this, concurrent spawns for different students can
+        # get the same port, and the loser's readiness check then connects to
+        # the winner's marimo server
+        self._reserved_ports: set[int] = set()
         self._sandbox_dirs: dict[str, Path | None] = {}
         self._culler_task: asyncio.Task | None = None
 
@@ -120,10 +125,16 @@ class SessionManager:
         return self.notebooks_dir / username / assignment / f"{assignment}.py"
 
     def _allocate_port(self) -> int:
-        """Find a free port starting from base_port."""
-        used = {s.port for s in self.sessions.values()} | {
-            s.port for s in self.run_sessions.values()
-        }
+        """Find a free port starting from base_port and reserve it.
+
+        The caller releases the reservation (``_reserved_ports.discard``)
+        once the session is registered or the spawn has failed.
+        """
+        used = (
+            {s.port for s in self.sessions.values()}
+            | {s.port for s in self.run_sessions.values()}
+            | self._reserved_ports
+        )
         port = self.base_port
         while port < self.base_port + 1000:
             if port in used:
@@ -132,6 +143,7 @@ class SessionManager:
             with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
                 try:
                     s.bind(("127.0.0.1", port))
+                    self._reserved_ports.add(port)
                     return port
                 except OSError:
                     port += 1
@@ -355,6 +367,9 @@ class SessionManager:
         polls = self.spawn_timeout * 2  # poll every 0.5s
         for _ in range(polls):
             await asyncio.sleep(0.5)
+            # an exited process is not the one listening on the port
+            if proc.returncode is not None:
+                raise RuntimeError(f"marimo process exited with code {proc.returncode}")
             with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
                 try:
                     s.connect(("127.0.0.1", port))
@@ -395,20 +410,23 @@ class SessionManager:
                 raise FileNotFoundError(f"Notebook not found: {nb}")
 
             port = self._allocate_port()
-            proc, actual_port = await self._spawn_process(
-                username, assignment, nb, port
-            )
+            try:
+                proc, actual_port = await self._spawn_process(
+                    username, assignment, nb, port
+                )
 
-            session = MarimoSession(
-                username=username,
-                assignment=assignment,
-                port=actual_port,
-                process=proc,
-                notebook_path=str(nb),
-                last_seen=time.time(),
-            )
-            self.sessions[key] = session
-            return session
+                session = MarimoSession(
+                    username=username,
+                    assignment=assignment,
+                    port=actual_port,
+                    process=proc,
+                    notebook_path=str(nb),
+                    last_seen=time.time(),
+                )
+                self.sessions[key] = session
+                return session
+            finally:
+                self._reserved_ports.discard(port)
 
     async def get_or_spawn_run(self, username: str, lecture: str) -> MarimoSession:
         """Get or spawn a per-user ``marimo run`` session for a lecture.
@@ -439,47 +457,54 @@ class SessionManager:
                 raise FileNotFoundError(f"Lecture notebook not found: {nb}")
 
             port = self._allocate_port()
-            cmd = self._build_run_command(username, lecture, nb, port)
-            env = {**os.environ}
-            uv_bin = Path.home() / ".local" / "bin"
-            if uv_bin.is_dir():
-                env["PATH"] = f"{uv_bin}:{os.environ.get('PATH', '/usr/bin:/bin')}"
+            try:
+                cmd = self._build_run_command(username, lecture, nb, port)
+                env = {**os.environ}
+                uv_bin = Path.home() / ".local" / "bin"
+                if uv_bin.is_dir():
+                    env["PATH"] = f"{uv_bin}:{os.environ.get('PATH', '/usr/bin:/bin')}"
 
-            proc = await asyncio.create_subprocess_exec(
-                *cmd,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.STDOUT,
-                env=env,
-                cwd=str(nb.parent),
-            )
-            polls = self.spawn_timeout * 2
-            for _ in range(polls):
-                await asyncio.sleep(0.5)
-                with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-                    try:
-                        s.connect(("127.0.0.1", port))
-                        break
-                    except OSError:
-                        if proc.returncode is not None:
-                            raise RuntimeError(
-                                f"marimo run exited with code {proc.returncode}"
-                            )
-            else:
-                proc.kill()
-                raise TimeoutError(
-                    f"marimo run did not start on port {port} within {self.spawn_timeout}s"
+                proc = await asyncio.create_subprocess_exec(
+                    *cmd,
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.STDOUT,
+                    env=env,
+                    cwd=str(nb.parent),
                 )
+                polls = self.spawn_timeout * 2
+                for _ in range(polls):
+                    await asyncio.sleep(0.5)
+                    if proc.returncode is not None:
+                        raise RuntimeError(
+                            f"marimo run exited with code {proc.returncode}"
+                        )
+                    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                        try:
+                            s.connect(("127.0.0.1", port))
+                            break
+                        except OSError:
+                            if proc.returncode is not None:
+                                raise RuntimeError(
+                                    f"marimo run exited with code {proc.returncode}"
+                                )
+                else:
+                    proc.kill()
+                    raise TimeoutError(
+                        f"marimo run did not start on port {port} within {self.spawn_timeout}s"
+                    )
 
-            session = MarimoSession(
-                username=username,
-                assignment=lecture,
-                port=port,
-                process=proc,
-                notebook_path=str(nb),
-                last_seen=time.time(),
-            )
-            self.run_sessions[key] = session
-            return session
+                session = MarimoSession(
+                    username=username,
+                    assignment=lecture,
+                    port=port,
+                    process=proc,
+                    notebook_path=str(nb),
+                    last_seen=time.time(),
+                )
+                self.run_sessions[key] = session
+                return session
+            finally:
+                self._reserved_ports.discard(port)
 
     async def terminate(
         self, username: str, assignment: str, mode: str = "edit"
