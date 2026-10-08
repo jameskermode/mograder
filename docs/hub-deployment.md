@@ -55,7 +55,8 @@ ExecStart=/home/mograder/.local/bin/uv run mograder hub \
     --host 127.0.0.1 \
     --session-ttl 3600 \
     --session-threads 1 \
-    --min-free-mb 2048
+    --min-free-mb 2048 \
+    --session-mb 1500
 Restart=on-failure
 RestartSec=5
 # every student's marimo runs in this service: an OOM kill of one kernel

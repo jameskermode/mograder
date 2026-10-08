@@ -3565,6 +3565,13 @@ def wasm_edit_links(wasm_app, notebooks, output, url_template):
     help="Refuse new sessions (503, 'hub busy') when available memory is below "
     "this many MB; 0 = never",
 )
+@click.option(
+    "--session-mb",
+    type=int,
+    default=0,
+    help="Admission control: memory to assume per session for items with no "
+    "measured peak or calibration (session_mb.json); 0 = no default",
+)
 @click.option("--trusted-header", default="X-Remote-User", help="Trusted proxy header")
 @click.option("--dev", is_flag=True, help="Dev mode: trust any X-Remote-User")
 @click.option("--headless", is_flag=True, help="Don't open browser")
@@ -3578,6 +3585,7 @@ def hub(
     session_ttl,
     session_threads,
     min_free_mb,
+    session_mb,
     trusted_header,
     dev,
     headless,
@@ -3609,6 +3617,7 @@ def hub(
             headless,
             session_threads=session_threads,
             min_free_mb=min_free_mb,
+            session_mb=session_mb,
         )
 
 
@@ -3623,6 +3632,7 @@ def _start_hub_server(
     headless,
     session_threads=0,
     min_free_mb=0,
+    session_mb=0,
 ):
     """Start the hub server via uvicorn."""
     import subprocess as sp
@@ -3646,6 +3656,7 @@ def _start_hub_server(
         ("MOGRADER_HUB_SESSION_TTL", session_ttl, 3600),
         ("MOGRADER_HUB_SESSION_THREADS", session_threads, 0),
         ("MOGRADER_HUB_MIN_FREE_MB", min_free_mb, 0),
+        ("MOGRADER_HUB_SESSION_MB", session_mb, 0),
     ):
         if value != default or var not in os.environ:
             os.environ[var] = str(value)

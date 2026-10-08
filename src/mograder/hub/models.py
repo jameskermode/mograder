@@ -18,3 +18,4 @@ class MarimoSession:
     process: subprocess.Popen | None
     notebook_path: str | Path
     last_seen: float = field(default_factory=time)
+    mem_mb: int = 0  # latest sample of the session's memory (process tree)

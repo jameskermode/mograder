@@ -14,6 +14,7 @@ import time
 from pathlib import Path
 
 from mograder.core.edit_sessions import _kill_tree
+from mograder.hub.memory import MemoryLedger, children_map, tree_mb
 from mograder.hub.models import MarimoSession
 
 log = logging.getLogger("mograder.hub")
@@ -144,9 +145,15 @@ class SessionManager:
         release_dir: Path | None = None,
         session_threads: int = 0,
         min_free_mb: int = 0,
+        session_mb: int = 0,
+        course_dir: Path | None = None,
     ):
         self.session_threads = session_threads
         self.min_free_mb = min_free_mb
+        # per-item memory estimates (measured peaks, calibration, session_mb)
+        self.memory = MemoryLedger(course_dir, session_mb)
+        # items of spawns admitted but not yet registered as sessions
+        self._starting: list[str] = []
         self.notebooks_dir = Path(notebooks_dir).resolve()
         self.session_ttl = session_ttl
         self.base_port = base_port
@@ -176,8 +183,15 @@ class SessionManager:
     def _notebook_path(self, username: str, assignment: str) -> Path:
         return self.notebooks_dir / username / assignment / f"{assignment}.py"
 
-    def _check_capacity(self) -> None:
-        """Refuse a new session when free memory is below ``min_free_mb``.
+    def _check_capacity(self, item: str) -> None:
+        """Refuse a new session for ``item`` unless memory allows it.
+
+        A session starts small and grows as its notebook runs, so free memory
+        alone admits a burst of arrivals that later exhausts it. Admission
+        therefore projects: available memory, minus the growth still to come
+        in existing sessions (estimate minus latest sample) and in spawns
+        under way, minus the new session's estimate, must stay at or above
+        ``min_free_mb``. With no estimates this is a plain free-memory check.
 
         Only new sessions are refused: students already working keep their
         sessions, which a new one could otherwise push into the OOM killer.
@@ -185,10 +199,21 @@ class SessionManager:
         if self.min_free_mb <= 0:
             return
         avail = mem_available_mb()
-        if avail is not None and avail < self.min_free_mb:
+        if avail is None:
+            return
+        est = self.memory.estimate
+        live = [*self.sessions.values(), *self.run_sessions.values()]
+        growth = sum(max(0, est(s.assignment) - s.mem_mb) for s in live)
+        growth += sum(est(i) for i in self._starting)
+        need = est(item)
+        if avail - growth - need < self.min_free_mb:
             log.warning(
-                "refusing new session: %d MB available < %d MB",
+                "refusing new session for %s: %d MB available - %d MB growth "
+                "to come - %d MB for it < %d MB",
+                item,
                 avail,
+                growth,
+                need,
                 self.min_free_mb,
             )
             raise HubBusy(BUSY_MESSAGE)
@@ -479,7 +504,8 @@ class SessionManager:
             if not nb.is_file():
                 raise FileNotFoundError(f"Notebook not found: {nb}")
 
-            self._check_capacity()
+            self._check_capacity(assignment)
+            self._starting.append(assignment)
             port = self._allocate_port()
             try:
                 proc, actual_port = await self._spawn_process(
@@ -498,6 +524,7 @@ class SessionManager:
                 return session
             finally:
                 self._reserved_ports.discard(port)
+                self._starting.remove(assignment)
 
     async def get_or_spawn_run(self, username: str, lecture: str) -> MarimoSession:
         """Get or spawn a per-user ``marimo run`` session for a lecture.
@@ -527,7 +554,8 @@ class SessionManager:
             if not nb.is_file():
                 raise FileNotFoundError(f"Lecture notebook not found: {nb}")
 
-            self._check_capacity()
+            self._check_capacity(lecture)
+            self._starting.append(lecture)
             port = self._allocate_port()
             try:
                 cmd = self._build_run_command(username, lecture, nb, port)
@@ -577,6 +605,7 @@ class SessionManager:
                 return session
             finally:
                 self._reserved_ports.discard(port)
+                self._starting.remove(lecture)
 
     async def terminate(
         self, username: str, assignment: str, mode: str = "edit"
@@ -615,6 +644,29 @@ class SessionManager:
                 await self.cull_idle()
             except Exception:
                 log.exception("Error during session culling")
+
+    def sample_memory(self) -> None:
+        """Measure every session's process tree; record peaks per item."""
+        live = [*self.sessions.values(), *self.run_sessions.values()]
+        if not live:
+            return
+        children = children_map()
+        for s in live:
+            pid = getattr(s.process, "pid", None)
+            if pid is None:
+                continue
+            s.mem_mb = tree_mb(pid, children)
+            self.memory.record(s.assignment, s.mem_mb)
+        self.memory.save()
+
+    async def start_sampler(self, interval: float = 10) -> None:
+        """Background task sampling session memory (for admission control)."""
+        while True:
+            await asyncio.sleep(interval)
+            try:
+                await asyncio.to_thread(self.sample_memory)
+            except Exception:
+                log.exception("Error sampling session memory")
 
     async def shutdown_all(self) -> None:
         """Terminate all sessions."""

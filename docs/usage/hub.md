@@ -93,11 +93,37 @@ Start the hub server. Options:
 | `--session-ttl` | `3600` | Session idle timeout (seconds) |
 | `--session-threads` | `0` | Cap each session's numerical thread pools (OpenMP, BLAS, PyTorch; JAX only at 1) at N threads. `0` keeps library defaults (one thread per core), which oversubscribes the CPU when many students compute at once |
 | `--min-free-mb` | `0` | Admission control: refuse *new* sessions (HTTP 503, "the hub is busy") while available memory is below this many MB; existing sessions are unaffected. `0` disables |
+| `--session-mb` | `0` | Admission control: memory to assume per session for items not yet measured or calibrated (see below) |
 | `--trusted-header` | `X-Remote-User` | Trusted proxy header name |
 | `--dev` | off | Dev mode (no auth required) |
 | `--headless` | off | Don't open browser on startup |
 
 Each option can also be set in the service environment as `MOGRADER_HUB_SESSION_TTL`, `MOGRADER_HUB_SESSION_THREADS` and `MOGRADER_HUB_MIN_FREE_MB` (an option given on the command line wins).
+
+#### Admission control and calibration
+
+A session starts small and grows as its notebook runs, so a check of free
+memory alone admits a burst of arrivals that later runs the machine out of
+memory. With `--min-free-mb` set, the hub admits a new session only if
+
+    available memory - growth still to come in existing sessions
+                     - estimate for the new session  >=  --min-free-mb
+
+where a session's growth to come is its item's estimate minus its latest
+measured memory. Estimates per item come from:
+
+1. **Measurement.** The hub samples each session's memory (marimo process and
+   kernel, as PSS, so pages shared through the venv are split between
+   sessions) every 10 s and keeps each item's peak in `session_memory.json`
+   in the course directory.
+2. **Calibration.** `session_mb.json` in the course directory,
+   `{"<item>": MB, ..., "default": MB}`, read on every admission (no
+   restart). Fill it from a pre-session run, e.g. a load test of each
+   workshop, with some margin.
+3. `--session-mb` for items with neither.
+
+The estimate is the larger of the measured peak and the calibrated (or
+default) value, so real use during term only ever raises it.
 
 ### `mograder hub check`
 
