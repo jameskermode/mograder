@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import atexit
+import logging
 import os
 import re
 import subprocess
@@ -19,6 +20,26 @@ from dataclasses import dataclass, field
 from subprocess import PIPE, STDOUT
 from urllib.parse import urlparse
 from uuid import uuid4
+
+logger = logging.getLogger("mograder.edit_sessions")
+
+
+def _is_disconnect(exc: BaseException) -> bool:
+    """A normal end of a relayed WebSocket (either side closed cleanly)."""
+    try:
+        from starlette.websockets import WebSocketDisconnect
+
+        if isinstance(exc, WebSocketDisconnect):
+            return True
+    except ImportError:
+        pass
+    try:
+        from websockets.exceptions import ConnectionClosedOK
+
+        return isinstance(exc, ConnectionClosedOK)
+    except ImportError:
+        return False
+
 
 # ---------------------------------------------------------------------------
 # Layer 1: Shared headless spawn utility
@@ -448,33 +469,46 @@ async def proxy_ws_relay(websocket, target_url: str) -> None:
     """Relay WebSocket frames between *websocket* and upstream *target_url*.
 
     Caller must have already called ``await websocket.accept()``.
+
+    No message size limit: marimo sends some large messages, e.g. a widget's
+    whole state (a molecule viewer with a 100-frame trajectory is ~3 MB),
+    which the ``websockets`` default (1 MiB) refuses. When either direction
+    ends, both are closed, so the browser sees the disconnect and marimo's
+    frontend reconnects, instead of waiting on a relay that is half dead.
     """
     try:
         import websockets
 
-        async with websockets.connect(target_url) as upstream:
+        async with websockets.connect(target_url, max_size=None) as upstream:
 
             async def client_to_upstream() -> None:
-                try:
-                    while True:
-                        data = await websocket.receive_text()
-                        await upstream.send(data)
-                except Exception:
-                    pass
+                while True:
+                    data = await websocket.receive_text()
+                    await upstream.send(data)
 
             async def upstream_to_client() -> None:
-                try:
-                    async for msg in upstream:
-                        if isinstance(msg, str):
-                            await websocket.send_text(msg)
-                        else:
-                            await websocket.send_bytes(msg)
-                except Exception:
-                    pass
+                async for msg in upstream:
+                    if isinstance(msg, str):
+                        await websocket.send_text(msg)
+                    else:
+                        await websocket.send_bytes(msg)
 
-            await asyncio.gather(client_to_upstream(), upstream_to_client())
-    except Exception:
-        pass
+            tasks = [
+                asyncio.ensure_future(client_to_upstream()),
+                asyncio.ensure_future(upstream_to_client()),
+            ]
+            done, pending = await asyncio.wait(
+                tasks, return_when=asyncio.FIRST_COMPLETED
+            )
+            for task in pending:
+                task.cancel()
+            await asyncio.gather(*pending, return_exceptions=True)
+            for task in done:
+                exc = task.exception()
+                if exc is not None and not _is_disconnect(exc):
+                    logger.warning("WebSocket relay to %s ended: %r", target_url, exc)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("WebSocket relay to %s failed: %r", target_url, exc)
     finally:
         try:
             await websocket.close()
