@@ -823,3 +823,18 @@ def test_app_progress_bar_uses_context_manager_return():
                 f"progress_bar.__enter__() return value not captured — "
                 f".update() will fail: {line}"
             )
+
+
+def test_scan_course_skips_lectures(tmp_path):
+    """Lectures (mograder-type = "lecture") are not offered for grading."""
+    for name, header in (
+        ("hw1", ""),
+        ("L01", '# /// script\n# mograder-type = "lecture"\n# ///\n'),
+    ):
+        for sub in ("source", "release"):
+            d = tmp_path / sub / name
+            d.mkdir(parents=True)
+            (d / f"{name}.py").write_text(
+                header + _minimal_notebook(), encoding="utf-8"
+            )
+    assert [a.name for a in scan_course(tmp_path)] == ["hw1"]

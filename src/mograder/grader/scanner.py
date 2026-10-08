@@ -14,6 +14,7 @@ from mograder.grading.cells import (
     parse_auto_marks,
     parse_marker_feedback,
     parse_marks_metadata,
+    read_notebook_type,
 )
 from mograder.core._utils import TIMESTAMP_RE as _TIMESTAMP_RE
 
@@ -76,6 +77,16 @@ def scan_course(
     dn = dir_names or DirNames()
     assignments: dict[str, AssignmentInfo] = {}
 
+    def _is_lecture(d: Path, py_files: list[Path]) -> bool:
+        """A lecture (``mograder-type = "lecture"``), which is never graded."""
+        nb = d / f"{d.name}.py"
+        nb = nb if nb.is_file() else py_files[0]
+        try:
+            head = nb.read_text(encoding="utf-8", errors="replace")[:8192]
+        except OSError:
+            return False
+        return read_notebook_type(head) == "lecture"
+
     def _ensure(name: str) -> AssignmentInfo:
         if name not in assignments:
             assignments[name] = AssignmentInfo(name=name)
@@ -87,7 +98,7 @@ def scan_course(
         for d in sorted(source_dir.iterdir()):
             if d.is_dir():
                 py_files = list(d.glob("*.py"))
-                if py_files:
+                if py_files and not _is_lecture(d, py_files):
                     info = _ensure(d.name)
                     info.has_source = True
                     info.source_path = py_files[0]
@@ -98,7 +109,7 @@ def scan_course(
         for d in sorted(release_dir.iterdir()):
             if d.is_dir():
                 py_files = list(d.glob("*.py"))
-                if py_files:
+                if py_files and not _is_lecture(d, py_files):
                     info = _ensure(d.name)
                     info.has_release = True
                     info.release_path = py_files[0]

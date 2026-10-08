@@ -402,7 +402,7 @@ def build_submit_cell(server_url: str, assignment_name: str) -> str:
 
     Returns source text for two marimo cells (username input + submit action).
     """
-    return f'''\
+    return f"""\
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -426,7 +426,7 @@ def _(submit_btn, submit_username, mo):
     return
 
 
-'''
+"""
 
 
 def strip_submit_cells(text: str) -> str:
@@ -543,6 +543,12 @@ def _inject_type_metadata(lines: list[str], notebook_type: str) -> list[str]:
             break
 
     new_line = f'# mograder-type = "{notebook_type}"\n'
+
+    # Already declared (e.g. in the source): replace it, as a second
+    # ``mograder-type`` would be a duplicate TOML key and break the block
+    for i, line in enumerate(lines[: close_idx if close_idx is not None else 0]):
+        if re.match(r"#\s*mograder-type\s*=", line.strip()):
+            return lines[:i] + [new_line] + lines[i + 1 :]
 
     if close_idx is not None:
         return lines[:close_idx] + [new_line] + lines[close_idx:]

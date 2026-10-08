@@ -675,3 +675,16 @@ def test_rewrite_mixed_links():
     assert "[A1: Setup](../../../../edit/A1-Setup/)" in text
     assert "A1-Setup.py" not in text
     assert "https://example.com" in text
+
+
+def test_inject_type_metadata_replaces_existing():
+    """A source that already declares its type is not given a second key."""
+    lines = [
+        "# /// script\n",
+        '# requires-python = ">=3.12"\n',
+        '# mograder-type = "assignment"\n',
+        "# ///\n",
+    ]
+    text = "".join(_inject_type_metadata(lines, "lecture"))
+    assert text.count("mograder-type") == 1
+    assert read_notebook_type(text) == "lecture"
