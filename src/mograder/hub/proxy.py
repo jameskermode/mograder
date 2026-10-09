@@ -148,7 +148,7 @@ for (var i = 0; i < parts.length; i++) {{
 fetch(base + "{start_url}", {{method:"POST",credentials:"same-origin"}})
   .then(r=>r.ok?r.json():r.json().then(
     d=>Promise.reject(d.detail||r.statusText),()=>Promise.reject(r.statusText)))
-  .then(d=>{{window.location.href=base+"/"+d.url}})
+  .then(d=>{{window.location.replace(base+"/"+d.url)}})
   .catch(e=>{{
     document.getElementById("msg").textContent=String(e).startsWith("Not available")?e:"Error: "+e;
     document.querySelector(".spinner").style.display="none";

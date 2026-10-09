@@ -82,3 +82,12 @@ def test_run_command_hides_code_for_demos(tmp_path):
     lecture = sm._build_run_command("u", "L01", nb, 18000)
     demo = sm._build_run_command("u", "gp-demo", nb, 18000, include_code=False)
     assert "--include-code" in lecture and "--include-code" not in demo
+
+
+def test_deep_link_page_leaves_no_history_entry(hub):
+    """The spinner page replaces itself with the session (location.replace),
+    so the browser's Back button returns to the linking page instead of
+    re-entering the spinner, which would forward to the session again."""
+    html = hub.student.get("/run/gp-demo/").text
+    assert "window.location.replace(" in html
+    assert "window.location.href=" not in html
