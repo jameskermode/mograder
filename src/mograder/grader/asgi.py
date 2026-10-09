@@ -1,15 +1,28 @@
 """ASGI grader with trusted-proxy authentication middleware.
 
 Security model:
-- localhost (127.0.0.1 / ::1) → instructor (full access)
-- Trusted proxy IPs → read X-Remote-User header for identity
+- localhost (127.0.0.1 / ::1) without an X-Remote-User header → instructor
+  (local use, and the grader's own internal calls)
+- Trusted proxy IPs → identity from the X-Remote-User header; with
+  MOGRADER_TRUST_LOCAL_PROXY=1, localhost requests carrying the header too
+  (a reverse proxy reaching the grader through an SSH tunnel)
 - All other IPs → 403 Forbidden
 
+Roles of a proxied user:
+- in MOGRADER_INSTRUCTORS → instructor (everything)
+- in MOGRADER_MARKERS → marker: the Submissions and Grading tabs only, for
+  assignments the instructor has opened for marking; no Moodle actions
+- anyone else → 403 when MOGRADER_MARKERS is set; otherwise a marker
+- with neither list set, every proxied user is an instructor (as before
+  roles existed)
+
 Environment variables:
-    MOGRADER_COURSE_DIR      Course directory (required)
-    MOGRADER_BASE_URL        Base URL path, default "/" (e.g. "/live/grader")
-    MOGRADER_INSTRUCTORS     Comma-separated instructor user IDs
-    MOGRADER_TRUSTED_PROXIES Comma-separated trusted proxy IPs
+    MOGRADER_COURSE_DIR        Course directory (required)
+    MOGRADER_BASE_URL          Base URL path, default "/" (e.g. "/live/grader")
+    MOGRADER_INSTRUCTORS       Comma-separated instructor user IDs
+    MOGRADER_MARKERS           Comma-separated marker (GTA) user IDs
+    MOGRADER_TRUSTED_PROXIES   Comma-separated trusted proxy IPs
+    MOGRADER_TRUST_LOCAL_PROXY 1 = localhost requests with X-Remote-User are proxied
 
 Usage:
     uvicorn mograder.grader.asgi:app --host 0.0.0.0 --port 2718
@@ -31,11 +44,41 @@ TRUSTED_PROXIES = {
     if ip.strip()
 }
 
-INSTRUCTOR_USERS = {
-    u.strip()
-    for u in os.environ.get("MOGRADER_INSTRUCTORS", "").split(",")
-    if u.strip()
-}
+
+def _user_set(var: str) -> set[str]:
+    return {u.strip() for u in os.environ.get(var, "").split(",") if u.strip()}
+
+
+INSTRUCTOR_USERS = _user_set("MOGRADER_INSTRUCTORS")
+MARKER_USERS = _user_set("MOGRADER_MARKERS")
+TRUST_LOCAL_PROXY = os.environ.get("MOGRADER_TRUST_LOCAL_PROXY") == "1"
+
+
+def resolve_user(
+    client_ip: str | None,
+    remote_user: str | None,
+    *,
+    instructors: set[str],
+    markers: set[str],
+    trusted_proxies: set[str],
+    trust_local_proxy: bool = False,
+) -> dict | None:
+    """The request's user (``username``, ``is_instructor``, ``is_marker``), or
+    ``None`` to refuse it. See the module docstring for the rules."""
+    local = client_ip in LOCALHOST_IPS
+    if local and not (trust_local_proxy and remote_user):
+        return {"username": "", "is_instructor": True, "is_marker": False}
+    if not (local or client_ip in trusted_proxies):
+        return None
+    if not remote_user:
+        return None
+    if not instructors and not markers:
+        return {"username": remote_user, "is_instructor": True, "is_marker": False}
+    if remote_user in instructors:
+        return {"username": remote_user, "is_instructor": True, "is_marker": False}
+    if markers and remote_user not in markers:
+        return None
+    return {"username": remote_user, "is_instructor": False, "is_marker": True}
 
 
 def _get_client_ip(scope):
@@ -65,20 +108,18 @@ class TrustedProxyAuth:
             await self.app(scope, receive, send)
             return
 
-        client_ip = _get_client_ip(scope)
-
-        if client_ip in LOCALHOST_IPS:
-            # Local access → instructor
-            scope["user"] = {"username": "", "is_instructor": True}
-        elif client_ip in TRUSTED_PROXIES:
-            # Reverse proxy → trust X-Remote-User
-            username = _get_header(scope, "x-remote-user") or ""
-            scope["user"] = {
-                "username": username,
-                "is_instructor": username in INSTRUCTOR_USERS,
-            }
+        user = resolve_user(
+            _get_client_ip(scope),
+            _get_header(scope, "x-remote-user"),
+            instructors=INSTRUCTOR_USERS,
+            markers=MARKER_USERS,
+            trusted_proxies=TRUSTED_PROXIES,
+            trust_local_proxy=TRUST_LOCAL_PROXY,
+        )
+        if user is not None:
+            scope["user"] = user
         else:
-            # Untrusted source → reject
+            # Untrusted source or user without a role → reject
             if scope["type"] == "http":
                 await send(
                     {
@@ -95,6 +136,33 @@ class TrustedProxyAuth:
                 )
             return
 
+        await self.app(scope, receive, send)
+
+
+async def _forbidden(scope, send):
+    if scope["type"] == "http":
+        await send(
+            {
+                "type": "http.response.start",
+                "status": 403,
+                "headers": [(b"content-type", b"text/plain")],
+            }
+        )
+        await send({"type": "http.response.body", "body": b"403 Forbidden"})
+
+
+class InstructorOnly:
+    """Wrap an ASGI app (behind TrustedProxyAuth) so only instructors reach it."""
+
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] in ("http", "websocket") and not scope.get("user", {}).get(
+            "is_instructor"
+        ):
+            await _forbidden(scope, send)
+            return
         await self.app(scope, receive, send)
 
 
@@ -124,6 +192,10 @@ _marimo_app = _builder.build()
 _edit_manager = EditSessionManager(base_url=_base_url.rstrip("/"))
 _edit_app = build_edit_proxy_app(_edit_manager)
 _authed_edit_app = TrustedProxyAuth(_edit_app)
+# Creating/stopping edit sessions (on any path) is for the grader's own
+# internal calls (localhost, instructor) and instructors; a marker's editors
+# are started by the app, which checks what they may open.
+_instructor_edit_api = TrustedProxyAuth(InstructorOnly(_edit_app))
 
 _edit_prefix = _base_url.rstrip("/") + "/_edit/"
 _api_prefix = _base_url.rstrip("/") + "/_api/edit"
@@ -146,7 +218,10 @@ async def app(scope, receive, send):
             scope["path"] = path[len(_student_api_prefix) :] or "/"
             await _student_api(scope, receive, send)
             return
-        if path.startswith(_edit_prefix) or path.startswith(_api_prefix):
+        if path.startswith(_api_prefix):
+            await _instructor_edit_api(scope, receive, send)
+            return
+        if path.startswith(_edit_prefix):
             await _authed_edit_app(scope, receive, send)
             return
     await _marimo_app(scope, receive, send)

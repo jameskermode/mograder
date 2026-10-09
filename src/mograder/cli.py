@@ -2557,16 +2557,38 @@ def grader(course_dir, port, headless, base_url):
     help="Comma-separated instructor user IDs",
 )
 @click.option(
+    "--markers",
+    default="",
+    help="Comma-separated marker user IDs (e.g. GTAs): Submissions and Grading "
+    "tabs only, for assignments opened for marking; no Moodle actions",
+)
+@click.option(
     "--trusted-proxies",
     default="",
     help="Comma-separated trusted proxy IPs",
+)
+@click.option(
+    "--trust-local-proxy",
+    is_flag=True,
+    help="Read X-Remote-User from localhost too (a reverse proxy reaching the "
+    "grader through an SSH tunnel); localhost without the header stays instructor",
 )
 @click.option(
     "--reload",
     is_flag=True,
     help="Auto-reload on source changes (for development)",
 )
-def grader_asgi(course_dir, port, host, base_url, instructors, trusted_proxies, reload):
+def grader_asgi(
+    course_dir,
+    port,
+    host,
+    base_url,
+    instructors,
+    markers,
+    trusted_proxies,
+    trust_local_proxy,
+    reload,
+):
     """Launch the grader as a persistent ASGI service.
 
     Uses uvicorn with trusted-proxy authentication middleware.
@@ -2579,8 +2601,12 @@ def grader_asgi(course_dir, port, host, base_url, instructors, trusted_proxies, 
     os.environ["MOGRADER_BASE_URL"] = base_url
     if instructors:
         os.environ["MOGRADER_INSTRUCTORS"] = instructors
+    if markers:
+        os.environ["MOGRADER_MARKERS"] = markers
     if trusted_proxies:
         os.environ["MOGRADER_TRUSTED_PROXIES"] = trusted_proxies
+    if trust_local_proxy:
+        os.environ["MOGRADER_TRUST_LOCAL_PROXY"] = "1"
 
     cmd = [
         sys.executable,
@@ -2599,8 +2625,12 @@ def grader_asgi(course_dir, port, host, base_url, instructors, trusted_proxies, 
     click.echo(f"Launching ASGI grader for: {course_dir.resolve()}")
     click.echo(f"  base-url: {base_url}")
     click.echo(f"  bind: {host}:{port}")
+    if markers:
+        click.echo(f"  markers: {markers}")
     if trusted_proxies:
         click.echo(f"  trusted-proxies: {trusted_proxies}")
+    if trust_local_proxy:
+        click.echo("  trust-local-proxy: on")
     if reload:
         click.echo(f"  reload: watching {src_dir}")
     try:

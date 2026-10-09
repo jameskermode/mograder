@@ -45,8 +45,10 @@ def _():
     TRANSPORT_READY = False
     if TRANSPORT_TYPE == "moodle":
         if MOGRADER_CONFIG.moodle_url and MOGRADER_CONFIG.moodle_course_id:
+            # a token from `mograder moodle login`, or MOGRADER_MOODLE_TOKEN
+            # (as the CLI accepts; e.g. from a service environment file)
             _cached = load_cached_token(MOGRADER_CONFIG.moodle_url)
-            if _cached:
+            if _cached or os.environ.get("MOGRADER_MOODLE_TOKEN"):
                 TRANSPORT_READY = True
     elif TRANSPORT_TYPE == "https":
         if MOGRADER_CONFIG.https_url:
@@ -115,6 +117,27 @@ def _():
         """
         return _get_user_attr("is_instructor", True)
 
+    def is_marker() -> bool:
+        """A marker (e.g. a GTA): grades assignments opened for marking, and
+        nothing else (no generate/autograde/import/export, no Moodle)."""
+        return not is_instructor()
+
+    # Assignments the instructor has opened for marking (markers see only these)
+    from mograder.grader import marking as _marking
+
+    def marking_open() -> set:
+        return _marking.marking_open(COURSE_DIR)
+
+    def set_marking_open(name: str, is_open: bool) -> None:
+        _marking.set_marking_open(COURSE_DIR, name, is_open)
+
+    def may_edit(path) -> bool:
+        """Instructors may open any notebook; markers only autograded
+        submissions of assignments opened for marking."""
+        return is_instructor() or _marking.marker_may_edit(
+            path, COURSE_DIR, DIR_NAMES.autograded
+        )
+
     def get_user_display() -> str:
         """Return 'username@host' for display in the navbar."""
         username = _get_user_attr("username", "")
@@ -143,6 +166,10 @@ def _():
         moodle_upload_url,
         get_user_display,
         is_instructor,
+        is_marker,
+        marking_open,
+        may_edit,
+        set_marking_open,
         alt,
         io,
         mo,
@@ -197,8 +224,18 @@ def _(COURSE_DIR, DIR_NAMES, GRADEBOOK, get_data_version, refresh_btn):
 
 
 @app.cell
-def _(assignments, get_selected, mo, set_grading_index, set_selected):
-    _options = {a.name: a.name for a in assignments}
+def _(
+    assignments,
+    get_selected,
+    is_marker,
+    marking_open,
+    mo,
+    set_grading_index,
+    set_selected,
+):
+    # markers see only the assignments the instructor has opened for marking
+    _open = marking_open() if is_marker() else None
+    _options = {a.name: a.name for a in assignments if _open is None or a.name in _open}
     _current = get_selected()
     # Clear stale state if the previously selected assignment is no longer available
     if _current and _current not in _options:
@@ -238,8 +275,11 @@ def _(
     assignments,
     io,
     is_instructor,
+    marking_open,
     mo,
     set_action_log,
+    set_data_version,
+    set_marking_open,
     set_pending_action,
     sp,
     sys,
@@ -583,6 +623,28 @@ def _(
     fetch_sub_btns = mo.ui.array(_fetch_sub_list)
     upload_fb_btns = mo.ui.array(_upload_fb_list)
 
+    # Open/close each assignment for marking: markers (GTAs) see an
+    # assignment only once it is open, e.g. after autograding
+    _open_now = marking_open()
+
+    def _toggle_marking(name, is_open):
+        if is_instructor():
+            set_marking_open(name, bool(is_open))
+            set_action_log(
+                f"**{name}** {'opened' if is_open else 'closed'} for marking."
+            )
+            set_data_version(lambda v: v + 1)
+
+    marking_switches = mo.ui.array(
+        [
+            mo.ui.switch(
+                value=_a.name in _open_now,
+                on_change=lambda v, n=_a.name: _toggle_marking(n, v),
+            )
+            for _a in assignments
+        ]
+    )
+
     # Map array indices back to row positions for mixed button/md lists
     _src_idx = 0
     _rel_idx = 0
@@ -702,6 +764,7 @@ def _(
                 "Graded": _graded_cell,
                 "Export": _export_cell,
                 "Feedback": mo.md(_fb_text),
+                "Marking": marking_switches[_i],
             }
         )
         _rows.append(_row)
@@ -728,6 +791,7 @@ def _(
         gen_btns,
         auto_btns,
         fb_btns,
+        marking_switches,
     )
 
 
@@ -739,13 +803,15 @@ def _(
     DIR_NAMES,
     MOGRADER_CONFIG,
     Gradebook,
+    is_instructor,
     mo,
     set_action_log,
     set_data_version,
 ):
     from mograder.transport.moodle import extract_submissions, read_moodle_worksheet
 
-    for _i, _a in enumerate(assignments):
+    # imports are instructor-only (the widget is on the Assignments tab)
+    for _i, _a in enumerate(assignments if is_instructor() else []):
         if _i >= len(imp_uploads):
             break
         _files = imp_uploads[_i].value
@@ -824,11 +890,13 @@ def _(
     DIR_NAMES,
     MOGRADER_CONFIG,
     Gradebook,
+    is_instructor,
     set_action_log,
     set_data_version,
     zipfile,
 ):
-    for _i, _a in enumerate(assignments):
+    # uploads of autograded work are instructor-only (Assignments tab)
+    for _i, _a in enumerate(assignments if is_instructor() else []):
         if _i >= len(auto_uploads):
             break
         _files = auto_uploads[_i].value
@@ -1697,6 +1765,7 @@ def _(
     version_html,
     get_user_display,
     grading_content,
+    is_marker,
     mo,
     new_btn,
     new_name_input,
@@ -1747,6 +1816,12 @@ def _(
                     "Grading": grading_content,
                     "Students": students_content,
                 }
+                if not is_marker()
+                # markers grade: no assignment pipeline, Moodle or class list
+                else {
+                    "Submissions": submissions_content,
+                    "Grading": grading_content,
+                }
             ),
             active_editors_content,
             action_log_content,
@@ -1760,6 +1835,8 @@ def _(
     COURSE_DIR,
     MOGRADER_BIN,
     get_pending_action,
+    is_instructor,
+    may_edit,
     mo,
     os,
     set_action_log,
@@ -1773,6 +1850,18 @@ def _(
     import urllib.request as _urllib_request
 
     _action = get_pending_action()
+    # Server-side role check (the UI hides these from markers, but a crafted
+    # request could still set the action): markers may only open autograded
+    # submissions of assignments opened for marking, and stop editors.
+    if _action is not None and not is_instructor():
+        _kind = _action.get("action")
+        _ok = (_kind == "edit" and may_edit(_action.get("path", ""))) or (
+            _kind == "stop_edit"
+        )
+        if not _ok:
+            set_action_log("**Not permitted** for markers.")
+            set_pending_action(None)
+            _action = None
     if _action is not None and _action.get("action") == "edit":
         _path = _action["path"]
         _label = _action["label"]
