@@ -33,6 +33,7 @@ from pathlib import Path
 
 import marimo
 
+from mograder.core import view_as
 from mograder.core.config import load_config
 from mograder.student.api import create_student_api
 
@@ -117,7 +118,11 @@ class TrustedProxyAuth:
             trust_local_proxy=TRUST_LOCAL_PROXY,
         )
         if user is not None:
-            scope["user"] = user
+            # an instructor viewing as a marker (testing): their permissions
+            # drop to a marker's for every request until they switch back
+            scope["user"] = view_as.apply(
+                user, view_as.read_cookie(scope.get("headers", [])), {"marker"}
+            )
         else:
             # Untrusted source or user without a role → reject
             if scope["type"] == "http":
@@ -166,6 +171,33 @@ class InstructorOnly:
         await self.app(scope, receive, send)
 
 
+async def _view_as_endpoint(scope, receive, send):
+    """``<base>/_view_as?role=marker`` switches to the marker view;
+    ``?role=`` switches back. Real instructors only."""
+    if scope["type"] != "http":
+        return
+    if not scope.get("user", {}).get("real_is_instructor"):
+        await _forbidden(scope, send)
+        return
+    from urllib.parse import parse_qs
+
+    qs = parse_qs(scope.get("query_string", b"").decode("latin-1"))
+    role = (qs.get("role") or [""])[0]
+    role = role if role == "marker" else ""
+    await send(
+        {
+            "type": "http.response.start",
+            "status": 303,
+            "headers": [
+                (b"location", b"./"),
+                (b"set-cookie", view_as.cookie_header(role)),
+                (b"cache-control", b"no-store"),
+            ],
+        }
+    )
+    await send({"type": "http.response.body", "body": b""})
+
+
 # --- Build the ASGI application ---
 
 _base_url = os.environ.get("MOGRADER_BASE_URL", "/")
@@ -206,6 +238,8 @@ _course_dir = Path(os.environ.get("MOGRADER_COURSE_DIR", "."))
 _student_config = load_config(_course_dir)
 _student_api = create_student_api(_course_dir, _student_config)
 _student_api_prefix = _base_url.rstrip("/") + "/student/api"
+_view_as_path = _base_url.rstrip("/") + "/_view_as"
+_authed_view_as = TrustedProxyAuth(_view_as_endpoint)
 
 
 async def app(scope, receive, send):
@@ -217,6 +251,9 @@ async def app(scope, receive, send):
             scope = dict(scope)
             scope["path"] = path[len(_student_api_prefix) :] or "/"
             await _student_api(scope, receive, send)
+            return
+        if path == _view_as_path:
+            await _authed_view_as(scope, receive, send)
             return
         if path.startswith(_api_prefix):
             await _instructor_edit_api(scope, receive, send)

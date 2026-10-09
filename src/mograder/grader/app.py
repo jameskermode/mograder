@@ -117,6 +117,14 @@ def _():
         """
         return _get_user_attr("is_instructor", True)
 
+    def view_as_role() -> str:
+        """The role an instructor is viewing as ("marker"), or ""."""
+        return _get_user_attr("view_as", "") or ""
+
+    def real_instructor() -> bool:
+        """The real user is an instructor (also while viewing as a marker)."""
+        return bool(_get_user_attr("real_is_instructor", is_instructor()))
+
     def is_marker() -> bool:
         """A marker (e.g. a GTA): grades assignments opened for marking, and
         nothing else (no generate/autograde/import/export, no Moodle)."""
@@ -169,7 +177,9 @@ def _():
         is_marker,
         marking_open,
         may_edit,
+        real_instructor,
         set_marking_open,
+        view_as_role,
         alt,
         io,
         mo,
@@ -1769,11 +1779,31 @@ def _(
     mo,
     new_btn,
     new_name_input,
+    real_instructor,
     refresh_btn,
     students_content,
     submissions_content,
+    view_as_role,
 ):
     _version = version_html()
+    # Instructors can view the grader as a marker (GTA) to test it, like
+    # Moodle's "Switch role to"; permissions really drop to a marker's
+    if view_as_role():
+        _view_as_bar = mo.callout(
+            mo.md(
+                f"**Viewing as {view_as_role()}**: you see and can do what a "
+                f"{view_as_role()} can (assignments open for marking only, no "
+                "Moodle). [Switch back to instructor](_view_as?role=)"
+            ),
+            kind="warn",
+        )
+    elif real_instructor():
+        _view_as_bar = mo.md(
+            '<div style="text-align:right;font-size:0.85em">'
+            '<a href="_view_as?role=marker">View as marker</a></div>'
+        )
+    else:
+        _view_as_bar = mo.md("")
     _style = mo.Html("""<style>
         /* Normalize download links to match mo.ui.button sizing */
         marimo-download a {
@@ -1809,6 +1839,7 @@ def _(
                 justify="space-between",
                 align="center",
             ),
+            _view_as_bar,
             mo.ui.tabs(
                 {
                     "Assignments": _assignments_tab,

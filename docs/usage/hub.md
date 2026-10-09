@@ -93,12 +93,25 @@ Start the hub server. Options:
 | `--session-ttl` | `3600` | Session idle timeout (seconds) |
 | `--session-threads` | `0` | Cap each session's numerical thread pools (OpenMP, BLAS, PyTorch; JAX only at 1) at N threads. `0` keeps library defaults (one thread per core), which oversubscribes the CPU when many students compute at once |
 | `--min-free-mb` | `0` | Admission control: refuse *new* sessions (HTTP 503, "the hub is busy") while available memory is below this many MB; existing sessions are unaffected. `0` disables |
+| `--instructors` | | Usernames (from the proxy's user header, e.g. SSO) with the instructor role: they see every item whatever its schedule, and can **view the hub as a student** (below) |
 | `--session-mb` | `0` | Admission control: memory to assume per session for items not yet measured or calibrated (see below) |
 | `--trusted-header` | `X-Remote-User` | Trusted proxy header name |
 | `--dev` | off | Dev mode (no auth required) |
 | `--headless` | off | Don't open browser on startup |
 
 Each option can also be set in the service environment as `MOGRADER_HUB_SESSION_TTL`, `MOGRADER_HUB_SESSION_THREADS` and `MOGRADER_HUB_MIN_FREE_MB` (an option given on the command line wins).
+
+#### View as student
+
+Like Moodle's *Switch role to…*, an instructor can see the hub exactly as a
+student does: the dashboard shows **View as student now**, and **View as
+student then** with an *as of* date, which evaluates the release schedule at
+09:00 (Europe/London) on that day, so the schedule can be checked before
+term. Permissions really drop to a student's (hidden items are hidden, deep
+links refuse them) until **Back to instructor view**. The switch is a cookie
+(`mograder_view_as`, 8 hours) honoured only for real instructors, so it can
+only ever reduce privileges. Endpoint: `view-as?role=student[&as_of=ISO]`,
+`view-as?role=` to switch back.
 
 #### Admission control and calibration
 

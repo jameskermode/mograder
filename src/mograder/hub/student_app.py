@@ -36,6 +36,27 @@ def _():
 
     HUB_USER = _hub_username()
 
+    def _hub_user_attr(attr, default=None):
+        req = mo.app_meta().request
+        user = req.user if req else None
+        if isinstance(user, dict):
+            return user.get(attr, default)
+        return getattr(user, attr, default) if user is not None else default
+
+    from mograder.core.auth import is_instructor as _is_token_instructor
+    from mograder.core.view_as import as_of_timestamp as _as_of_ts
+
+    # Role as the hub's auth middleware set it (SSO instructors included); an
+    # instructor "viewing as student" has is_instructor False, view_as set and
+    # optionally as_of (scheduled visibility evaluated at that moment)
+    HUB_IS_INSTRUCTOR = bool(
+        _hub_user_attr("is_instructor", _is_token_instructor(HUB_USER))
+    )
+    HUB_REAL_INSTRUCTOR = bool(_hub_user_attr("real_is_instructor", HUB_IS_INSTRUCTOR))
+    HUB_VIEW_AS = _hub_user_attr("view_as", "") or ""
+    HUB_AS_OF = _hub_user_attr("as_of", None)
+    HUB_AS_OF_TS = _as_of_ts({"as_of": HUB_AS_OF})
+
     def actions_cell_style(_row_id, column, _value):
         """Table cell style: the Actions column is as wide as its widest row
         (by default the table squeezes it, clipping or wrapping the buttons)."""
@@ -66,7 +87,12 @@ def _():
     return (
         COURSE_DIR,
         CONFIG,
+        HUB_AS_OF,
+        HUB_AS_OF_TS,
+        HUB_IS_INSTRUCTOR,
+        HUB_REAL_INSTRUCTOR,
         HUB_USER,
+        HUB_VIEW_AS,
         Path,
         actions_cell_style,
         brand_logo_html,
@@ -111,6 +137,8 @@ def _(mo):
 def _(
     COURSE_DIR,
     CONFIG,
+    HUB_AS_OF_TS,
+    HUB_IS_INSTRUCTOR,
     HUB_USER,
     brand_logo_html,
     version_html,
@@ -126,18 +154,17 @@ def _(
     https_assignments = ()
     hub_lectures = ()
 
-    from mograder.core.auth import is_instructor as _is_instructor
     from mograder.hub.storage import StorageManager as _StorageManager
 
     hub_storage = _StorageManager(COURSE_DIR / CONFIG.hub_notebooks_dir, _rel_dir)
-    _instructor = _is_instructor(HUB_USER)
+    _instructor = HUB_IS_INSTRUCTOR
 
     def hub_item_open(name, started=False):
         """Scheduled visibility: students don't see hidden or not-yet-open
         items, except an assignment they already have a copy of."""
         if _instructor or started:
             return True
-        return hub_storage.visibility(name)[0]
+        return hub_storage.visibility(name, now=HUB_AS_OF_TS)[0]
 
     if _rel_dir.is_dir():
         import json as _json
@@ -158,7 +185,7 @@ def _(
                     pass
             # Scheduled visibility: students do not see hidden or not-yet-open
             # items (an assignment they already have a copy of stays listed)
-            _open, _ = _storage.visibility(d.name)
+            _open, _ = _storage.visibility(d.name, now=HUB_AS_OF_TS)
             if not _open and not _instructor:
                 try:
                     _started = _storage.assignment_path(HUB_USER, d.name).exists()
@@ -186,6 +213,71 @@ def _(
         )
     )
     return (https_assignments, hub_item_open, hub_lectures, hub_storage)
+
+
+# --- View as student (instructors): test what students see, optionally as of
+# a date, so the release schedule can be checked before term ---
+@app.cell
+def _(mo):
+    import datetime as _dt
+
+    # shown in the view-as bar below (instructors only)
+    view_as_date = mo.ui.date(value=_dt.date.today().isoformat(), label="as of")
+    return (view_as_date,)
+
+
+@app.cell
+def _(HUB_AS_OF, HUB_REAL_INSTRUCTOR, HUB_VIEW_AS, mo, view_as_date):
+    import html as _html_va
+    from datetime import datetime as _datetime
+
+    def _switch_link(label, href):
+        # same tab (target _top): the switch reloads the dashboard
+        return mo.Html(
+            f'<a class="mograder-btn" href="{_html_va.escape(href)}" '
+            f'target="_top">{_html_va.escape(label)}</a>'
+        )
+
+    if HUB_VIEW_AS:
+        _when = (
+            _datetime.fromisoformat(HUB_AS_OF).strftime("%a %d %b %Y, %H:%M")
+            if HUB_AS_OF
+            else "now"
+        )
+        _bar = mo.callout(
+            mo.hstack(
+                [
+                    mo.md(
+                        f"**Viewing as {HUB_VIEW_AS}**, schedule as of **{_when}**: "
+                        "you see and can open only what a student could then."
+                    ),
+                    _switch_link("Back to instructor view", "view-as?role="),
+                ],
+                justify="space-between",
+                align="center",
+            ),
+            kind="warn",
+        )
+    elif HUB_REAL_INSTRUCTOR:
+        _d = view_as_date.value
+        _bar = mo.hstack(
+            [
+                mo.md("**Instructor**: check what students see:"),
+                _switch_link("View as student now", "view-as?role=student"),
+                view_as_date,
+                _switch_link(
+                    "View as student then",
+                    f"view-as?role=student&as_of={_d.isoformat()}T09:00",
+                ),
+            ],
+            justify="start",
+            align="center",
+            gap=0.5,
+        )
+    else:
+        _bar = None
+    _bar
+    return
 
 
 # The activity panel (active sessions, messages, report) sits at the top,

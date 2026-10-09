@@ -50,6 +50,12 @@ markers; switch it off when marking is done, then upload feedback.
 The role checks are enforced in the app (actions and uploads), not only by
 hiding controls, and the edit-session API is instructor-only.
 
+**View as marker.** An instructor can switch to the marker view (link at the
+top right, `_view_as?role=marker`) to check what GTAs will see; permissions
+really drop to a marker's until *Switch back to instructor*
+(`_view_as?role=`). Like the hub's *view as student*, the switch is a cookie
+honoured only for real instructors.
+
 **SSH tunnel.** When the proxy reaches the grader through an SSH tunnel, all
 requests arrive from `localhost`; use `--trust-local-proxy`
 (`MOGRADER_TRUST_LOCAL_PROXY=1`) so the header is read there too, and bind

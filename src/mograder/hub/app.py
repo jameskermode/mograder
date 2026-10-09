@@ -12,10 +12,12 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Request, UploadFile
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 
 from mograder.hub.auth import ALLOWED_USERS_FILE, RemoteUserMiddleware
 from mograder.hub.proxy import create_proxy_router
+from mograder.core import view_as
+from mograder.core.view_as import as_of_timestamp
 from mograder.hub.spawner import HubBusy, SessionManager
 from mograder.hub.storage import StorageManager
 from mograder.grading.runner import run_notebook
@@ -40,6 +42,7 @@ def create_hub_app(
     session_threads: int = 0,
     min_free_mb: int = 0,
     session_mb: int = 0,
+    instructors: set[str] | None = None,
 ) -> FastAPI:
     """Create the hub FastAPI application."""
     from mograder.core.config import load_config
@@ -103,6 +106,7 @@ def create_hub_app(
         trusted_header=trusted_header,
         dev=dev,
         allowed_users_file=course_dir / ALLOWED_USERS_FILE,
+        instructors=instructors,
     )
 
     # Include proxy router
@@ -123,6 +127,33 @@ def create_hub_app(
             status_code=403, detail="Cannot access another user's resources"
         )
 
+    # -- View as student (instructors testing visibility) --
+
+    @app.get("/view-as")
+    async def view_as_switch(request: Request, role: str = "", as_of: str = ""):
+        """Switch to the student view (``?role=student``, optionally
+        ``&as_of=2027-01-18T09:00`` to see the schedule at that moment), or
+        back (``?role=``). Real instructors only; see mograder.core.view_as."""
+        if not request.scope.get("user", {}).get("real_is_instructor"):
+            raise HTTPException(status_code=403, detail="Instructors only")
+        role = "student" if role == "student" else ""
+        stamp = None
+        if role and as_of:
+            from datetime import datetime
+            from zoneinfo import ZoneInfo
+
+            try:
+                dt = datetime.fromisoformat(as_of)
+            except ValueError:
+                raise HTTPException(status_code=400, detail="as_of: ISO date/time")
+            if dt.tzinfo is None:  # a local date/time (UK term dates)
+                dt = dt.replace(tzinfo=ZoneInfo("Europe/London"))
+            stamp = dt.isoformat()
+        resp = RedirectResponse("./", status_code=303)
+        resp.headers["set-cookie"] = view_as.cookie_header(role, stamp).decode()
+        resp.headers["cache-control"] = "no-store"
+        return resp
+
     # -- Visibility (scheduled release) --
 
     def _check_visible(request: Request, name: str) -> None:
@@ -130,7 +161,7 @@ def create_hub_app(
         user = request.scope.get("user", {})
         if user.get("is_instructor"):
             return
-        visible, opens = storage.visibility(name)
+        visible, opens = storage.visibility(name, now=as_of_timestamp(user))
         if not visible:
             if opens:
                 from datetime import datetime
@@ -510,7 +541,7 @@ def create_hub_app(
 
         def _vis(name, started=False):
             """Visibility fields for the listing, or None to leave the item out."""
-            visible, opens = storage.visibility(name)
+            visible, opens = storage.visibility(name, now=as_of_timestamp(user))
             if not visible and not instructor and not started:
                 return None
             return {"visible": visible, "visible_from": opens}
@@ -824,6 +855,11 @@ def create_hub_app(
 # Module-level app for uvicorn entry point
 _course_dir = Path(os.environ.get("MOGRADER_COURSE_DIR", "."))
 _dev = os.environ.get("MOGRADER_HUB_DEV") == "1"
+_hub_instructors = {
+    u.strip()
+    for u in os.environ.get("MOGRADER_HUB_INSTRUCTORS", "").split(",")
+    if u.strip()
+}
 
 
 def _env_int(name: str, default: int) -> int:
@@ -841,6 +877,7 @@ try:
         session_threads=_env_int("MOGRADER_HUB_SESSION_THREADS", 0),
         min_free_mb=_env_int("MOGRADER_HUB_MIN_FREE_MB", 0),
         session_mb=_env_int("MOGRADER_HUB_SESSION_MB", 0),
+        instructors=_hub_instructors,
     )
 except Exception:
     # Allow import to succeed even without proper config

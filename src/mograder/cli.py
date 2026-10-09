@@ -3596,6 +3596,12 @@ def wasm_edit_links(wasm_app, notebooks, output, url_template):
     "this many MB; 0 = never",
 )
 @click.option(
+    "--instructors",
+    default="",
+    help="Comma-separated usernames (from the proxy's user header, e.g. SSO) with "
+    "the instructor role; they can also view the hub as a student",
+)
+@click.option(
     "--session-mb",
     type=int,
     default=0,
@@ -3616,6 +3622,7 @@ def hub(
     session_threads,
     min_free_mb,
     session_mb,
+    instructors,
     trusted_header,
     dev,
     headless,
@@ -3648,6 +3655,7 @@ def hub(
             session_threads=session_threads,
             min_free_mb=min_free_mb,
             session_mb=session_mb,
+            instructors=instructors,
         )
 
 
@@ -3663,6 +3671,7 @@ def _start_hub_server(
     session_threads=0,
     min_free_mb=0,
     session_mb=0,
+    instructors="",
 ):
     """Start the hub server via uvicorn."""
     import subprocess as sp
@@ -3687,6 +3696,7 @@ def _start_hub_server(
         ("MOGRADER_HUB_SESSION_THREADS", session_threads, 0),
         ("MOGRADER_HUB_MIN_FREE_MB", min_free_mb, 0),
         ("MOGRADER_HUB_SESSION_MB", session_mb, 0),
+        ("MOGRADER_HUB_INSTRUCTORS", instructors, ""),
     ):
         if value != default or var not in os.environ:
             os.environ[var] = str(value)

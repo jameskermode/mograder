@@ -9,6 +9,7 @@ import http.cookies
 import time
 from pathlib import Path
 
+from mograder.core import view_as
 from mograder.core.auth import is_instructor, verify_token
 
 
@@ -144,8 +145,11 @@ class RemoteUserMiddleware:
         trusted_header: str = "x-remote-user",
         dev: bool = False,
         allowed_users_file: Path | None = None,
+        instructors: set[str] | None = None,
     ):
         self.app = app
+        # SSO usernames with the instructor role (besides the token user)
+        self.instructors = instructors or set()
         self.secret = secret
         self.trusted_proxies = trusted_proxies or set()
         self.trusted_header = trusted_header.lower()
@@ -206,7 +210,7 @@ class RemoteUserMiddleware:
                 await send({"type": "http.response.body", "body": b"403 Forbidden"})
             return
 
-        instructor = is_instructor(username)
+        instructor = is_instructor(username) or username in self.instructors
 
         # 6. Check allowlist (instructors always pass)
         if not instructor and self.allowed_users_file is not None:
@@ -225,10 +229,13 @@ class RemoteUserMiddleware:
                     )
                 return
 
-        scope["user"] = {
-            "username": username,
-            "is_instructor": instructor,
-        }
+        # an instructor viewing as a student (testing visibility, optionally
+        # as of a date): permissions drop to a student's until switched back
+        scope["user"] = view_as.apply(
+            {"username": username, "is_instructor": instructor},
+            view_as.read_cookie(scope.get("headers", [])),
+            {"student"},
+        )
 
         if not set_cookie:
             await self.app(scope, receive, send)
