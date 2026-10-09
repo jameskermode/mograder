@@ -101,6 +101,16 @@ Start the hub server. Options:
 
 Each option can also be set in the service environment as `MOGRADER_HUB_SESSION_TTL`, `MOGRADER_HUB_SESSION_THREADS` and `MOGRADER_HUB_MIN_FREE_MB` (an option given on the command line wins).
 
+#### Demos
+
+A **demo** is a run-only notebook (code hidden), opened by deep link
+(`run/<name>/`, e.g. from a course web page) and never listed on the
+dashboard or affected by the release schedule. Each visitor gets their own
+`marimo run` process, with the hub's thread caps and admission control.
+Students cannot make a copy or download a demo's source (instructors can).
+Publish with `mograder hub publish <dir> --demo`, or mark the notebook with
+`mograder-type = "demo"` in its PEP 723 block.
+
 #### View as student
 
 Like Moodle's *Switch role to…*, an instructor can see the hub exactly as a

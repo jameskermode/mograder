@@ -296,9 +296,18 @@ class StorageManager:
         )
 
     def list_assignments(self) -> list[str]:
-        """List available assignments (excluding lectures) from release_dir."""
+        """List available assignments (not lectures or demos) from release_dir."""
         return [
-            name for name in self._list_all_items() if self.item_type(name) != "lecture"
+            name
+            for name in self._list_all_items()
+            if self.item_type(name) not in ("lecture", "demo")
+        ]
+
+    def list_demos(self) -> list[str]:
+        """Demos: run-only notebooks reached by deep link (``/run/<name>/``),
+        never listed on the dashboard and not subject to the schedule."""
+        return [
+            name for name in self._list_all_items() if self.item_type(name) == "demo"
         ]
 
     def list_lectures(self) -> list[str]:

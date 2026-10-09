@@ -127,6 +127,14 @@ def create_hub_app(
             status_code=403, detail="Cannot access another user's resources"
         )
 
+    def _check_not_demo(request: Request, name: str) -> None:
+        """Demos are run-only with code hidden: no copies or source downloads
+        for students (instructors may)."""
+        if storage.item_type(name) == "demo" and not request.scope.get("user", {}).get(
+            "is_instructor"
+        ):
+            raise HTTPException(status_code=400, detail="Demos can only be run")
+
     # -- View as student (instructors testing visibility) --
 
     @app.get("/view-as")
@@ -464,6 +472,7 @@ def create_hub_app(
 
         if not storage.has_release(assignment):
             raise HTTPException(status_code=404, detail="Assignment not found")
+        _check_not_demo(request, assignment)
 
         # Auto-download if student doesn't have a copy yet (a student who
         # already has a copy keeps access even if the item is hidden again)
@@ -515,14 +524,14 @@ def create_hub_app(
                 alive = s.process is not None and s.process.returncode is None
                 if not alive:
                     continue
-                is_lecture = storage.item_type(a) == "lecture"
+                kind = storage.item_type(a)
                 result.append(
                     {
                         "username": u,
                         "assignment": a,
                         "port": s.port,
                         "url": f"{mode}/user/{u}/{a}/",
-                        "type": "lecture" if is_lecture else "assignment",
+                        "type": kind if kind in ("lecture", "demo") else "assignment",
                         "mode": mode,
                         "last_seen": s.last_seen,
                     }
@@ -602,12 +611,16 @@ def create_hub_app(
         if not username:
             raise HTTPException(status_code=403, detail="Authentication required")
 
-        if storage.item_type(lecture) != "lecture":
+        kind = storage.item_type(lecture)
+        if kind not in ("lecture", "demo"):
             raise HTTPException(status_code=400, detail="Not a lecture")
         _check_visible(request, lecture)
 
         try:
-            session = await session_mgr.get_or_spawn_run(username, lecture)
+            # demos run with their code hidden; lectures show it
+            session = await session_mgr.get_or_spawn_run(
+                username, lecture, include_code=kind != "demo"
+            )
             return {
                 "status": "ok",
                 "url": f"run/user/{username}/{lecture}/",
@@ -634,6 +647,7 @@ def create_hub_app(
     async def download_release(request: Request, username: str, assignment: str):
         _check_owner(request, username)
         _check_visible(request, assignment)
+        _check_not_demo(request, assignment)
         release = storage.release_path(assignment)
         if release is None:
             raise HTTPException(status_code=404, detail="Assignment not found")
@@ -660,6 +674,7 @@ def create_hub_app(
         if ".." in filename:
             raise HTTPException(status_code=400, detail="Invalid filename")
         _check_visible(request, assignment)
+        _check_not_demo(request, assignment)
 
         if not rel_dir.is_dir():
             raise HTTPException(status_code=404, detail="No releases available")
@@ -694,6 +709,8 @@ def create_hub_app(
 
         # Read item type from query params (default: "assignment")
         item_type = request.query_params.get("type", "assignment")
+        if item_type not in ("assignment", "lecture", "demo"):
+            raise HTTPException(status_code=400, detail=f"Unknown type {item_type!r}")
 
         assignment_dir = rel_dir / assignment
         assignment_dir.mkdir(parents=True, exist_ok=True)

@@ -193,6 +193,8 @@ def _(
                     _started = False
                 if _type == "lecture" or not _started:
                     continue
+            if _type == "demo":
+                continue  # demos: deep links only, never listed
             if _type == "lecture":
                 hub_lectures += ({"name": d.name},)
             else:

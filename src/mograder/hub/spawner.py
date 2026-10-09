@@ -409,8 +409,10 @@ class SessionManager:
         lecture: str,
         notebook_path: Path,
         port: int,
+        include_code: bool = True,
     ) -> list[str]:
-        """Build a ``marimo run --include-code`` command for a lecture."""
+        """Build a ``marimo run`` command for a lecture (``--include-code``)
+        or a demo (code hidden)."""
         sandbox_dir = self._get_sandbox_dir(lecture)
 
         if sandbox_dir is not None:
@@ -427,7 +429,7 @@ class SessionManager:
             "marimo",
             "run",
             "--no-sandbox" if sandbox_dir else "--sandbox",
-            "--include-code",
+            *(["--include-code"] if include_code else []),
             "--headless",
             "--host",
             "127.0.0.1",
@@ -526,7 +528,9 @@ class SessionManager:
                 self._reserved_ports.discard(port)
                 self._starting.remove(assignment)
 
-    async def get_or_spawn_run(self, username: str, lecture: str) -> MarimoSession:
+    async def get_or_spawn_run(
+        self, username: str, lecture: str, include_code: bool = True
+    ) -> MarimoSession:
         """Get or spawn a per-user ``marimo run`` session for a lecture.
 
         Like ``get_or_spawn`` but reads the notebook from ``release_dir``
@@ -558,7 +562,9 @@ class SessionManager:
             self._starting.append(lecture)
             port = self._allocate_port()
             try:
-                cmd = self._build_run_command(username, lecture, nb, port)
+                cmd = self._build_run_command(
+                    username, lecture, nb, port, include_code=include_code
+                )
                 env = {**os.environ, **thread_env(self.session_threads)}
                 uv_bin = Path.home() / ".local" / "bin"
                 if uv_bin.is_dir():

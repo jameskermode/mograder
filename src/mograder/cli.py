@@ -4003,6 +4003,12 @@ def _ssh_tunnel(host: str, remote_port: int = 8080):
     help="Publish as lecture (implies --force, skips Moodle verification)",
 )
 @click.option(
+    "--demo",
+    is_flag=True,
+    help="Publish as a demo: run-only with code hidden, opened by deep link "
+    "(run/<name>/), never listed on the dashboard (implies --force)",
+)
+@click.option(
     "--ssh",
     "ssh_host",
     envvar="MOGRADER_HUB_SSH",
@@ -4026,6 +4032,7 @@ def hub_publish(
     dry_run,
     no_warm,
     lecture,
+    demo,
     ssh_host,
     ssh_port,
 ):
@@ -4083,24 +4090,26 @@ def hub_publish(
         click.echo(f"No files found in {assignment_dir}", err=True)
         raise SystemExit(1)
 
-    # Auto-detect lecture from PEP 723 metadata
-    if not lecture:
+    # Auto-detect lecture/demo from PEP 723 metadata
+    if not lecture and not demo:
         from mograder.grading.cells import read_notebook_type
 
         nb_file = assignment_dir / f"{assignment_name}.py"
-        if (
-            nb_file.is_file()
-            and read_notebook_type(nb_file.read_text(encoding="utf-8")) == "lecture"
-        ):
-            lecture = True
-            click.echo("Auto-detected lecture from mograder-type metadata.")
+        detected = (
+            read_notebook_type(nb_file.read_text(encoding="utf-8"))
+            if nb_file.is_file()
+            else "assignment"
+        )
+        if detected in ("lecture", "demo"):
+            lecture, demo = detected == "lecture", detected == "demo"
+            click.echo(f"Auto-detected {detected} from mograder-type metadata.")
 
-    if lecture:
-        force = True  # lectures are not on Moodle
+    if lecture or demo:
+        force = True  # lectures and demos are not on Moodle
 
-    item_type = "lecture" if lecture else "assignment"
+    item_type = "demo" if demo else "lecture" if lecture else "assignment"
 
-    click.echo(f"{'Lecture' if lecture else 'Assignment'}: {assignment_name}")
+    click.echo(f"{item_type.capitalize()}: {assignment_name}")
     click.echo(f"Local files: {', '.join(sorted(local_files))}")
 
     # Moodle verification (unless --force)
